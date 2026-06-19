@@ -1,0 +1,129 @@
+Index: reports/js/components/DownloadToPdf.vue
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><template>\n        <v-btn class=\"v-btn v-btn--small theme--light primary\" @click=\"exportPdf\" target=\"_blank\">Pdf</v-btn>\n</template>\n<script>\nimport jsPDF from 'jspdf';\nimport 'jspdf-autotable';\n\nexport default {\n\n    props: {\n        headers: {\n            type: Array,\n        },\n        data: {\n            type: Array,\n        },\n        filename: {\n            type: String,\n        },\n        title: {\n            type: String,\n        },\n    },\n\n    methods: {\n        exportPdf() {\n            const title = [];\n            // let moreInfo = \"Tel:- 0718918189,\\n\" +\n            //         \"0723386706\\n\" +\n            //         \"embuchildren@tenrihospital.org\";\n            const header = this.filename;\n\n            this.headers.forEach((d)=>{\n                title.push(d.text);\n            });\n            const bd = this.data.map(function(obj) {\n                return Object.keys(obj).map(function(key) {\n                    return obj[key];\n                });\n            });\n\n            const doc = new jsPDF('p', 'pt');\n            doc.autoTable(title, bd, {\n                style: { fillColor: [100, 255, 255] },\n                columnStyles: {\n                    id: { fillColor: 255 },\n                },\n                margin: { top: 60 },\n                didDrawPage: (data) => {\n                    doc.setFont('times');\n                    doc.setFontSize(13);\n                    // doc.text(moreInfo, 60, 50);\n                    doc.text(header, 190, 30);\n                },\n            });\n            doc.save(this.filename+'.pdf');\n        },\n    },\n};\n</script>\n
+===================================================================
+diff --git a/reports/js/components/DownloadToPdf.vue b/reports/js/components/DownloadToPdf.vue
+--- a/reports/js/components/DownloadToPdf.vue	
++++ b/reports/js/components/DownloadToPdf.vue	
+@@ -1,5 +1,5 @@
+ <template>
+-        <v-btn class="v-btn v-btn--small theme--light primary" @click="exportPdf" target="_blank">Pdf</v-btn>
++  <v-btn class="v-btn v-btn--small theme--light primary" @click="exportPdf" target="_blank">Pdf</v-btn>
+ </template>
+ <script>
+ import jsPDF from 'jspdf';
+@@ -7,54 +7,68 @@
+ 
+ export default {
+ 
+-    props: {
+-        headers: {
+-            type: Array,
+-        },
+-        data: {
+-            type: Array,
+-        },
+-        filename: {
+-            type: String,
+-        },
+-        title: {
+-            type: String,
+-        },
++  props: {
++    headers: {
++      type: Array,
++    },
++    data: {
++      type: Array,
++    },
++    filename: {
++      type: String,
++    },
++    title: {
++      type: String,
++    },
++    extratitle: {
++      type: Array,
+     },
++
++  },
+ 
+-    methods: {
+-        exportPdf() {
+-            const title = [];
+-            // let moreInfo = "Tel:- 0718918189,\n" +
+-            //         "0723386706\n" +
+-            //         "embuchildren@tenrihospital.org";
+-            const header = this.filename;
++  methods: {
++    exportPdf() {
++      const title = [];
++      const header = this.filename;
+ 
+-            this.headers.forEach((d)=>{
+-                title.push(d.text);
+-            });
+-            const bd = this.data.map(function(obj) {
+-                return Object.keys(obj).map(function(key) {
+-                    return obj[key];
+-                });
+-            });
++      console.log(this.extratitle)
++      // Add extra titles from the extratitle prop to the title array
++      for (const [key, value] of Object.entries(this.extratitle)) {
++        if (value !== '') {
++          title.push(`${key}: ${value}`);
++        }
++      }
++
++      // Add regular titles from headers
++      this.headers.forEach((d) => {
++        title.push(d.text);
++      });
++
++      console.log(this.headers)
++      // Extract data
++
++      const bd = this.data.map(function(obj) {
++        return Object.keys(obj).map(function(key) {
++          return obj[key];
++        });
++      });
+ 
+-            const doc = new jsPDF('p', 'pt');
+-            doc.autoTable(title, bd, {
+-                style: { fillColor: [100, 255, 255] },
+-                columnStyles: {
+-                    id: { fillColor: 255 },
+-                },
+-                margin: { top: 60 },
+-                didDrawPage: (data) => {
+-                    doc.setFont('times');
+-                    doc.setFontSize(13);
+-                    // doc.text(moreInfo, 60, 50);
+-                    doc.text(header, 190, 30);
+-                },
+-            });
+-            doc.save(this.filename+'.pdf');
+-        },
+-    },
++      // Generate PDF
++      const doc = new jsPDF('p', 'pt');
++      doc.autoTable(title, bd, {
++        style: { fillColor: [100, 255, 255] },
++        columnStyles: {
++          id: { fillColor: 255 },
++        },
++        margin: { top: 60 },
++        didDrawPage: (data) => {
++          doc.setFont('times');
++          doc.setFontSize(13);
++          doc.text(header, 190, 30);
++        },
++      });
++      doc.save(this.filename + '.pdf');
++    },
++  },
+ };
+ </script>

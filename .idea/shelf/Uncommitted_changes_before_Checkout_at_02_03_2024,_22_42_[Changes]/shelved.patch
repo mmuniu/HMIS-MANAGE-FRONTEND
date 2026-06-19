@@ -1,0 +1,199 @@
+Index: inpatient/js/components/admissions/partials/PartographAnalytics.vue
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><template>\n  <div style=\"padding:15px 43px; width:100% !important\">\n    <chart :data=\"fhrDataWithTimestamps\" :partograph_options=\"partograph_options\" type=\"line\" />\n  </div>\n</template>\n\n<script>\nimport Chart from './Chart.vue';\n\nexport default {\n  components: {\n    Chart,\n  },\n  props: {\n    report_on_labour: Array,\n    partograph_data: Array,\n  },\n  data() {\n    const sortedData = this.partograph_data.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));\n\n    const labels = [];\n    for (let hour = 0; hour < 24; hour++) {\n      labels.push(`${hour.toString().padStart(2, '0')}:00`);\n    }\n\n    const fhrData = new Array(24).fill(null);\n\n    for (const item of sortedData) {\n      const hour = new Date(item.created_at).getHours();\n      fhrData[hour] = item.fhr;\n    }\n\n    // Fill in any missing data points with null values\n    for (let i = 0; i < fhrData.length; i++) {\n      if (fhrData[i] === undefined) {\n        fhrData[i] = null;\n      }\n    }\n\n    return {\n      partograph_options: {\n        scales: {\n          yAxes: [{\n            scaleLabel: {\n              display: true,\n              labelString: 'Fetal Heart Rate', // Label for the y-axis\n            },\n          }],\n          xAxes: [{\n            display: true,\n            ticks: {\n              fontColor: 'rgba(0, 0, 0, 0)', // Make the font color transparent\n            },\n          }],\n        },\n      },\n      fhrDataWithTimestamps: {\n        labels: labels,\n        datasets: [{\n          label: 'Fetal Heart Rate',\n          data: fhrData,\n          fill: false,\n          borderColor: 'rgb(75, 192, 192)',\n          tension: 0.5,\n        }],\n      },\n    };\n  },\n\n\n};\n</script>\n
+===================================================================
+diff --git a/inpatient/js/components/admissions/partials/PartographAnalytics.vue b/inpatient/js/components/admissions/partials/PartographAnalytics.vue
+--- a/inpatient/js/components/admissions/partials/PartographAnalytics.vue	
++++ b/inpatient/js/components/admissions/partials/PartographAnalytics.vue	
+@@ -1,72 +1,86 @@
+ <template>
+-  <div style="padding:15px 43px; width:100% !important">
+-    <chart :data="fhrDataWithTimestamps" :partograph_options="partograph_options" type="line" />
++  <div>
++    <canvas :id="chart_id" width="800" height="800" aria-label="chart" role="img"></canvas>
+   </div>
+ </template>
+ 
+ <script>
+-import Chart from './Chart.vue';
++import Chart from 'chart.js';
+ 
+ export default {
+-  components: {
+-    Chart,
++  mounted() {
++    this.drawChart();
+   },
+   props: {
+-    report_on_labour: Array,
+-    partograph_data: Array,
++    type: {
++      type: String,
++      default: 'line',
++    },
++    data: {
++      type: Object,
++      default: () => ({}),
++    },
++    partograph_options: {
++      type: Object,
++      default: () => ({}),
++    },
+   },
+   data() {
+-    const sortedData = this.partograph_data.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+-
+-    const labels = [];
+-    for (let hour = 0; hour < 24; hour++) {
+-      labels.push(`${hour.toString().padStart(2, '0')}:00`);
+-    }
+-
+-    const fhrData = new Array(24).fill(null);
+-
+-    for (const item of sortedData) {
+-      const hour = new Date(item.created_at).getHours();
+-      fhrData[hour] = item.fhr;
+-    }
+-
+-    // Fill in any missing data points with null values
+-    for (let i = 0; i < fhrData.length; i++) {
+-      if (fhrData[i] === undefined) {
+-        fhrData[i] = null;
+-      }
+-    }
+-
+     return {
+-      partograph_options: {
+-        scales: {
+-          yAxes: [{
+-            scaleLabel: {
+-              display: true,
+-              labelString: 'Fetal Heart Rate', // Label for the y-axis
+-            },
+-          }],
+-          xAxes: [{
+-            display: true,
+-            ticks: {
+-              fontColor: 'rgba(0, 0, 0, 0)', // Make the font color transparent
+-            },
+-          }],
+-        },
+-      },
+-      fhrDataWithTimestamps: {
+-        labels: labels,
+-        datasets: [{
+-          label: 'Fetal Heart Rate',
+-          data: fhrData,
+-          fill: false,
+-          borderColor: 'rgb(75, 192, 192)',
+-          tension: 0.5,
+-        }],
+-      },
+-    };
++      chart_id: `chart-id-${Math.random().toString(36).substr(2, 9)}`,
++    };
++  },
++  methods: {
++    drawChart() {
++      const ctx = document.getElementById(this.chart_id);
++
++      new Chart(ctx, {
++        type: this.type,
++        data: this.data,
++        options: {
++          ...this.partograph_options,
++          scales: {
++            ...this.partograph_options.scales,
++            yAxes: [{
++              ...this.partograph_options.scales?.yAxes?.[0],
++              ticks: {
++                ...this.partograph_options.scales?.yAxes?.[0]?.ticks,
++                beginAtZero: false,
++                min: 60,
++                max: 180,
++                stepSize: 10,
++              },
++            }],
++            xAxes: [{
++              ...this.partograph_options.scales?.xAxes?.[0],
++              ticks: {
++                ...this.partograph_options.scales?.xAxes?.[0]?.ticks,
++                callback: (value, index, values) => {
++                  const [hour, minute] = value.split(':').map(Number);
++                  return `${hour}:${minute === 0 ? '00' : '30'}`;
++                },
++              },
++              gridLines: {
++                display: true,
++                color: 'rgba(0, 0, 0, 0.1)',
++              },
++            }],
++          },
++          tooltips: {
++            callbacks: {
++              title: (tooltipItems, data) => {
++                const index = tooltipItems[0].index;
++                const timestamp = data.labels[index];
++                return `Time: ${timestamp}`;
++              },
++              label: (tooltipItem, data) => {
++                return `${data.datasets[tooltipItem.datasetIndex].label}: ${tooltipItem.yLabel}`;
++              },
++            },
++          },
++        },
++      });
++    },
+   },
+-
+-
+ };
+ </script>
+Index: inpatient/js/components/admissions/partials/Chart.vue
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><template>\n  <div>\n    <canvas :id=\"chart_id\" width=\"800\" height=\"800\" aria-label=\"chart\" role=\"img\"></canvas>\n  </div>\n</template>\n\n<script>\nimport Chart from 'chart.js';\n\nexport default {\n  mounted() {\n    this.drawChart();\n  },\n  props: {\n    type: {\n      type: String,\n      default: 'line',\n    },\n    data: {\n      type: Object,\n      default: () => ({}),\n    },\n    partograph_options: {\n      type: Object,\n      default: () => ({}),\n    },\n  },\n  data() {\n    return {\n      chart_id: `chart-id-${Math.random().toString(36).substr(2, 9)}`,\n    };\n  },\n  methods: {\n    drawChart() {\n      const ctx = document.getElementById(this.chart_id);\n      const dataLabels = this.data.labels;\n      const dataValues = this.data.datasets[0].data;\n\n      // Find the index of the first non-empty label\n      let startIndex = 0;\n      while (startIndex < dataLabels.length && !dataLabels[startIndex]) {\n        startIndex++;\n      }\n\n      const firstTimestamp = new Date(dataLabels[startIndex]);\n      const startHour = firstTimestamp.getHours();\n\n      const xAxesTicks = {\n        ...this.partograph_options.scales?.xAxes?.[0]?.ticks,\n        min: startHour,\n        max: 24, // Assuming the x-axis has 24 hour slots\n        stepSize: 1,\n        callback: (value) => {\n          return `${value}:00`; // Format ticks as hours\n        },\n      };\n\n      new Chart(ctx, {\n        type: this.type,\n        data: this.data,\n        options: {\n          ...this.partograph_options,\n          scales: {\n            ...this.partograph_options.scales,\n            yAxes: [{\n              ...this.partograph_options.scales?.yAxes?.[0],\n              ticks: {\n                ...this.partograph_options.scales?.yAxes?.[0]?.ticks,\n                beginAtZero: false,\n                min: 60,\n                max: 180,\n                stepSize: 10,\n              },\n            }],\n            xAxes: [{\n              ...this.partograph_options.scales?.xAxes?.[0],\n              ticks: xAxesTicks,\n              gridLines: {\n                display: true, // Display grid lines\n                color: 'rgba(0, 0, 0, 0.1)', // Set grid line color\n              },\n            }],\n          },\n          tooltips: {\n            callbacks: {\n              title: (tooltipItems, data) => {\n                const index = tooltipItems[0].index;\n                const timestamp = dataLabels[index];\n                return `Time: ${timestamp}`;\n              },\n              label: (tooltipItem, data) => {\n                return `${data.datasets[tooltipItem.datasetIndex].label}: ${tooltipItem.yLabel}`;\n              },\n            },\n          },\n        },\n      });\n    },\n  },\n};\n</script>\n
+===================================================================
+diff --git a/inpatient/js/components/admissions/partials/Chart.vue b/inpatient/js/components/admissions/partials/Chart.vue
+--- a/inpatient/js/components/admissions/partials/Chart.vue	
++++ b/inpatient/js/components/admissions/partials/Chart.vue	
+@@ -36,22 +36,15 @@
+       const dataLabels = this.data.labels;
+       const dataValues = this.data.datasets[0].data;
+ 
+-      // Find the index of the first non-empty label
+-      let startIndex = 0;
+-      while (startIndex < dataLabels.length && !dataLabels[startIndex]) {
+-        startIndex++;
+-      }
+-
+-      const firstTimestamp = new Date(dataLabels[startIndex]);
+-      const startHour = firstTimestamp.getHours();
+-
+       const xAxesTicks = {
+         ...this.partograph_options.scales?.xAxes?.[0]?.ticks,
+-        min: startHour,
+-        max: 24, // Assuming the x-axis has 24 hour slots
++        min: 0,
++        max: dataLabels.length - 1,
+         stepSize: 1,
+         callback: (value) => {
+-          return `${value}:00`; // Format ticks as hours
++          const hour = Math.floor(value / 2);
++          const minute = (value % 2) * 30;
++          return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+         },
+       };
+ 
+@@ -76,8 +69,8 @@
+               ...this.partograph_options.scales?.xAxes?.[0],
+               ticks: xAxesTicks,
+               gridLines: {
+-                display: true, // Display grid lines
+-                color: 'rgba(0, 0, 0, 0.1)', // Set grid line color
++                display: true,
++                color: 'rgba(0, 0, 0, 0.1)',
+               },
+             }],
+           },

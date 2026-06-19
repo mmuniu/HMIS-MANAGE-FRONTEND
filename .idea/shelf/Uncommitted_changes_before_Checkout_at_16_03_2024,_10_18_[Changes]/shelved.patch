@@ -1,0 +1,547 @@
+Index: reception/js/components/visits/Index.vue
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><template>\n    <collabmed-loading v-if=\"!visits\"></collabmed-loading>\n\n    <v-card v-else>\n        <v-card-title class=\"subheading grey-text text-darken-2\">\n            <h2 class=\"body-2 ma-0 pa-0\">Patient visits listing</h2>\n        </v-card-title>\n\n        <v-divider class=\"my-0\"></v-divider>\n\n        <v-card-text>\n\n            <!-- Change destination modal -->\n            <reception-change-destination @changed=\"destinationChanged()\"\n                    :destination=\"destination\" :destinations=\"destinations\">\n            </reception-change-destination>\n\n            <!-- Change payment mode (applies to cases where visit created at least 30 minutes before now -->\n<!--            <reception-change-mode :visit=\"selectedVisit\" :dialogState=\"changeModeDialog\"></reception-change-mode>-->\n\n            <!-- add destination modal -->\n           <!-- <reception-add-destination @changed=\"destinationAdded()\"\n                                       v-if=\"destinationVisit\"\n                                       @close=\"dialogAddDestination = false\"\n                                       :show=\"dialogAddDestination\"\n                                       :destination-visit=\"destinationVisit\"\n            >\n            </reception-add-destination>-->\n\n            <div class=\"mb-3\">\n                <v-row >\n\n                    <v-col class=\"px-2\" md=\"2\" cols=\"12\" >\n                        <collabmed-date-time-picker outlined @input=\"setStartDate\" :datetime=\"filters.start_date\" label=\"Start date\"></collabmed-date-time-picker>\n                    </v-col>\n\n                    <v-col class=\"px-2\" md=\"2\" cols=\"12\" >\n                        <collabmed-date-time-picker outlined @input=\"setEndDate\" :datetime=\"filters.end_date\" label=\"End date\"></collabmed-date-time-picker>\n                    </v-col>\n\n                    <v-col class=\"px-2\" md=\"2\" cols=\"12\" >\n                        <v-btn small color=\"success\" @click=\"filter\">filter</v-btn>\n                    </v-col>\n\n                    <v-col></v-col>\n\n                    <v-col class=\"px-2\" md=\"4\" cols=\"12\" >\n                        <reception-patient-search @patientSelected=\"patientSelected\" label=\"Search patient\" outlined></reception-patient-search>\n                    </v-col>\n                </v-row>\n            </div>\n\n            <v-data-table\n                    :headers=\"visits.headers\"\n                    :items=\"visits.data\"\n                    :loading=\"saveLoader\"\n                    :search=\"searchHere\"\n                    class=\"mb-3\"\n                    flat\n                    hide-default-footer\n            >\n                <template v-slot:item.patient_name=\"{ item }\"  class=\"blue--text text--lighten-2 pt-3\">\n                    <a :href=\"`/reception/patients/${item.id}/basic`\">{{ item.patient_name }}</a><br/>\n                    <span class=\"green--text body-3\">Ticket #:{{ item.id }}</span> <br/>\n                    <!--<span v-if=\"item.unique_visit_key\" class=\"pink&#45;&#45;text caption\">Key:  {{ item.unique_visit_key }}</span>-->\n                </template>\n\n                <template v-slot:item.destinations=\"{ item }\"  class=\"pt-3\">\n                    <span class=\"body-3 black--text text--lighten-1\">{{ item.queued_at | ucwords }}</span>\n                    <p class=\"body-3 grey--text text--darken-1\">Facility: {{ item.facility_name | ucwords }}</p>\n                </template>\n\n                <template v-slot:item.date=\"{ item }\">\n                    <span class=\"body-3 black--text text--lighten-1\"> {{ item.created_at }}</span>\n                    <p class=\"body-3 grey--text text--darken-1\" v-if=\"item.purpose_of_visit\">\n                        Purpose: {{ item.purpose_of_visit }}\n                    </p>\n                </template>\n\n                <template v-slot:item.actions=\"{ item }\">\n                    <v-btn small color=\"primary\" dark @click=\"editVisit(item)\">\n                        update visit\n                    </v-btn>\n\n                    <v-btn small color=\"teal\" dark @click=\"changeDestination(item.destinations)\">\n                        Change Destination\n                    </v-btn>\n\n                    <!--<v-btn small color=\"green\" dark @click=\"changePaymentMode(item)\">\n                        Change Mode\n                    </v-btn>-->\n\n                    <v-btn small color=\"purple\" dark :href=\"`/evaluation/visit/${item.id}/destination/doctor/history`\">\n                        Review\n                    </v-btn>\n\n                    <v-btn small color=\"error\" dark @click=\"cancelCheckin(item)\">\n                        Cancel checkin\n                    </v-btn>\n                </template>\n\n\n                <template slot=\"footer\" v-if=\"visits.links\">\n                    <v-row  class=\"py-2 pb-2\">\n                        <v-col cols=\"8\" class=\"mt-3 ml-3\">\n                            <!--Showing {{ from }} to {{ to }} of {{ total }} records-->\n                            Total records: {{ visits.meta.total }}\n                        </v-col>\n\n                        <v-col cols=\"3\" class=\"text-right\">\n                            <v-btn :disabled=\"visits.meta.current_page <= 1\" icon @click=\"navigate(visits.links.prev)\">\n                                <v-icon>chevron_left</v-icon>\n                            </v-btn>\n\n                            <v-btn :disabled=\"visits.meta.current_page === visits.meta.last_page\" icon @click=\"navigate(visits.links.next)\">\n                                <v-icon>chevron_right</v-icon>\n                            </v-btn>\n                        </v-col>\n                    </v-row>\n                </template>\n            </v-data-table>\n        </v-card-text>\n\n    </v-card>\n\n</template>\n\n<script>\nimport { mapActions, mapGetters } from 'vuex';\nimport Visit from '@reception/libs/visits/Visit';\nimport moment from 'moment';\nimport ChangeDestination from './partials/ChangeDestination';\nimport PatientSearch from '../patients/PatientSearch';\n\nexport default {\n    props: [\n        'params',\n    ],\n\n    components: {\n        'reception-change-destination': ChangeDestination,\n        'reception-patient-search': PatientSearch,\n    },\n\n    data() {\n        return {\n            visits: null,\n            search: '',\n            searchHere: '',\n            destinations: null,\n            destinationVisit: null,\n            destination: false,\n            saveLoader: false,\n            dialogAddDestination: false,\n            checkout: false,\n            mode: false,\n            patientVisit: new Visit(),\n            selectedVisit: {},\n            changeModeDialog: 0,\n            page: 1,\n            filters: {\n                start_date: moment(new Date()).startOf('month').format('YYYY-MM-DD HH:MM'),\n                end_date: moment(new Date()).format('YYYY-MM-DD HH:MM'),\n            },\n        };\n    },\n\n    watch: {\n        getVisits(visits) {\n            this.visits = visits;\n        },\n\n        search(term, old) {\n            if (term.length > 3 && term.length > old.length) {\n                this.performSearch(term);\n                this.label = 'Search Patients...';\n            } else if (term.length > 0 && term.length <= 3) {\n                this.label = 'Enter ' + (4 - term.length) + ' more characters';\n            } else {\n                this.label = 'Search Patients...';\n            }\n\n            if (term.length == 0) {\n                this.fetchVisits();\n            }\n        },\n    },\n\n    computed: {\n        ...mapGetters([\n            'getVisits',\n        ]),\n    },\n\n    methods: {\n        ...mapActions([\n            'setVisits',\n        ]),\n\n        navigate(url) {\n            if (url) {\n                const page = url.substring(url.indexOf('page=')).split('page=')[1];\n                this.setVisits({\n                    page,\n                    params: { ...this.filters, ...JSON.parse(this.params) },\n                });\n            }\n        },\n\n        setStartDate(datetime) {\n            this.filters.start_date = datetime;\n        },\n\n        setEndDate(datetime) {\n            this.filters.end_date = datetime;\n        },\n\n        filter() {\n            this.setVisits({\n                params: { ...this.filters, ...JSON.parse(this.params) },\n            });\n        },\n\n        changePaymentMode(item) {\n            this.selectedVisit = item;\n            this.changeModeDialog += 1;\n        },\n\n        editVisit(visit) {\n\n            window.open(`/reception/patient/${visit.patient.id}/visits/${visit.id}`, '_self');\n        },\n\n        patientSelected(patient) {\n            this.setVisits({\n                params: {\n                    patient_id: patient.id,\n                },\n            });\n        },\n\n        addDestination(visit) {\n            this.destinationVisit = visit;\n            this.dialogAddDestination = true;\n        },\n\n        changeDestination(destinations) {\n            this.destination = true;\n            this.destinations = JSON.stringify(destinations);\n        },\n\n        async cancelCheckin(visit) {\n            const response = await this.patientVisit.cancelCheckin(visit.id);\n\n            if (response) {\n                this.initialize();\n            }\n        },\n\n        destinationChanged() {\n            this.destination = false;\n            flash({\n                'message': 'Destination changed successfully',\n                'alert': 'green',\n            });\n            this.setVisits();\n        },\n\n        destinationAdded() {\n            this.dialogAddDestination = false;\n            this.destinationVisit = null;\n            flash({\n                'message': 'Destination added successfully',\n                'alert': 'green',\n            });\n            this.setVisits();\n        },\n\n        performSearch: _.debounce(function(term) {\n            flash({ alert: 'info', message: 'Coming Soon' });\n        }, 500),\n\n        initialize() {\n            const params = JSON.parse(this.params);\n\n            this.setVisits({\n                params,\n            });\n        },\n\n        fetchVisits: _.debounce(function(page = 1) {\n            flash({ alert: 'info', message: 'Coming Soon' });\n        }, 500),\n    },\n\n    mounted() {\n        this.initialize();\n        this.setVisits({\n          params: { ...this.filters, ...JSON.parse(this.params) },\n        });\n    },\n\n    created() {\n        window.events.$on('STORE_SET_ACTION_LOADING', (loading) => {\n            this.saveLoader = loading;\n        });\n    },\n};\n</script>\n\n<style scoped>\n\n</style>\n
+===================================================================
+diff --git a/reception/js/components/visits/Index.vue b/reception/js/components/visits/Index.vue
+--- a/reception/js/components/visits/Index.vue	
++++ b/reception/js/components/visits/Index.vue	
+@@ -1,116 +1,116 @@
+ <template>
+-    <collabmed-loading v-if="!visits"></collabmed-loading>
++  <collabmed-loading v-if="!visits"></collabmed-loading>
+ 
+-    <v-card v-else>
+-        <v-card-title class="subheading grey-text text-darken-2">
+-            <h2 class="body-2 ma-0 pa-0">Patient visits listing</h2>
+-        </v-card-title>
++  <v-card v-else>
++    <v-card-title class="subheading grey-text text-darken-2">
++      <h2 class="body-2 ma-0 pa-0">Patient visits listing</h2>
++    </v-card-title>
+ 
+-        <v-divider class="my-0"></v-divider>
++    <v-divider class="my-0"></v-divider>
+ 
+-        <v-card-text>
++    <v-card-text>
+ 
+-            <!-- Change destination modal -->
+-            <reception-change-destination @changed="destinationChanged()"
+-                    :destination="destination" :destinations="destinations">
+-            </reception-change-destination>
++      <!-- Change destination modal -->
++      <reception-change-destination @changed="destinationChanged()"
++                                    :destination="destination" :destinations="destinations">
++      </reception-change-destination>
+ 
+-            <!-- Change payment mode (applies to cases where visit created at least 30 minutes before now -->
+-<!--            <reception-change-mode :visit="selectedVisit" :dialogState="changeModeDialog"></reception-change-mode>-->
++      <!-- Change payment mode (applies to cases where visit created at least 30 minutes before now -->
++      <!--            <reception-change-mode :visit="selectedVisit" :dialogState="changeModeDialog"></reception-change-mode>-->
+ 
+-            <!-- add destination modal -->
+-           <!-- <reception-add-destination @changed="destinationAdded()"
+-                                       v-if="destinationVisit"
+-                                       @close="dialogAddDestination = false"
+-                                       :show="dialogAddDestination"
+-                                       :destination-visit="destinationVisit"
+-            >
+-            </reception-add-destination>-->
++      <!-- add destination modal -->
++      <!-- <reception-add-destination @changed="destinationAdded()"
++                                  v-if="destinationVisit"
++                                  @close="dialogAddDestination = false"
++                                  :show="dialogAddDestination"
++                                  :destination-visit="destinationVisit"
++       >
++       </reception-add-destination>-->
+ 
+-            <div class="mb-3">
+-                <v-row >
++      <div class="mb-3">
++        <v-row >
+ 
+-                    <v-col class="px-2" md="2" cols="12" >
+-                        <collabmed-date-time-picker outlined @input="setStartDate" :datetime="filters.start_date" label="Start date"></collabmed-date-time-picker>
+-                    </v-col>
++          <v-col class="px-2" md="2" cols="12" >
++            <collabmed-date-time-picker outlined @input="setStartDate" :datetime="filters.start_date" label="Start date"></collabmed-date-time-picker>
++          </v-col>
+ 
+-                    <v-col class="px-2" md="2" cols="12" >
+-                        <collabmed-date-time-picker outlined @input="setEndDate" :datetime="filters.end_date" label="End date"></collabmed-date-time-picker>
+-                    </v-col>
++          <v-col class="px-2" md="2" cols="12" >
++            <collabmed-date-time-picker outlined @input="setEndDate" :datetime="filters.end_date" label="End date"></collabmed-date-time-picker>
++          </v-col>
+ 
+-                    <v-col class="px-2" md="2" cols="12" >
+-                        <v-btn small color="success" @click="filter">filter</v-btn>
+-                    </v-col>
++          <v-col class="px-2" md="2" cols="12" >
++            <v-btn small color="success" @click="filter">filter</v-btn>
++          </v-col>
+ 
+-                    <v-col></v-col>
++          <v-col></v-col>
+ 
+-                    <v-col class="px-2" md="4" cols="12" >
+-                        <reception-patient-search @patientSelected="patientSelected" label="Search patient" outlined></reception-patient-search>
+-                    </v-col>
+-                </v-row>
+-            </div>
++          <v-col class="px-2" md="4" cols="12" >
++            <reception-patient-search @patientSelected="patientSelected" label="Search patient" outlined></reception-patient-search>
++          </v-col>
++        </v-row>
++      </div>
+ 
+-            <v-data-table
+-                    :headers="visits.headers"
+-                    :items="visits.data"
+-                    :loading="saveLoader"
+-                    :search="searchHere"
+-                    class="mb-3"
+-                    flat
+-                    hide-default-footer
+-            >
+-                <template v-slot:item.patient_name="{ item }"  class="blue--text text--lighten-2 pt-3">
+-                    <a :href="`/reception/patients/${item.id}/basic`">{{ item.patient_name }}</a><br/>
+-                    <span class="green--text body-3">Ticket #:{{ item.id }}</span> <br/>
+-                    <!--<span v-if="item.unique_visit_key" class="pink&#45;&#45;text caption">Key:  {{ item.unique_visit_key }}</span>-->
+-                </template>
++      <v-data-table
++          :headers="visits.headers"
++          :items="visits.data"
++          :loading="saveLoader"
++          :search="searchHere"
++          class="mb-3"
++          flat
++          hide-default-footer
++      >
++        <template v-slot:item.patient_name="{ item }"  class="blue--text text--lighten-2 pt-3">
++          <a :href="`/reception/patients/${item.id}/basic`">{{ item.patient_name }}</a><br/>
++          <span class="green--text body-3">Ticket #:{{ item.id }}</span> <br/>
++          <!--<span v-if="item.unique_visit_key" class="pink&#45;&#45;text caption">Key:  {{ item.unique_visit_key }}</span>-->
++        </template>
+ 
+-                <template v-slot:item.destinations="{ item }"  class="pt-3">
+-                    <span class="body-3 black--text text--lighten-1">{{ item.queued_at | ucwords }}</span>
+-                    <p class="body-3 grey--text text--darken-1">Facility: {{ item.facility_name | ucwords }}</p>
+-                </template>
++        <template v-slot:item.destinations="{ item }"  class="pt-3">
++          <span class="body-3 black--text text--lighten-1">{{ item.queued_at | ucwords }}</span>
++          <p class="body-3 grey--text text--darken-1">Facility: {{ item.facility_name | ucwords }}</p>
++        </template>
+ 
+-                <template v-slot:item.date="{ item }">
+-                    <span class="body-3 black--text text--lighten-1"> {{ item.created_at }}</span>
+-                    <p class="body-3 grey--text text--darken-1" v-if="item.purpose_of_visit">
+-                        Purpose: {{ item.purpose_of_visit }}
+-                    </p>
+-                </template>
++        <template v-slot:item.date="{ item }">
++          <span class="body-3 black--text text--lighten-1"> {{ item.created_at }}</span>
++          <p class="body-3 grey--text text--darken-1" v-if="item.purpose_of_visit">
++            Purpose: {{ item.purpose_of_visit }}
++          </p>
++        </template>
+ 
+-                <template v-slot:item.actions="{ item }">
+-                    <v-btn small color="primary" dark @click="editVisit(item)">
+-                        update visit
+-                    </v-btn>
++        <template v-slot:item.actions="{ item }">
++          <v-btn small color="primary" dark @click="editVisit(item)">
++            update visit
++          </v-btn>
+ 
+-                    <v-btn small color="teal" dark @click="changeDestination(item.destinations)">
+-                        Change Destination
+-                    </v-btn>
++          <v-btn small color="teal" dark @click="changeDestination(item.destinations)">
++            Change Destination
++          </v-btn>
+ 
+-                    <!--<v-btn small color="green" dark @click="changePaymentMode(item)">
+-                        Change Mode
+-                    </v-btn>-->
++          <!--<v-btn small color="green" dark @click="changePaymentMode(item)">
++              Change Mode
++          </v-btn>-->
+ 
+-                    <v-btn small color="purple" dark :href="`/evaluation/visit/${item.id}/destination/doctor/history`">
+-                        Review
+-                    </v-btn>
++          <v-btn small color="purple" dark :href="`/evaluation/visit/${item.id}/destination/doctor/history`">
++            Review
++          </v-btn>
+ 
+-                    <v-btn small color="error" dark @click="cancelCheckin(item)">
+-                        Cancel checkin
+-                    </v-btn>
+-                </template>
++          <v-btn small color="error" dark @click="cancelCheckin(item)">
++            Cancel checkin
++          </v-btn>
++        </template>
+ 
+ 
+-                <template slot="footer" v-if="visits.links">
+-                    <v-row  class="py-2 pb-2">
+-                        <v-col cols="8" class="mt-3 ml-3">
+-                            <!--Showing {{ from }} to {{ to }} of {{ total }} records-->
+-                            Total records: {{ visits.meta.total }}
+-                        </v-col>
++        <template slot="footer" v-if="visits.links">
++          <v-row  class="py-2 pb-2">
++            <v-col cols="8" class="mt-3 ml-3">
++              <!--Showing {{ from }} to {{ to }} of {{ total }} records-->
++              Total records: {{ visits.meta.total }}
++            </v-col>
+ 
+-                        <v-col cols="3" class="text-right">
+-                            <v-btn :disabled="visits.meta.current_page <= 1" icon @click="navigate(visits.links.prev)">
+-                                <v-icon>chevron_left</v-icon>
+-                            </v-btn>
++            <v-col cols="3" class="text-right">
++              <v-btn :disabled="visits.meta.current_page <= 1" icon @click="navigate(visits.links.prev)">
++                <v-icon>chevron_left</v-icon>
++              </v-btn>
+ 
+                             <v-btn :disabled="visits.meta.current_page === visits.meta.last_page" icon @click="navigate(visits.links.next)">
+                                 <v-icon>chevron_right</v-icon>
+@@ -121,7 +121,7 @@
+             </v-data-table>
+         </v-card-text>
+ 
+-    </v-card>
++  </v-card>
+ 
+ </template>
+ 
+@@ -133,178 +133,178 @@
+ import PatientSearch from '../patients/PatientSearch';
+ 
+ export default {
+-    props: [
+-        'params',
+-    ],
++  props: [
++    'params',
++  ],
+ 
+-    components: {
+-        'reception-change-destination': ChangeDestination,
+-        'reception-patient-search': PatientSearch,
+-    },
++  components: {
++    'reception-change-destination': ChangeDestination,
++    'reception-patient-search': PatientSearch,
++  },
+ 
+-    data() {
+-        return {
+-            visits: null,
+-            search: '',
+-            searchHere: '',
+-            destinations: null,
+-            destinationVisit: null,
+-            destination: false,
+-            saveLoader: false,
+-            dialogAddDestination: false,
+-            checkout: false,
+-            mode: false,
+-            patientVisit: new Visit(),
+-            selectedVisit: {},
+-            changeModeDialog: 0,
+-            page: 1,
+-            filters: {
+-                start_date: moment(new Date()).startOf('month').format('YYYY-MM-DD HH:MM'),
+-                end_date: moment(new Date()).format('YYYY-MM-DD HH:MM'),
+-            },
+-        };
+-    },
++  data() {
++    return {
++      visits: null,
++      search: '',
++      searchHere: '',
++      destinations: null,
++      destinationVisit: null,
++      destination: false,
++      saveLoader: false,
++      dialogAddDestination: false,
++      checkout: false,
++      mode: false,
++      patientVisit: new Visit(),
++      selectedVisit: {},
++      changeModeDialog: 0,
++      page: 1,
++      filters: {
++        start_date: moment(new Date()).startOf('month').format('YYYY-MM-DD HH:MM'),
++        end_date: moment(new Date()).format('YYYY-MM-DD HH:MM'),
++      },
++    };
++  },
+ 
+-    watch: {
+-        getVisits(visits) {
+-            this.visits = visits;
+-        },
++  watch: {
++    getVisits(visits) {
++      this.visits = visits;
++    },
+ 
+-        search(term, old) {
+-            if (term.length > 3 && term.length > old.length) {
+-                this.performSearch(term);
+-                this.label = 'Search Patients...';
+-            } else if (term.length > 0 && term.length <= 3) {
+-                this.label = 'Enter ' + (4 - term.length) + ' more characters';
+-            } else {
+-                this.label = 'Search Patients...';
+-            }
++    search(term, old) {
++      if (term.length > 3 && term.length > old.length) {
++        this.performSearch(term);
++        this.label = 'Search Patients...';
++      } else if (term.length > 0 && term.length <= 3) {
++        this.label = 'Enter ' + (4 - term.length) + ' more characters';
++      } else {
++        this.label = 'Search Patients...';
++      }
+ 
+-            if (term.length == 0) {
+-                this.fetchVisits();
+-            }
+-        },
+-    },
++      if (term.length == 0) {
++        this.fetchVisits();
++      }
++    },
++  },
+ 
+-    computed: {
+-        ...mapGetters([
+-            'getVisits',
+-        ]),
+-    },
++  computed: {
++    ...mapGetters([
++      'getVisits',
++    ]),
++  },
+ 
+-    methods: {
+-        ...mapActions([
+-            'setVisits',
+-        ]),
++  methods: {
++    ...mapActions([
++      'setVisits',
++    ]),
+ 
+-        navigate(url) {
+-            if (url) {
+-                const page = url.substring(url.indexOf('page=')).split('page=')[1];
+-                this.setVisits({
+-                    page,
+-                    params: { ...this.filters, ...JSON.parse(this.params) },
+-                });
+-            }
+-        },
++    navigate(url) {
++      if (url) {
++        const page = url.substring(url.indexOf('page=')).split('page=')[1];
++        this.setVisits({
++          page,
++          params: { ...this.filters, ...JSON.parse(this.params) },
++        });
++      }
++    },
+ 
+-        setStartDate(datetime) {
+-            this.filters.start_date = datetime;
+-        },
++    setStartDate(datetime) {
++      this.filters.start_date = datetime;
++    },
+ 
+-        setEndDate(datetime) {
+-            this.filters.end_date = datetime;
+-        },
++    setEndDate(datetime) {
++      this.filters.end_date = datetime;
++    },
+ 
+-        filter() {
+-            this.setVisits({
+-                params: { ...this.filters, ...JSON.parse(this.params) },
+-            });
+-        },
++    filter() {
++      this.setVisits({
++        params: { ...this.filters, ...JSON.parse(this.params) },
++      });
++    },
+ 
+-        changePaymentMode(item) {
+-            this.selectedVisit = item;
+-            this.changeModeDialog += 1;
+-        },
++    changePaymentMode(item) {
++      this.selectedVisit = item;
++      this.changeModeDialog += 1;
++    },
+ 
+-        editVisit(visit) {
++    editVisit(visit) {
+ 
+-            window.open(`/reception/patient/${visit.patient.id}/visits/${visit.id}`, '_self');
+-        },
++      window.open(`/reception/patient/${visit.patient.id}/visits/${visit.id}`, '_self');
++    },
+ 
+-        patientSelected(patient) {
+-            this.setVisits({
+-                params: {
+-                    patient_id: patient.id,
+-                },
+-            });
+-        },
++    patientSelected(patient) {
++      this.setVisits({
++        params: {
++          patient_id: patient.id,
++        },
++      });
++    },
+ 
+-        addDestination(visit) {
+-            this.destinationVisit = visit;
+-            this.dialogAddDestination = true;
+-        },
++    addDestination(visit) {
++      this.destinationVisit = visit;
++      this.dialogAddDestination = true;
++    },
+ 
+-        changeDestination(destinations) {
+-            this.destination = true;
+-            this.destinations = JSON.stringify(destinations);
+-        },
++    changeDestination(destinations) {
++      this.destination = true;
++      this.destinations = JSON.stringify(destinations);
++    },
+ 
+-        async cancelCheckin(visit) {
+-            const response = await this.patientVisit.cancelCheckin(visit.id);
++    async cancelCheckin(visit) {
++      const response = await this.patientVisit.cancelCheckin(visit.id);
+ 
+-            if (response) {
+-                this.initialize();
+-            }
+-        },
++      if (response) {
++        this.initialize();
++      }
++    },
+ 
+-        destinationChanged() {
+-            this.destination = false;
+-            flash({
+-                'message': 'Destination changed successfully',
+-                'alert': 'green',
+-            });
+-            this.setVisits();
+-        },
++    destinationChanged() {
++      this.destination = false;
++      flash({
++        'message': 'Destination changed successfully',
++        'alert': 'green',
++      });
++      this.setVisits();
++    },
+ 
+-        destinationAdded() {
+-            this.dialogAddDestination = false;
+-            this.destinationVisit = null;
+-            flash({
+-                'message': 'Destination added successfully',
+-                'alert': 'green',
+-            });
+-            this.setVisits();
+-        },
++    destinationAdded() {
++      this.dialogAddDestination = false;
++      this.destinationVisit = null;
++      flash({
++        'message': 'Destination added successfully',
++        'alert': 'green',
++      });
++      this.setVisits();
++    },
+ 
+-        performSearch: _.debounce(function(term) {
+-            flash({ alert: 'info', message: 'Coming Soon' });
+-        }, 500),
++    performSearch: _.debounce(function(term) {
++      flash({ alert: 'info', message: 'Coming Soon' });
++    }, 500),
+ 
+-        initialize() {
+-            const params = JSON.parse(this.params);
++    initialize() {
++      const params = JSON.parse(this.params);
+ 
+-            this.setVisits({
+-                params,
+-            });
+-        },
++      this.setVisits({
++        params,
++      });
++    },
+ 
+-        fetchVisits: _.debounce(function(page = 1) {
+-            flash({ alert: 'info', message: 'Coming Soon' });
+-        }, 500),
+-    },
++    fetchVisits: _.debounce(function(page = 1) {
++      flash({ alert: 'info', message: 'Coming Soon' });
++    }, 500),
++  },
+ 
+-    mounted() {
+-        this.initialize();
+-        this.setVisits({
+-          params: { ...this.filters, ...JSON.parse(this.params) },
+-        });
+-    },
++  mounted() {
++    this.initialize();
++    this.setVisits({
++      params: { ...this.filters, ...JSON.parse(this.params) },
++    });
++  },
+ 
+-    created() {
+-        window.events.$on('STORE_SET_ACTION_LOADING', (loading) => {
+-            this.saveLoader = loading;
+-        });
+-    },
++  created() {
++    window.events.$on('STORE_SET_ACTION_LOADING', (loading) => {
++      this.saveLoader = loading;
++    });
++  },
+ };
+ </script>
+ 

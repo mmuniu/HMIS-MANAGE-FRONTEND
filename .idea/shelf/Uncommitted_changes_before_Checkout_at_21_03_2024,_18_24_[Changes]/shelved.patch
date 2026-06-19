@@ -1,0 +1,18 @@
+Index: Transformers/SchemeResource.php
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?php\n\nnamespace Ignite\\Settings\\Transformers;\n\nuse Illuminate\\Http\\Resources\\Json\\Resource;\n\nclass SchemeResource extends Resource\n{\n    /**\n     * Transform the resource into an array.\n     *\n     * @param  \\Illuminate\\Http\\Request\n     * @return array\n     */\n    public function toArray($request)\n    {\n        return [\n            \"id\"                => (int) $this->id,\n            \"name\"              => $this->name ? $this->name : 'not found',\n            \"full_name\"         => $this->full_name,\n            \"company_id\"        => $this->company,\n            \"company_name\"      => $this->companies ? $this->companies->name : 'not found',\n            \"type\"              => $this->type,\n            \"type_id\"           => $this->type,\n            \"attention\"         => $this->attention,\n            \"effective_date\"    => $this->effective_date,\n            \"expiry_date\"       => $this->expiry_date,\n            \"amount\"            => $this->amount,\n            \"smart\"             => $this->smart,\n            \"service_charges\"   => $this->serviceCharges,\n            'created_at'        => eclair($this->created_at),\n            \"type_name\"         => $this->type_name,\n            \"status\"            => $this->active,\n            \"disabled\"          => !$this->active,\n            \"age_restricted\"            => $this->age_restricted,\n            \"age_range\"            => $this->age_range,\n            \"gender_restricted\"            => $this->gender_restricted,\n            \"gender\"            => $this->gender,\n            \"policy_number_compulsory\"            => $this->policy_number_compulsory,\n\n            //\n            'company'           => $this->companies ? response()->json($this->companies) : null,\n            'exclusions'        => SchemeExclusionResource::collection($this->whenLoaded('exclusions')),\n        ];\n    }\n}\n
+===================================================================
+diff --git a/Transformers/SchemeResource.php b/Transformers/SchemeResource.php
+--- a/Transformers/SchemeResource.php	
++++ b/Transformers/SchemeResource.php	
+@@ -41,6 +41,6 @@
+             //
+             'company'           => $this->companies ? response()->json($this->companies) : null,
+             'exclusions'        => SchemeExclusionResource::collection($this->whenLoaded('exclusions')),
+-        ];
+-    }
+-}
++//        ];
++//    }
++//}

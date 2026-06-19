@@ -1,0 +1,26 @@
+Index: inpatient/js/components/admissions/partials/DohAnalytics.vue
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><template>\n  <div style=\"padding: 15px 43px;\">\n    <doh_chart :data=\"fhrData\" :partograph_options=\"doh_options\" type=\"line\" />\n  </div>\n</template>\n\n<script>\nimport doh_chart from './DohChart.vue';\nexport default {\n  components: {\n    doh_chart, // Register the Chart component\n  },\n  props: {\n    report_on_labour: [],\n    partograph_data: [],\n  },\n  data: function() {\n    // Sort the partograph_data array based on the created_at property\n    const sortedData = this.partograph_data.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));\n\n    return {\n      doh_options: {\n        scales: {\n          yAxes: [{\n            scaleLabel: {\n              display: true,\n            },\n            ticks: {\n              beginAtZero: false,\n              min: 0,\n              max: 10,\n              stepSize: 1,\n            },\n          }],\n          xAxes: [\n            {\n              type: 'linear', // Use linear scale for x-axis\n              ticks: {\n                stepSize: 1,\n                min: 0, // Minimum value for x-axis\n                max: 24, // Maximum value for x-axis\n                fontColor: 'rgba(0, 0, 0, 0)', // Make the font color transparent\n\n              },\n              gridLines: {\n                display: true, // Show grid lines\n                color: 'rgba(0, 0, 0, 0.1)', // Color of the grid lines\n              },\n            },\n          ],\n        },\n      },\n      fhrData: {\n        datasets: [\n          {\n            data: [{ x: 0, y: 4 }, { x: 12, y: 10 }], // Start at y=4 and end at y=8 after 4 steps\n            fill: false,\n            borderColor: 'black',\n            tension: 0, // Set tension to 0 for straight lines between points\n            pointStyle: 'circle',\n            pointRadius: 0,\n            label: 'Alert',\n          },\n          {\n            data: [{ x: 8, y: 4 }, { x: 20, y: 10 }], // Start at y=4 and end at y=8 after 4 steps\n            fill: false,\n            borderColor: 'rgb(0, 0, 0)',\n            tension: 0, // Set tension to 0 for straight lines between points\n            pointStyle: 'cross',\n            pointRadius: 0,\n            label: 'Action',\n\n          },\n          {\n            label: 'Descent of Head Plot \"0\"',\n            data: sortedData.map((item) => ({\n              x: new Date(item.created_at).getHours(),\n              y: item.doh,\n              created_at: item.created_at,\n            })), // Extract hour value for x-axis\n            fill: false,\n            borderColor: 'rgb(75, 192, 192)',\n            tension: 0.5,\n            pointStyle: 'circle',\n            pointRadius: 5,\n          },\n          {\n            label: 'Cervix',\n            data: sortedData.map((item) => ({\n              x: new Date(item.created_at).getHours(),\n              y: item.cervix,\n              created_at: item.created_at,\n            })), // Extract hour value for x-axis\n            fill: false,\n            borderColor: 'rgb(255, 99, 132)',\n            tension: 0.5,\n            pointStyle: 'circle',\n            pointRadius: 5,\n          },\n        ],\n      },\n    };\n  },\n  methods: {},\n  mounted() {\n    console.log(this.fhrData); // Log fhrData\n  },\n};\n</script>\n
+===================================================================
+diff --git a/inpatient/js/components/admissions/partials/DohAnalytics.vue b/inpatient/js/components/admissions/partials/DohAnalytics.vue
+--- a/inpatient/js/components/admissions/partials/DohAnalytics.vue	
++++ b/inpatient/js/components/admissions/partials/DohAnalytics.vue	
+@@ -67,7 +67,7 @@
+             borderColor: 'rgb(0, 0, 0)',
+             tension: 0, // Set tension to 0 for straight lines between points
+             pointStyle: 'cross',
+-            pointRadius: 0,
++            pointRadius: 5,
+             label: 'Action',
+ 
+           },
+@@ -80,7 +80,7 @@
+             })), // Extract hour value for x-axis
+             fill: false,
+             borderColor: 'rgb(75, 192, 192)',
+-            tension: 0.5,
++            tension: 0,
+             pointStyle: 'circle',
+             pointRadius: 5,
+           },

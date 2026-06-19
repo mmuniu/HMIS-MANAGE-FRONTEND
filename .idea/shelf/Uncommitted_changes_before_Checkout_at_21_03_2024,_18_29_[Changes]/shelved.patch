@@ -1,0 +1,1771 @@
+Index: Repositories/SplitBillsRepository.php
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?php\n/**\n * Created by PhpStorm\n * User: jjoek\n * Date: 2020-01-11\n * Time: 13:58\n */\n\nnamespace Ignite\\Finance\\Repositories;\n\n\nuse Carbon\\Carbon;\nuse Ignite\\Evaluation\\Entities\\Consumable;\nuse Ignite\\Evaluation\\Entities\\Investigations;\nuse Ignite\\Evaluation\\Entities\\Prescriptions;\nuse Ignite\\Evaluation\\Entities\\Visit;\nuse Ignite\\Finance\\Entities\\Invoice;\nuse Ignite\\Finance\\Entities\\SplitBills;\nuse Ignite\\Finance\\Library\\AccountingSoln\\AccountingSolution;\nuse Ignite\\Inpatient\\Entities\\InpatientVisitCharge;\nuse Ignite\\Inpatient\\Entities\\InpatientVisitRebate;\nuse Ignite\\Inpatient\\Entities\\InpatientVisitWard;\nuse Ignite\\Settings\\Entities\\Insurance;\nuse Ignite\\Settings\\Entities\\Schemes;\nuse Illuminate\\Support\\Facades\\DB;\nuse Illuminate\\Support\\Facades\\Log;\nuse Ignite\\Users\\Entities\\User;\nuse Ignite\\Evaluation\\Entities\\Icd10Note;\nuse Ignite\\Evaluation\\Entities\\DoctorNotes;\nuse Ignite\\Inventory\\Entities\\Store;\nuse Ignite\\Inventory\\Entities\\StoreProduct;\nuse Ignite\\Reception\\Entities\\Patients;\nuse Ignite\\Inventory\\Entities\\InventoryProducts;\nuse Ignite\\Inventory\\Entities\\InventoryUnits;\nuse Ignite\\Evaluation\\Entities\\Procedures;\nuse Ignite\\Evaluation\\Entities\\ProcedurePrice;\nuse Ignite\\Reception\\Entities\\PatientInsurance;\nuse Ignite\\Evaluation\\Entities\\Dimension;\nuse Ignite\\Evaluation\\Entities\\ProcedureCategories;\n\nclass SplitBillsRepository\n{\n    protected $rebate_updated = false;\n\n    protected $nhif_scheme = false;\n\n    public function splitVisitBills ($visit_id)\n    {\n        $visit = Visit::findOrFail($visit_id);\n\n        $data = request()->all();\n\n        if(request('total_amount') < 1) {\n            return response()->json([\n               'message' => \"No items selected\",\n               'alert' => 'warning'\n            ]);\n        }\n\n        $schemes = $visit->patients->schemes()->whereHas('schemes', function($scheme) {\n            return $scheme->whereHas('companies', function ($company) {\n                return $company->where('name', 'NHIF');\n            });\n        })->first();\n\n        return DB::transaction(function () use($data, $visit) {\n\n            $split_bill = SplitBills::create([\n                'user_id' => doe()->id,\n                'total_amount' => $data['total_amount'],\n                \"visit_id\" => $visit->id\n            ]);\n\n            // invoice patient\n            if($data['payment_options']['invoice_patient'] > 0)\n            {\n                $invoice = new Invoice;\n                $invoice->patient_id = $visit->patient;\n                $invoice->visit = $visit->id;\n                $invoice->invoice_no = finance_generate_invoice_no();\n                $invoice->invoice_no_prefix = m_setting('finance.invoice_prefix') ? m_setting('finance.invoice_prefix') : 'INV';\n                $invoice->for_cash = true;\n                $invoice->user_id = doe()->id;\n                $invoice->amount = $data['payment_options']['invoice_patient'];\n                $invoice->split_bill_id = $split_bill->id;\n                $invoice->save();\n\n                $admission = $visit->admission;\n                $prescriptions = $visit->prescriptions;\n                $consumables = $visit->consumables;\n                $investigations = $visit->investigations;\n                Log::info('$investigations');\n\n\n                $this->createMicrosoftDynamicsInvoice($invoice, $visit->patient ,$investigations, $prescriptions, $consumables, $admission);\n\n                if(count($data['payment_options']['schemes']) < 1) {\n                    if (array_key_exists('is_interim', $data) && $data['is_interim']) {\n                        $this->createInterimBillItems($invoice, $data, $split_bill);\n                    } else {\n                        $this->updateIndividualBills($data, $split_bill, $invoice);\n                    }\n                }\n\n                $this->saveInvoiceItems($invoice, $data);\n\n                if(env('ACCOUNTING_SOLN_ON')) {\n                    try {\n                        new AccountingSolution('quickbooks', 'saveInvoice', $invoice);\n                    } catch (\\Exception $e) {\n                        Log::info('Error saving split patient invoice ' . $e->getMessage());\n                    }\n                }\n            }\n\n            // raise invoices to other insurance schemes\n            foreach($data['payment_options']['schemes'] as $scheme => $amount)\n            {\n                if($amount > 0) {\n\n                    $invoice = Invoice::create([\n                        'split_bill_id' => $split_bill->id,\n                        'visit' => $visit->id,\n                        \"invoice_no\" => finance_generate_invoice_no(),\n                        'invoice_no_prefix' => m_setting('finance.invoice_prefix') ? m_setting('finance.invoice_prefix') : 'INV',\n                        'user_id' => doe()->id,\n                        'amount' => $amount,\n                        'scheme_id' => $scheme,\n                        'company_id' => Schemes::findOrFail($scheme)->company\n                    ]);\n\n                    $invoice->created_at = request('invoice_date') ? request('invoice_date') : now();\n                    $invoice->actual_invoice_creation_date = request('invoice_date') ? now() : null;\n                    $invoice->save();\n                    $admission = $visit->admission;\n                    $prescriptions = $visit->prescriptions;\n                    $consumables = $visit->consumables;\n                    $investigations = $visit->investigations;\n\n                    $this->createMicrosoftDynamicsInsurance($invoice, $visit->patient ,$investigations, $prescriptions, $consumables, $admission);\n\n                    Log::info($admission);\n                    // Log::info($invoice);\n                    if(array_key_exists('is_interim', $data) && $data['is_interim'])\n                    {\n                        $this->createInterimBillItems($invoice, $data, $split_bill);\n                    } else {\n                        $this->updateIndividualBills($data, $split_bill, $invoice);\n                    }\n\n                    $this->saveInvoiceItems($invoice, $data);\n\n                    if(env('ACCOUNTING_SOLN_ON')) {\n                        try {\n                            new AccountingSolution('quickbooks', 'saveInvoice', $invoice);\n                        } catch (\\Exception $e) {\n                            Log::info('Error saving split invoice ' . $e->getMessage());\n                        }\n                    }\n                }\n            }\n\n            return response()->json([\n                \"message\" => \"invoices raised successfully\",\n                \"alert\" => \"success\"\n            ]);\n\n        });\n    }\n\n\n    public function createMicrosoftDynamicsInsurance($invoice, $patient_id , $investigations, $prescriptions, $consumables, $admission){\n\n        // Log::info('Investigations');\n        // Log::info($investigations);\n\n        // Log::info('Consumables');\n        // Log::info($consumables);\n\n        // Log::info('Prescriptions');\n        // Log::info($prescriptions);\n\n        // Log::info('Admission');\n        // Log::info($admission);\n\n        try {\n\n            Log::info(\"Creating microsoft dynamics invoice\");\n\n                            $company =  env('MICROSOFT_DYNAMICS_COMPANY');
+
+        $linkIp = env('MICROSOFT_DYNAMICS_IP');
+
+        $apiEndpoint = 'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesInvoiceHeaders?$expand=salesLinesBuffer';\n\n            $username = env('MICROSOFT_DYNAMICS_USERNAME');\n            $password =  env('MICROSOFT_DYNAMICS_PASSWORD');\n\n            // Base64 encode the username and password\n            $credentials = \"$username:$password\";\n            // {\"invoice_no\":\"LCRHHXW1707062532\",\"invoice_no_prefix\":\"LCRH\",\"visit\":308584,\"user_id\":5,\"amount\":\"4000\",\"company_id\":1162,\"scheme_id\":19,\"split_id\":null,\"created_at\":\"2024-02-04 19:02:12\",\"actual_invoice_creation_date\":null,\"updated_at\":\"2024-02-04 19:02:12\",\"id\":379309}\n\n            // Log::info('invoice---'.$investigations);\n            // Log::info($invoice['invoice_no']);\n\n\n\n\n            // $patient_id = Invoice::where('id',$invoice->id)->value('patient_id');\n            $patient = Patients::where('id', $patient_id)->first();\n            $patient_name = $patient['first_name'] . \" \" . $patient['middle_name'] . \" \" . $patient['last_name'];\n            // Log::info('first name---'.$patient['first_name']);\n\n            $document_date = \\Carbon\\Carbon::today()->format(\"Y-m-d\");\n            $visit = Visit::where('id',$invoice->visit)->first();\n            $customer = Insurance::where('id',$invoice['company_id'])->first();\n\n            Log::info(\"Line 94\");\n\n            $patientInsurance = PatientInsurance::where('id',$visit->scheme)->first();\n            // $scheme = Schemes::where('id',$patientInsurance->scheme)->first();\n            // Log::info($patientInsurance->relation->item_name);\n\n            //check if invoice is insurance/cash if insurance retrieve insurance name and code\n\n\n            //Doctor Details\n            $all_doctors = [];\n            // $investigations = json_decode($investigations);\n            // Log::info($investigations);\n            foreach($investigations as $investigation)\n            {\n\n\n                if($investigation->performing_doctor)\n                {\n                    $procedure_doctor = User::where('id',strval($investigation->performing_doctor))->first();\n                    array_push($all_doctors, $procedure_doctor);\n                }\n\n\n            }\n\n            // Log::info($all_doctors);\n\n\n            $data = [\n                \"documentType\"=> \"Invoice\",\n                \"no\"=> $invoice['invoice_no'],\n                \"customerNo\"=> $customer->customer_number,\n                \"customerName\"=> $customer->name,\n                \"patientNo\"=> $patient_id,\n                \"patientName\"=> $patient_name,\n                \"documentDate\"=> $document_date,\n                \"postingDate\"=> $document_date,\n                \"admittedByDoctorNo\"=> $all_doctors[0]->employee_number ?? null,\n                \"admittingDoctorName\"=> $all_doctors[0]->full_name ?? null,\n                \"patientTypeCode\"=> \"\",\n                \"departmentCode\"=> \"\",\n                \"wardCode\"=> \"\",\n                \"orderDate\"=>$document_date,\n                \"visitNumber\"=> $visit->id,\n                \"visitStartDate\"=> $visit->created_at->format('Y-m-d'),\n                \"visitEndDate\"=> $visit->created_at->format('Y-m-d'),\n                \"icd10Code\"=> \"\",\n                \"insuranceSchemeCode\"=> $patientInsurance->schemes->code,\n                \"insuranceSchemeName\"=> $patientInsurance->schemes->name,\n                \"billStatus\"=> \"Final\",\n                \"policyNumber\"=> $patientInsurance->policy_number,\n                \"principalMember\"=> $patientInsurance->principal,\n                \"relationToPrincipal\"=> $patientInsurance->relation->item_name,\n                \"isCashCustomer\" => false,\n            ];\n\n            $jsonData = '{';\n            foreach ($data as $key => $value) {\n                $jsonData .= \"\\\"$key\\\":\\\"\" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . \"\\\",\";\n            }\n            $jsonData = rtrim($jsonData, ',') . '}';\n            $singleQuotedData = $jsonData;\n\n            // Log::info($singleQuotedData);\n            $curl = curl_init();\n            curl_setopt_array($curl, array(\n                CURLOPT_URL => $apiEndpoint ,\n                CURLOPT_RETURNTRANSFER => true,\n                CURLOPT_ENCODING => '',\n                CURLOPT_MAXREDIRS => 10,\n                CURLOPT_TIMEOUT => 0,\n                CURLOPT_FOLLOWLOCATION => true,\n                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,\n                CURLOPT_HTTPAUTH => CURLAUTH_NTLM,\n                CURLOPT_USERPWD=> $credentials,\n                CURLOPT_CUSTOMREQUEST => 'POST',\n                CURLOPT_POSTFIELDS =>$singleQuotedData,\n                CURLOPT_HTTPHEADER => array(\n                    'Content-Type: application/json'\n                ),\n            ));\n\n            $response = curl_exec($curl);\n            $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code\n            curl_close($curl);\n            // $result = json_decode($response['invoice_id'], true);\n            $result = $response;\n\n            Log::info('Invoice response');\n            Log::info($status_code);\n            // Log::info(gettype($result));\n            Log::info($result);\n\n            //if response is 201 ok  continue\n            if ($status_code === 201) {\n\n                $line_count = 1;\n\n                    foreach($investigations as $key => $investigation)\n                    {\n                        // $investigations = Investigations::where('id',$invest)->first();\n                        Log::info($investigation);\n                        $procedure = Procedures::where('id',$investigation->procedure)->first();\n\n\n                        $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';\n                        // \\Log::info($proc)\n                        // $procedure_categories = ProcedureCategories::where('id',$procedure->category)->first();\n                        $procedure_price = ProcedurePrice::where('evaluation_procedure_id',$procedure->id)->first();\n                        // if($investigation->admission_id)\n                        if($investigation->admission_id == null)\n                        {\n                            $patient_type = \"OP\";\n                        }\n                        else\n                        {\n                            $patient_type = \"IP\";\n                        }\n                        $salesLineData = [\n                            \"documentType\"=> \"Invoice\",\n                            \"documentNo\"=> $invoice['invoice_no'],\n                            \"lineNo\"=> $line_count,\n                            \"type\"=> \"Service\",\n                            \"no\"=>$procedure->code,\n                            \"description\"=> $procedure->name,\n                            \"unitPrice\" => (int) $procedure_price->insurance_charge,\n                            \"amountExclVAT\" => (int) $procedure_price->insurance_charge,\n                            \"amountInclVAT\" => (int) $procedure_price->insurance_charge,\n                            \"vatAmount\" => 0,\n                            \"quantity\" => 1,\n                            \"patientTypeCode\"=> $patient_type,\n                            \"departmentCode\"=> \"\",\n\n                        ];\n\n                            $jsonData = '{';\n                            foreach ($salesLineData as $key => $value)\n                            if (is_int($value) && $key!=\"documentNo\" && $key!=\"lineNo\") {\n                                // If value is integer, no quotes needed\n                                $jsonData .= \"\\\"$key\\\":$value,\";\n                            } else\n                            {\n                                $jsonData .= \"\\\"$key\\\":\\\"\" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . \"\\\",\";\n                            }\n\n                            $jsonData = rtrim($jsonData, ',') . '}';\n                            $singleQuotedDataLine = $jsonData;\n\n\n                            $curl = curl_init();\n                            curl_setopt_array($curl, array(\n                                CURLOPT_URL => $salesLineEndpoint ,\n                                CURLOPT_RETURNTRANSFER => true,\n                                CURLOPT_ENCODING => '',\n                                CURLOPT_MAXREDIRS => 10,\n                                CURLOPT_TIMEOUT => 0,\n                                CURLOPT_FOLLOWLOCATION => true,\n                                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,\n                                CURLOPT_HTTPAUTH => CURLAUTH_NTLM,\n                                CURLOPT_USERPWD=> $credentials,\n                                CURLOPT_CUSTOMREQUEST => 'POST',\n                                CURLOPT_POSTFIELDS =>$singleQuotedDataLine,\n                                CURLOPT_HTTPHEADER => array(\n                                    'Content-Type: application/json'\n                                ),\n                            ));\n\n                            Log::info($singleQuotedDataLine);\n\n                            $response = curl_exec($curl);\n                            $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code\n                            curl_close($curl);\n                            // $result = json_decode($response['invoice_id'], true);\n                            $result = $response;\n\n\n                            Log::info('Sales Line');\n                            Log::info($result);\n                            $line_count++;\n                    }\n                    //prescriptions\n                    $prescriptions = json_decode($prescriptions);\n\n\n\n                    foreach($prescriptions as $key => $prescription)\n                    {\n\n                        // Log::info($prescription);\n                        $prescription = Prescriptions::where('id',$prescription->id)->first();\n\n                        Log::info('full_prescription');\n                        Log::info($prescription);\n                        $store = Store::where('id',$prescription->store_id)->first();\n                        if($store)\n                        {\n\n                        $prescribed_by = $prescription->prescribed_by;\n\n                        $inventory_product = InventoryProducts::where('id',$prescription['drug'])->first();\n                        $unit = InventoryUnits::where('id', $inventory_product->unit)->first();\n                        Log::info(gettype((int) $key+1));\n                        $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';\n                        if($prescription->treatment_location_name == 'outpatient')\n                        {\n                            $patient_type = \"OP\";\n                        }\n                        else\n                        {\n                            $patient_type = \"IP\";\n                        }\n\n                        Log::info($store);\n\n\n                        $salesLineData = [\n                            \"documentType\"=> \"Invoice\",\n                            \"documentNo\"=>$invoice['invoice_no'],\n                            \"lineNo\"=> $line_count,\n                            \"type\"=> \"Inventory\",\n                            \"no\"=>$inventory_product->item_no,\n                            \"description\"=> $inventory_product->name,\n                            \"unitPrice\" => (int) $prescription['payment']['price'],\n                            \"unitOfMeasure\" => $unit->name,\n                            \"patientTypeCode\"=> $patient_type,\n                            \"departmentCode\"=> \"\",\n                            \"quantity\" => (int) $prescription['payment']['quantity'],\n                            \"locationCode\" =>  $store->code,\n                            \"amountExclVAT\" => (int) $prescription['payment']['amount'],\n                            \"amountInclVAT\" => 0,\n                            \"vatAmount\" => 0,\n\n\n\n                        ];\n\n                        $jsonData = '{';\n                            foreach ($salesLineData as $key => $value)\n                            if (is_int($value) && $key!=\"documentNo\" && $key!=\"lineNo\") {\n                                // If value is integer, no quotes needed\n                                $jsonData .= \"\\\"$key\\\":$value,\";\n                            } else\n                            {\n                                $jsonData .= \"\\\"$key\\\":\\\"\" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . \"\\\",\";\n                            }\n                        $jsonData = rtrim($jsonData, ',') . '}';\n                        $singleQuotedData = $jsonData;\n\n                        Log::info($singleQuotedData);\n                        $curl = curl_init();\n                        curl_setopt_array($curl, array(\n                            CURLOPT_URL => $salesLineEndpoint,\n                            CURLOPT_RETURNTRANSFER => true,\n                            CURLOPT_ENCODING => '',\n                            CURLOPT_MAXREDIRS => 10,\n                            CURLOPT_TIMEOUT => 0,\n                            CURLOPT_FOLLOWLOCATION => true,\n                            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,\n                            CURLOPT_HTTPAUTH => CURLAUTH_NTLM,\n                            CURLOPT_USERPWD=> $credentials,\n                            CURLOPT_CUSTOMREQUEST => 'POST',\n                            CURLOPT_POSTFIELDS =>$singleQuotedData,\n                            CURLOPT_HTTPHEADER => array(\n                                'Content-Type: application/json'\n                            ),\n                        ));\n\n                        $response = curl_exec($curl);\n                        $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code\n                        curl_close($curl);\n                        // $result = json_decode($response['invoice_id'], true);\n                        $result = $response;\n\n                        Log::info('Sales Line');\n                        Log::info($result);\n                        $line_count++;\n\n                        }\n                    }\n\n\n\n                    foreach($consumables as $key => $consumable)\n                    {\n\n                        // Log::info($prescription);\n                        $full_consumable = Consumable::where('id',$consumable->id)->first();\n                        Log::info($full_consumable);\n                        // {\"id\":44117,\"visit_id\":308820,\"product_id\":170552,\"consumable_type_id\":2,\n                        //     \"quantity\":5,\"discount\":\"0.00\",\"amount\":\"999999.99\",\"price\":\"334424.00\",\n                        // \"user_id\":5,\"notes\":\"sdaasda\",\"cancelled\":false,\"cancelled_by_id\":null,\n                        // \"cancel_reason\":null,\"finance_evaluation_payment_id\":null,\n                        // \"invoice_id\":null,\"created_at\":\"2024-03-08 00:04:15\",\"updated_at\":\"2024-03-08 00:04:15\",\n                        // \"store_product_id\":492,\"deleted_at\":null,\"bill\":1,\"date_changed_by\":null,\"date_adjusted_from\":null,\n                        // \"split_bill_id\":null,\"changes_track\":null,\"moved_from_chargesheet\":null,\n                        // \"is_interim\":null,\"department\":0,\n                        // \"consumable_type_name\":\"theatre\",\"type\":{\"id\":2,\"name\":\"theatre\",\"description\":null,\n                            // \"created_at\":\"2024-02-09 10:05:20\",\"updated_at\":\"2024-02-09 10:05:20\"}}\n\n                        Log::info('full_consumable');\n                        Log::info($full_consumable);\n                        $store_product = StoreProduct::where('id',$full_consumable->store_product_id)->first();\n                        $store = Store::where('id',$store_product->store_id)->first();\n\n\n                        $inventory_product = InventoryProducts::where('id',$full_consumable->product_id)->first();\n                        $unit = InventoryUnits::where('id', $inventory_product->unit)->first();\n                        // Log::info(gettype((int) $key+1));\n                        $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';\n\n                            $patient_type = \"IP\";\n\n\n\n                        $salesLineData = [\n                            \"documentType\"=> \"Invoice\",\n                            \"documentNo\"=>$invoice['invoice_no'],\n                            \"lineNo\"=> $line_count,\n                            \"type\"=> \"Inventory\",\n                            \"no\"=>$inventory_product->item_no,\n                            \"description\"=> $inventory_product->name,\n                            \"unitPrice\" => (int) $prescription['payment']['price'],\n                            \"unitOfMeasure\" => $unit->name,\n                            \"patientTypeCode\"=> $patient_type,\n                            \"departmentCode\"=> \"\",\n                            \"quantity\" => (int) $prescription['payment']['quantity'],\n                            \"locationCode\" =>  $store->code,\n                            \"amountExclVAT\" => (int) $prescription['payment']['amount'],\n                            \"amountInclVAT\" => 0,\n                            \"vatAmount\" => 0,\n\n\n\n                        ];\n\n                        $jsonData = '{';\n                            foreach ($salesLineData as $key => $value)\n                            if (is_int($value) && $key!=\"documentNo\" && $key!=\"lineNo\") {\n                                // If value is integer, no quotes needed\n                                $jsonData .= \"\\\"$key\\\":$value,\";\n                            } else\n                            {\n                                $jsonData .= \"\\\"$key\\\":\\\"\" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . \"\\\",\";\n                            }\n                        $jsonData = rtrim($jsonData, ',') . '}';\n                        $singleQuotedData = $jsonData;\n\n                        Log::info($singleQuotedData);\n                        $curl = curl_init();\n                        curl_setopt_array($curl, array(\n                            CURLOPT_URL => $salesLineEndpoint,\n                            CURLOPT_RETURNTRANSFER => true,\n                            CURLOPT_ENCODING => '',\n                            CURLOPT_MAXREDIRS => 10,\n                            CURLOPT_TIMEOUT => 0,\n                            CURLOPT_FOLLOWLOCATION => true,\n                            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,\n                            CURLOPT_HTTPAUTH => CURLAUTH_NTLM,\n                            CURLOPT_USERPWD=> $credentials,\n                            CURLOPT_CUSTOMREQUEST => 'POST',\n                            CURLOPT_POSTFIELDS =>$singleQuotedData,\n                            CURLOPT_HTTPHEADER => array(\n                                'Content-Type: application/json'\n                            ),\n                        ));\n\n                        $response = curl_exec($curl);\n                        $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code\n                        curl_close($curl);\n                        // $result = json_decode($response['invoice_id'], true);\n                        $result = $response;\n\n                        Log::info('Sales Line');\n                        Log::info($result);\n                        $line_count++;\n                    }\n\n\n              return  $singleQuotedData;\n\n            } else {\n                return false;\n            }\n\n        } catch (\\Exception $e) {\n            // Handle exceptions here\n            Log::error('An error occurred: ' . $e->getMessage());\n            return false; // Or handle the error as required\n        }\n\n    }\n\n    public function createMicrosoftDynamicsInvoice($invoice, $patient_id , $investigations, $prescriptions, $consumables, $admission){\n\n        // Log::info('Investigations');\n        // Log::info($investigations);\n\n        // Log::info('Consumables');\n        // Log::info($consumables);\n\n        // Log::info('Prescriptions');\n        // Log::info($prescriptions);\n\n        // Log::info('Admission');\n        // Log::info($admission);\n\n        try {\n\n            Log::info(\"Creating microsoft dynamics invoice\");\n\n                            $company =  env('MICROSOFT_DYNAMICS_COMPANY');
+
+        $linkIp = env('MICROSOFT_DYNAMICS_IP');
+
+        $apiEndpoint = 'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesInvoiceHeaders?$expand=salesLinesBuffer';\n\n            $username = env('MICROSOFT_DYNAMICS_USERNAME');\n            $password =  env('MICROSOFT_DYNAMICS_PASSWORD');\n\n            // Base64 encode the username and password\n            $credentials = \"$username:$password\";\n            // {\"invoice_no\":\"LCRHHXW1707062532\",\"invoice_no_prefix\":\"LCRH\",\"visit\":308584,\"user_id\":5,\"amount\":\"4000\",\"company_id\":1162,\"scheme_id\":19,\"split_id\":null,\"created_at\":\"2024-02-04 19:02:12\",\"actual_invoice_creation_date\":null,\"updated_at\":\"2024-02-04 19:02:12\",\"id\":379309}\n\n            // Log::info('invoice---'.$investigations);\n            // Log::info($invoice['invoice_no']);\n\n\n\n\n            // $patient_id = Invoice::where('id',$invoice->id)->value('patient_id');\n            $patient = Patients::where('id', $patient_id)->first();\n            $patient_name = $patient['first_name'] . \" \" . $patient['middle_name'] . \" \" . $patient['last_name'];\n            // Log::info('first name---'.$patient['first_name']);\n\n            $document_date = \\Carbon\\Carbon::today()->format(\"Y-m-d\");\n            $visit = Visit::where('id',$invoice->visit)->first();\n\n            Log::info(\"Line 94\");\n\n            //Doctor Details\n            $all_doctors = [];\n            // $investigations = json_decode($investigations);\n            // Log::info($investigations);\n            foreach($investigations as $investigation)\n            {\n\n\n                if($investigation->performing_doctor)\n                {\n                    $procedure_doctor = User::where('id',strval($investigation->performing_doctor))->first();\n                    array_push($all_doctors, $procedure_doctor);\n                }\n\n\n            }\n\n            // Log::info($all_doctors);\n\n\n            $data = [\n                \"documentType\"=> \"Invoice\",\n                \"no\"=> $invoice['invoice_no'],\n                \"customerNo\"=> \"\",\n                \"customerName\"=> \"\",\n                \"patientNo\"=> $patient_id,\n                \"patientName\"=> $patient_name,\n                \"documentDate\"=> $document_date,\n                \"postingDate\"=> $document_date,\n                \"admittedByDoctorNo\"=> $all_doctors[0]->employee_number ?? null,\n                \"admittingDoctorName\"=> $all_doctors[0]->full_name ?? null,\n                \"patientTypeCode\"=> \"IP\",\n                \"departmentCode\"=> \"\",\n                \"wardCode\"=> \"\",\n                \"orderDate\"=>$document_date,\n                \"visitNumber\"=> $visit->id,\n                \"visitStartDate\"=> $visit->created_at->format('Y-m-d'),\n                \"visitEndDate\"=> $visit->created_at->format('Y-m-d'),\n                \"icd10Code\"=> \"\",\n                \"insuranceSchemeCode\"=> \"\",\n                \"insuranceSchemeName\"=> \"\",\n                \"billStatus\"=> \"Final\",\n                \"policyNumber\"=> \"\",\n                \"principalMember\"=> \"\",\n                \"relationToPrincipal\"=> \"Self\",\n                \"isCashCustomer\" => true,\n            ];\n\n            $jsonData = '{';\n            foreach ($data as $key => $value) {\n                $jsonData .= \"\\\"$key\\\":\\\"\" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . \"\\\",\";\n            }\n            $jsonData = rtrim($jsonData, ',') . '}';\n            $singleQuotedData = $jsonData;\n\n            // Log::info($singleQuotedData);\n            $curl = curl_init();\n            curl_setopt_array($curl, array(\n                CURLOPT_URL => $apiEndpoint ,\n                CURLOPT_RETURNTRANSFER => true,\n                CURLOPT_ENCODING => '',\n                CURLOPT_MAXREDIRS => 10,\n                CURLOPT_TIMEOUT => 0,\n                CURLOPT_FOLLOWLOCATION => true,\n                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,\n                CURLOPT_HTTPAUTH => CURLAUTH_NTLM,\n                CURLOPT_USERPWD=> $credentials,\n                CURLOPT_CUSTOMREQUEST => 'POST',\n                CURLOPT_POSTFIELDS =>$singleQuotedData,\n                CURLOPT_HTTPHEADER => array(\n                    'Content-Type: application/json'\n                ),\n            ));\n\n            $response = curl_exec($curl);\n            $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code\n            curl_close($curl);\n            // $result = json_decode($response['invoice_id'], true);\n            $result = $response;\n\n            Log::info('Invoice response');\n            Log::info($status_code);\n            // Log::info(gettype($result));\n            Log::info($result);\n\n            //if response is 201 ok  continue\n            if ($status_code === 201) {\n\n                $line_count = 1;\n\n                    foreach($investigations as $key => $investigation)\n                    {\n                        // $investigations = Investigations::where('id',$invest)->first();\n                        Log::info($investigation);\n                        $procedure = Procedures::where('id',$investigation->procedure)->first();\n\n\n                        $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';\n                        // \\Log::info($proc)\n                        // $procedure_categories = ProcedureCategories::where('id',$procedure->category)->first();\n                        $procedure_price = ProcedurePrice::where('evaluation_procedure_id',$procedure->id)->first();\n                        // if($investigation->admission_id)\n                        if($investigation->admission_id == null)\n                        {\n                            $patient_type = \"OP\";\n                        }\n                        else\n                        {\n                            $patient_type = \"IP\";\n                        }\n                        $salesLineData = [\n                            \"documentType\"=> \"Invoice\",\n                            \"documentNo\"=> $invoice['invoice_no'],\n                            \"lineNo\"=> $line_count,\n                            \"type\"=> \"Service\",\n                            \"no\"=>$procedure->code,\n                            \"description\"=> $procedure->name,\n                            \"unitPrice\" => (int) $procedure_price->insurance_charge,\n                            \"amountExclVAT\" => (int) $procedure_price->insurance_charge,\n                            \"amountInclVAT\" => (int) $procedure_price->insurance_charge,\n                            \"vatAmount\" => 0,\n                            \"quantity\" => 1,\n                            \"patientTypeCode\"=> $patient_type,\n                            \"departmentCode\"=> \"\",\n\n                        ];\n\n                            $jsonData = '{';\n                            foreach ($salesLineData as $key => $value)\n                            if (is_int($value) && $key!=\"documentNo\" && $key!=\"lineNo\") {\n                                // If value is integer, no quotes needed\n                                $jsonData .= \"\\\"$key\\\":$value,\";\n                            } else\n                            {\n                                $jsonData .= \"\\\"$key\\\":\\\"\" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . \"\\\",\";\n                            }\n\n                            $jsonData = rtrim($jsonData, ',') . '}';\n                            $singleQuotedDataLine = $jsonData;\n\n\n                            $curl = curl_init();\n                            curl_setopt_array($curl, array(\n                                CURLOPT_URL => $salesLineEndpoint ,\n                                CURLOPT_RETURNTRANSFER => true,\n                                CURLOPT_ENCODING => '',\n                                CURLOPT_MAXREDIRS => 10,\n                                CURLOPT_TIMEOUT => 0,\n                                CURLOPT_FOLLOWLOCATION => true,\n                                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,\n                                CURLOPT_HTTPAUTH => CURLAUTH_NTLM,\n                                CURLOPT_USERPWD=> $credentials,\n                                CURLOPT_CUSTOMREQUEST => 'POST',\n                                CURLOPT_POSTFIELDS =>$singleQuotedDataLine,\n                                CURLOPT_HTTPHEADER => array(\n                                    'Content-Type: application/json'\n                                ),\n                            ));\n\n                            Log::info($singleQuotedDataLine);\n\n                            $response = curl_exec($curl);\n                            $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code\n                            curl_close($curl);\n                            // $result = json_decode($response['invoice_id'], true);\n                            $result = $response;\n\n\n                            Log::info('Sales Line');\n                            Log::info($result);\n                            $line_count++;\n                    }\n                    //prescriptions\n                    $prescriptions = json_decode($prescriptions);\n\n\n\n                    foreach($prescriptions as $key => $prescription)\n                    {\n\n                        // Log::info($prescription);\n                        $prescription = Prescriptions::where('id',$prescription->id)->first();\n\n                        Log::info('full_prescription');\n                        Log::info($prescription);\n                        $store = Store::where('id',$prescription->store_id)->first();\n                        if($store)\n                        {\n\n                        $prescribed_by = $prescription->prescribed_by;\n\n                        $inventory_product = InventoryProducts::where('id',$prescription['drug'])->first();\n                        $unit = InventoryUnits::where('id', $inventory_product->unit)->first();\n                        Log::info(gettype((int) $key+1));\n                        $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';\n                        if($prescription->treatment_location_name == 'outpatient')\n                        {\n                            $patient_type = \"OP\";\n                        }\n                        else\n                        {\n                            $patient_type = \"IP\";\n                        }\n\n                        Log::info($store);\n\n\n                        $salesLineData = [\n                            \"documentType\"=> \"Invoice\",\n                            \"documentNo\"=>$invoice['invoice_no'],\n                            \"lineNo\"=> $line_count,\n                            \"type\"=> \"Inventory\",\n                            \"no\"=>$inventory_product->item_no,\n                            \"description\"=> $inventory_product->name,\n                            \"unitPrice\" => (int) $prescription['payment']['price'],\n                            \"unitOfMeasure\" => $unit->name,\n                            \"patientTypeCode\"=> $patient_type,\n                            \"departmentCode\"=> \"\",\n                            \"quantity\" => (int) $prescription['payment']['quantity'],\n                            \"locationCode\" =>  $store->code,\n                            \"amountExclVAT\" => (int) $prescription['payment']['amount'],\n                            \"amountInclVAT\" => 0,\n                            \"vatAmount\" => 0,\n\n\n\n                        ];\n\n                        $jsonData = '{';\n                            foreach ($salesLineData as $key => $value)\n                            if (is_int($value) && $key!=\"documentNo\" && $key!=\"lineNo\") {\n                                // If value is integer, no quotes needed\n                                $jsonData .= \"\\\"$key\\\":$value,\";\n                            } else\n                            {\n                                $jsonData .= \"\\\"$key\\\":\\\"\" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . \"\\\",\";\n                            }\n                        $jsonData = rtrim($jsonData, ',') . '}';\n                        $singleQuotedData = $jsonData;\n\n                        Log::info($singleQuotedData);\n                        $curl = curl_init();\n                        curl_setopt_array($curl, array(\n                            CURLOPT_URL => $salesLineEndpoint,\n                            CURLOPT_RETURNTRANSFER => true,\n                            CURLOPT_ENCODING => '',\n                            CURLOPT_MAXREDIRS => 10,\n                            CURLOPT_TIMEOUT => 0,\n                            CURLOPT_FOLLOWLOCATION => true,\n                            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,\n                            CURLOPT_HTTPAUTH => CURLAUTH_NTLM,\n                            CURLOPT_USERPWD=> $credentials,\n                            CURLOPT_CUSTOMREQUEST => 'POST',\n                            CURLOPT_POSTFIELDS =>$singleQuotedData,\n                            CURLOPT_HTTPHEADER => array(\n                                'Content-Type: application/json'\n                            ),\n                        ));\n\n                        $response = curl_exec($curl);\n                        $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code\n                        curl_close($curl);\n                        // $result = json_decode($response['invoice_id'], true);\n                        $result = $response;\n\n                        Log::info('Sales Line');\n                        Log::info($result);\n                        $line_count++;\n\n                        }\n                    }\n\n\n\n                    foreach($consumables as $key => $consumable)\n                    {\n\n                        // Log::info($prescription);\n                        $full_consumable = Consumable::where('id',$consumable->id)->first();\n                        Log::info($full_consumable);\n                        // {\"id\":44117,\"visit_id\":308820,\"product_id\":170552,\"consumable_type_id\":2,\n                        //     \"quantity\":5,\"discount\":\"0.00\",\"amount\":\"999999.99\",\"price\":\"334424.00\",\n                        // \"user_id\":5,\"notes\":\"sdaasda\",\"cancelled\":false,\"cancelled_by_id\":null,\n                        // \"cancel_reason\":null,\"finance_evaluation_payment_id\":null,\n                        // \"invoice_id\":null,\"created_at\":\"2024-03-08 00:04:15\",\"updated_at\":\"2024-03-08 00:04:15\",\n                        // \"store_product_id\":492,\"deleted_at\":null,\"bill\":1,\"date_changed_by\":null,\"date_adjusted_from\":null,\n                        // \"split_bill_id\":null,\"changes_track\":null,\"moved_from_chargesheet\":null,\n                        // \"is_interim\":null,\"department\":0,\n                        // \"consumable_type_name\":\"theatre\",\"type\":{\"id\":2,\"name\":\"theatre\",\"description\":null,\n                            // \"created_at\":\"2024-02-09 10:05:20\",\"updated_at\":\"2024-02-09 10:05:20\"}}\n\n                        Log::info('full_consumable');\n                        Log::info($full_consumable);\n                        $store_product = StoreProduct::where('id',$full_consumable->store_product_id)->first();\n                        $store = Store::where('id',$store_product->store_id)->first();\n\n\n                        $inventory_product = InventoryProducts::where('id',$full_consumable->product_id)->first();\n                        $unit = InventoryUnits::where('id', $inventory_product->unit)->first();\n                        // Log::info(gettype((int) $key+1));\n                        $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';\n\n                            $patient_type = \"IP\";\n\n\n\n                        $salesLineData = [\n                            \"documentType\"=> \"Invoice\",\n                            \"documentNo\"=>$invoice['invoice_no'],\n                            \"lineNo\"=> $line_count,\n                            \"type\"=> \"Inventory\",\n                            \"no\"=>$inventory_product->item_no,\n                            \"description\"=> $inventory_product->name,\n                            \"unitPrice\" => (int) $prescription['payment']['price'],\n                            \"unitOfMeasure\" => $unit->name,\n                            \"patientTypeCode\"=> $patient_type,\n                            \"departmentCode\"=> \"\",\n                            \"quantity\" => (int) $prescription['payment']['quantity'],\n                            \"locationCode\" =>  $store->code,\n                            \"amountExclVAT\" => (int) $prescription['payment']['amount'],\n                            \"amountInclVAT\" => 0,\n                            \"vatAmount\" => 0,\n\n\n\n                        ];\n\n                        $jsonData = '{';\n                            foreach ($salesLineData as $key => $value)\n                            if (is_int($value) && $key!=\"documentNo\" && $key!=\"lineNo\") {\n                                // If value is integer, no quotes needed\n                                $jsonData .= \"\\\"$key\\\":$value,\";\n                            } else\n                            {\n                                $jsonData .= \"\\\"$key\\\":\\\"\" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . \"\\\",\";\n                            }\n                        $jsonData = rtrim($jsonData, ',') . '}';\n                        $singleQuotedData = $jsonData;\n\n                        Log::info($singleQuotedData);\n                        $curl = curl_init();\n                        curl_setopt_array($curl, array(\n                            CURLOPT_URL => $salesLineEndpoint,\n                            CURLOPT_RETURNTRANSFER => true,\n                            CURLOPT_ENCODING => '',\n                            CURLOPT_MAXREDIRS => 10,\n                            CURLOPT_TIMEOUT => 0,\n                            CURLOPT_FOLLOWLOCATION => true,\n                            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,\n                            CURLOPT_HTTPAUTH => CURLAUTH_NTLM,\n                            CURLOPT_USERPWD=> $credentials,\n                            CURLOPT_CUSTOMREQUEST => 'POST',\n                            CURLOPT_POSTFIELDS =>$singleQuotedData,\n                            CURLOPT_HTTPHEADER => array(\n                                'Content-Type: application/json'\n                            ),\n                        ));\n\n                        $response = curl_exec($curl);\n                        $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code\n                        curl_close($curl);\n                        // $result = json_decode($response['invoice_id'], true);\n                        $result = $response;\n\n                        Log::info('Sales Line');\n                        Log::info($result);\n                        $line_count++;\n                    }\n\n\n              return  $singleQuotedData;\n\n            } else {\n                return false;\n            }\n\n        } catch (\\Exception $e) {\n            // Handle exceptions here\n            Log::error('An error occurred: ' . $e->getMessage());\n            return false; // Or handle the error as required\n        }\n\n    }\n\n\n    /*\n     * update the bills\n     * */\n    public function updateIndividualBills ($data, $split_bill, $invoice)\n    {\n        $grouped_bills = collect($data['selected'])->groupBy('type');\n\n        foreach($grouped_bills as $group => $bills) {\n\n            if(!empty($bills)) {\n\n                // prescriptions\n                if($group === 'prescription') {\n                    foreach ($bills as $drug) {\n                        $p = Prescriptions::find($drug['item_id']);\n                        $p->payment()->update(['split_bill_id' => $split_bill->id]);\n                    }\n                }\n\n                // investigations\n                if($group === 'investigation') {\n                    foreach ($bills as $investigation) {\n                        $p = Investigations::find($investigation['item_id']);\n                        $p->split_bill_id = $split_bill->id;\n                        $p->save();\n                    }\n                }\n\n\n                // ward charges\n                if($group === \"Ward charge\") {\n                    foreach ($bills as $charge) {\n                        $p = InpatientVisitWard::find($charge['item_id']);\n                        $p->split_bill_id = $split_bill->id;\n                        $p->save();\n                    }\n                }\n\n                // visit charges\n                if($group === \"Admission + Daily charges\") {\n                    foreach ($bills as $visit_charge) {\n                        $p = InpatientVisitCharge::find($visit_charge['item_id']);\n                        $p->split_bill_id = $split_bill->id;\n                        $p->save();\n                    }\n                }\n\n                // consumables\n                if($group === 'consumable') {\n                    foreach ($bills as $consumable) {\n                        $p = Consumable::findOrFail($consumable['item_id']);\n                        $p->split_bill_id = $split_bill->id;\n                        $p->save();\n                    }\n                }\n\n                if($group === 'rebate') {\n                    foreach($bills as $item) {\n                        $rebate = InpatientVisitRebate::findOrFail($item['item_id']);\n\n                        $company = Insurance::where('name', 'NHIF')->first();\n\n                        $scheme = $company->schemes()->where('name', 'LIKE', '%' . 'universal' . '%')->first();\n\n                        if (!$rebate->invoice_id) {\n                            $inv = new Invoice;\n                            $inv->invoice_no = finance_generate_invoice_no();\n                            $inv->invoice_no_prefix = m_setting('finance.invoice_prefix') ? m_setting('finance.invoice_prefix') : 'INV';\n                            $inv->visit = $split_bill->visit_id;\n                            $inv->user_id = doe()->id;\n                            $inv->amount = $item['price'];\n\n                            $inv->company_id = $company->id;\n                            $inv->scheme_id = @$scheme->id;\n                            $inv->save();\n\n                            $rebate->update([\n                                'invoice_id' => $inv->id\n                            ]);\n\n                            $this->saveInvoiceItems($inv, $data);\n                        }\n                    }\n                }\n            }\n        }\n    }\n\n    public function createInterimBillItems($invoice, $data, $split_bill)\n    {\n        foreach($data['selected'] as $item) {\n            $type = $item['type'];\n\n            if($type == 'prescription')\n            {\n                $p = Prescriptions::find($item['item_id']);\n\n                $record = Prescriptions::setEagerLoads([])->where('id', $item['item_id'])->select(\n                    \"visit\", \"user\", \"drug\", \"take\", \"whereto\", \"method\", \"duration\", \"stop_reason\",\n                    \"stopped\", \"status\", \"allow_substitution\", \"time_measure\", \"quantity\", \"type\",\n                    \"notes\", \"canceled\", \"facility_id\", \"admission_id\", \"for_discharge\", \"for_admission\",\n                    \"treatment_location_id\", \"walkin_sale_id\", \"is_a_split\" , \"split_details\",\n                    \"admission_request_id\", \"date_changed_by\", \"date_adjusted_from\", \"moved\", \"changes_track\",\n                    \"moved_from_chargesheet\", \"paid\", \"dispensed\", \"is_interim\", \"price\", \"dispensed_quantity\",\n                    \"administered_quantity\")->first()->toArray();\n\n                $record['is_interim'] = true;\n\n                $record['paid'] = true;\n\n                $newP  = Prescriptions::create($record);\n\n                $data = $p->payment->toArray();\n\n                unset($data['prescription_id']);\n\n                $pricing = $newP->payment()->create([$data]);\n\n                $pricing->update([\n                    'split_bill_id' => $split_bill->id,\n                    'invoiced' => $invoice->id,\n                    'price' => $data['price'],\n                    'discount' => $data['discount'],\n                    'amount' => $data['amount'],\n                    'quantity' => $data['quantity'],\n                    'complete' => $data['complete']\n                ]);\n\n            }  else if($type == 'investigation')\n            {\n                $p = Investigations::find($item['item_id']);\n                $clone = clone $p;\n                $newInvestigation = Investigations::create($clone->toArray());\n                $newInvestigation->is_interim = true;\n                $newInvestigation->split_bill_id = $split_bill->id;\n                $newInvestigation->invoiced = $invoice->id;\n                $newInvestigation->save();\n\n            } else if($type == 'consumable')\n            {\n                $p = Consumable::find($item['item_id']);\n                $clone = clone $p;\n                $newCons = Consumable::create($clone->toArray());\n                $newCons->is_interim = true;\n                $newCons->split_bill_id = $split_bill->id;\n                $newCons->invoice_id = $invoice->id;\n                $newCons->save();\n            } else if($type == 'Ward charge')\n            {\n                $p = InpatientVisitWard::find($item['item_id']);\n                $clone = clone $p;\n                $newInp = InpatientVisitWard::create($clone->toArray());\n                $newInp->is_interim = true;\n                $newInp->split_bill_id = $split_bill->id;\n                $newInp->invoice_id = $invoice->id;\n                $newInp->save();\n            } else if($type == 'Admission + Daily charges')\n            {\n                $p = InpatientVisitCharge::find($item['item_id']);\n                $clone = clone $p;\n                $newInvCharge = InpatientVisitCharge::create($clone->toArray());\n                $newInvCharge->invoice_id = $invoice->id;\n                $newInvCharge->is_interim = true;\n                $newInvCharge->split_bill_id = $split_bill->id;\n                $newInvCharge->save();\n            } else if($type == 'rebate') {\n                if(!$this->rebate_updated) {\n                    $visit_rebate = InpatientVisitRebate::findOrFail($item['item_id']);\n\n                    $company =  Insurance::where('name', 'NHIF')->first();\n\n                    $scheme = $company->schemes()->where('name', 'LIKE', '%' . 'universal' . '%')->first();\n\n                    if(!$visit_rebate->invoice_id)  {\n                        $inv = new Invoice;\n                        $inv->invoice_no = finance_generate_invoice_no();\n                        $inv->invoice_no_prefix = m_setting('finance.invoice_prefix') ? m_setting('finance.invoice_prefix') : 'INV';\n                        $inv->visit = $split_bill->visit_id;\n                        $inv->user_id = doe()->id;\n                        $inv->amount = $item['price'];\n                        $inv->company_id = $company->id;\n                        $inv->scheme_id = @$scheme->id;\n                        $inv->save();\n\n                        $visit_rebate->update([\n                            'invoice_id' => $inv->id\n                        ]);\n\n                        $this->rebate_updated = true;\n\n                        $this->saveInvoiceItems($inv, $data);\n                    }\n                }\n            }\n        }\n    }\n\n    /**\n     * save invoice items (keep state)\n     * @param $invoice\n     * @param $data\n     */\n    public function saveInvoiceItems($invoice, $data)\n    {\n        $keys = [\n            'investigation',\n            'prescription',\n            'consumable',\n            'Admission + Daily charges',\n            'copay',\n            'Ward charge',\n            'rebate',\n            'Theatre clinician fee',\n            'Theatre fee'\n        ];\n\n        $items = collect(array_reverse($data['selected']))->groupBy('type')->toArray();\n\n        foreach($keys as $key) {\n            if(array_key_exists($key, $items)) {\n                foreach($items[$key] as $bill) {\n                    $invoice->invoiceItems()->create([\n                        'item_id' => $bill['item_id'],\n                        'item_type' => $bill['type'],\n                        'item_name' => $bill['name'],\n                        'price' => $bill['price'],\n                        'units' => $bill['quantity'],\n                        'amount' => $bill['amount'],\n                    ]);\n                }\n            }\n        }\n    }\n}\n
+===================================================================
+diff --git a/Repositories/SplitBillsRepository.php b/Repositories/SplitBillsRepository.php
+--- a/Repositories/SplitBillsRepository.php
++++ b/Repositories/SplitBillsRepository.php
+@@ -28,7 +28,6 @@
+ use Ignite\Evaluation\Entities\Icd10Note;
+ use Ignite\Evaluation\Entities\DoctorNotes;
+ use Ignite\Inventory\Entities\Store;
+-use Ignite\Inventory\Entities\StoreProduct;
+ use Ignite\Reception\Entities\Patients;
+ use Ignite\Inventory\Entities\InventoryProducts;
+ use Ignite\Inventory\Entities\InventoryUnits;
+@@ -85,15 +84,6 @@
+                 $invoice->split_bill_id = $split_bill->id;
+                 $invoice->save();
+
+-                $admission = $visit->admission;
+-                $prescriptions = $visit->prescriptions;
+-                $consumables = $visit->consumables;
+-                $investigations = $visit->investigations;
+-                Log::info('$investigations');
+-
+-
+-                $this->createMicrosoftDynamicsInvoice($invoice, $visit->patient ,$investigations, $prescriptions, $consumables, $admission);
+-
+                 if(count($data['payment_options']['schemes']) < 1) {
+                     if (array_key_exists('is_interim', $data) && $data['is_interim']) {
+                         $this->createInterimBillItems($invoice, $data, $split_bill);
+@@ -137,7 +127,7 @@
+                     $consumables = $visit->consumables;
+                     $investigations = $visit->investigations;
+
+-                    $this->createMicrosoftDynamicsInsurance($invoice, $visit->patient ,$investigations, $prescriptions, $consumables, $admission);
++                    $this->createMicrosoftDynamicsInvoice($invoice, $visit->patient ,$investigations, $prescriptions, $consumables, $admission);
+
+                     Log::info($admission);
+                     // Log::info($invoice);
+@@ -169,7 +159,7 @@
+     }
+
+
+-    public function createMicrosoftDynamicsInsurance($invoice, $patient_id , $investigations, $prescriptions, $consumables, $admission){
++    public function createMicrosoftDynamicsInvoice($invoice, $patient_id , $investigations, $prescriptions, $consumables, $admission){
+
+         // Log::info('Investigations');
+         // Log::info($investigations);
+@@ -310,616 +300,166 @@
+
+                 $line_count = 1;
+
+-                    foreach($investigations as $key => $investigation)
+-                    {
+-                        // $investigations = Investigations::where('id',$invest)->first();
+-                        Log::info($investigation);
+-                        $procedure = Procedures::where('id',$investigation->procedure)->first();
++                    // foreach($investigations as $key => $invest)
++                    // {
++                    //     $investigations = Investigations::where('id',$invest)->first();
+
++                    //     $procedure = Procedures::where('id',$investigations->procedure)->first();
++                    //     Log::info($procedure);
+
+-                        $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';
+-                        // \Log::info($proc)
+-                        // $procedure_categories = ProcedureCategories::where('id',$procedure->category)->first();
+-                        $procedure_price = ProcedurePrice::where('evaluation_procedure_id',$procedure->id)->first();
+-                        // if($investigation->admission_id)
+-                        if($investigation->admission_id == null)
+-                        {
+-                            $patient_type = "OP";
+-                        }
+-                        else
+-                        {
+-                            $patient_type = "IP";
+-                        }
+-                        $salesLineData = [
+-                            "documentType"=> "Invoice",
+-                            "documentNo"=> $invoice['invoice_no'],
+-                            "lineNo"=> $line_count,
+-                            "type"=> "Service",
+-                            "no"=>$procedure->code,
+-                            "description"=> $procedure->name,
+-                            "unitPrice" => (int) $procedure_price->insurance_charge,
+-                            "amountExclVAT" => (int) $procedure_price->insurance_charge,
+-                            "amountInclVAT" => (int) $procedure_price->insurance_charge,
+-                            "vatAmount" => 0,
+-                            "quantity" => 1,
+-                            "patientTypeCode"=> $patient_type,
+-                            "departmentCode"=> "",
++                    //     $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';
++                    //     // \Log::info($proc)
++                    //     // $procedure_categories = ProcedureCategories::where('id',$procedure->category)->first();
++                    //     $procedure_price = ProcedurePrice::where('evaluation_procedure_id',$procedure->id)->first();
++                    //     $salesLineData = [
++                    //         "documentType"=> "Invoice",
++                    //         "documentNo"=> $invoice['invoice_no'],
++                    //         "lineNo"=> $line_count,
++                    //         "type"=> "Service",
++                    //         "no"=>$procedure->code,
++                    //         "description"=> $procedure->name,
++                    //         "unitPrice" => (int) $procedure_price->insurance_charge,
++                    //         "amountExclVAT" => (int) $procedure_price->insurance_charge,
++                    //         "amountInclVAT" => (int) $procedure_price->insurance_charge,
++                    //         "vatAmount" => 0,
++                    //         "quantity" => 1
++                    //     ];
+
+-                        ];
++                    //         $jsonData = '{';
++                    //         foreach ($salesLineData as $key => $value)
++                    //         if (is_int($value) && $key!="documentNo" && $key!="lineNo") {
++                    //             // If value is integer, no quotes needed
++                    //             $jsonData .= "\"$key\":$value,";
++                    //         } else
++                    //         {
++                    //             $jsonData .= "\"$key\":\"" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . "\",";
++                    //         }
+
+-                            $jsonData = '{';
+-                            foreach ($salesLineData as $key => $value)
+-                            if (is_int($value) && $key!="documentNo" && $key!="lineNo") {
+-                                // If value is integer, no quotes needed
+-                                $jsonData .= "\"$key\":$value,";
+-                            } else
+-                            {
+-                                $jsonData .= "\"$key\":\"" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . "\",";
+-                            }
++                    //         $jsonData = rtrim($jsonData, ',') . '}';
++                    //         $singleQuotedDataLine = $jsonData;
+
+-                            $jsonData = rtrim($jsonData, ',') . '}';
+-                            $singleQuotedDataLine = $jsonData;
+
++                    //         $curl = curl_init();
++                    //         curl_setopt_array($curl, array(
++                    //             CURLOPT_URL => $salesLineEndpoint ,
++                    //             CURLOPT_RETURNTRANSFER => true,
++                    //             CURLOPT_ENCODING => '',
++                    //             CURLOPT_MAXREDIRS => 10,
++                    //             CURLOPT_TIMEOUT => 0,
++                    //             CURLOPT_FOLLOWLOCATION => true,
++                    //             CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
++                    //             CURLOPT_HTTPAUTH => CURLAUTH_NTLM,
++                    //             CURLOPT_USERPWD=> $credentials,
++                    //             CURLOPT_CUSTOMREQUEST => 'POST',
++                    //             CURLOPT_POSTFIELDS =>$singleQuotedDataLine,
++                    //             CURLOPT_HTTPHEADER => array(
++                    //                 'Content-Type: application/json'
++                    //             ),
++                    //         ));
+
+-                            $curl = curl_init();
+-                            curl_setopt_array($curl, array(
+-                                CURLOPT_URL => $salesLineEndpoint ,
+-                                CURLOPT_RETURNTRANSFER => true,
+-                                CURLOPT_ENCODING => '',
+-                                CURLOPT_MAXREDIRS => 10,
+-                                CURLOPT_TIMEOUT => 0,
+-                                CURLOPT_FOLLOWLOCATION => true,
+-                                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+-                                CURLOPT_HTTPAUTH => CURLAUTH_NTLM,
+-                                CURLOPT_USERPWD=> $credentials,
+-                                CURLOPT_CUSTOMREQUEST => 'POST',
+-                                CURLOPT_POSTFIELDS =>$singleQuotedDataLine,
+-                                CURLOPT_HTTPHEADER => array(
+-                                    'Content-Type: application/json'
+-                                ),
+-                            ));
++                    //         Log::info($singleQuotedDataLine);
+
+-                            Log::info($singleQuotedDataLine);
++                    //         $response = curl_exec($curl);
++                    //         $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code
++                    //         curl_close($curl);
++                    //         // $result = json_decode($response['invoice_id'], true);
++                    //         $result = $response;
+
+-                            $response = curl_exec($curl);
+-                            $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code
+-                            curl_close($curl);
+-                            // $result = json_decode($response['invoice_id'], true);
+-                            $result = $response;
+
+-
+-                            Log::info('Sales Line');
+-                            Log::info($result);
+-                            $line_count++;
+-                    }
++                    //         Log::info('Sales Line');
++                    //         Log::info($result);
++                    //         $line_count++;
++                    // }
+                     //prescriptions
+-                    $prescriptions = json_decode($prescriptions);
++                    // $prescriptions = json_decode($prescriptions);
+
++                    // foreach($prescriptions as $key => $prescription)
++                    // {
+
++                    //     // Log::info($prescription);
++                    //     $prescription = Prescriptions::where('id',$prescription->id)->first();
+
+-                    foreach($prescriptions as $key => $prescription)
+-                    {
+-
+-                        // Log::info($prescription);
+-                        $prescription = Prescriptions::where('id',$prescription->id)->first();
+-
+-                        Log::info('full_prescription');
+-                        Log::info($prescription);
+-                        $store = Store::where('id',$prescription->store_id)->first();
+-                        if($store)
+-                        {
+-
+-                        $prescribed_by = $prescription->prescribed_by;
+-
+-                        $inventory_product = InventoryProducts::where('id',$prescription['drug'])->first();
+-                        $unit = InventoryUnits::where('id', $inventory_product->unit)->first();
+-                        Log::info(gettype((int) $key+1));
+-                        $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';
+-                        if($prescription->treatment_location_name == 'outpatient')
+-                        {
+-                            $patient_type = "OP";
+-                        }
+-                        else
+-                        {
+-                            $patient_type = "IP";
+-                        }
+-
+-                        Log::info($store);
+-
+-
+-                        $salesLineData = [
+-                            "documentType"=> "Invoice",
+-                            "documentNo"=>$invoice['invoice_no'],
+-                            "lineNo"=> $line_count,
+-                            "type"=> "Inventory",
+-                            "no"=>$inventory_product->item_no,
+-                            "description"=> $inventory_product->name,
+-                            "unitPrice" => (int) $prescription['payment']['price'],
+-                            "unitOfMeasure" => $unit->name,
+-                            "patientTypeCode"=> $patient_type,
+-                            "departmentCode"=> "",
+-                            "quantity" => (int) $prescription['payment']['quantity'],
+-                            "locationCode" =>  $store->code,
+-                            "amountExclVAT" => (int) $prescription['payment']['amount'],
+-                            "amountInclVAT" => 0,
+-                            "vatAmount" => 0,
+-
+-
+-
+-                        ];
+-
+-                        $jsonData = '{';
+-                            foreach ($salesLineData as $key => $value)
+-                            if (is_int($value) && $key!="documentNo" && $key!="lineNo") {
+-                                // If value is integer, no quotes needed
+-                                $jsonData .= "\"$key\":$value,";
+-                            } else
+-                            {
+-                                $jsonData .= "\"$key\":\"" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . "\",";
+-                            }
+-                        $jsonData = rtrim($jsonData, ',') . '}';
+-                        $singleQuotedData = $jsonData;
+-
+-                        Log::info($singleQuotedData);
+-                        $curl = curl_init();
+-                        curl_setopt_array($curl, array(
+-                            CURLOPT_URL => $salesLineEndpoint,
+-                            CURLOPT_RETURNTRANSFER => true,
+-                            CURLOPT_ENCODING => '',
+-                            CURLOPT_MAXREDIRS => 10,
+-                            CURLOPT_TIMEOUT => 0,
+-                            CURLOPT_FOLLOWLOCATION => true,
+-                            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+-                            CURLOPT_HTTPAUTH => CURLAUTH_NTLM,
+-                            CURLOPT_USERPWD=> $credentials,
+-                            CURLOPT_CUSTOMREQUEST => 'POST',
+-                            CURLOPT_POSTFIELDS =>$singleQuotedData,
+-                            CURLOPT_HTTPHEADER => array(
+-                                'Content-Type: application/json'
+-                            ),
+-                        ));
+-
+-                        $response = curl_exec($curl);
+-                        $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code
+-                        curl_close($curl);
+-                        // $result = json_decode($response['invoice_id'], true);
+-                        $result = $response;
+-
+-                        Log::info('Sales Line');
+-                        Log::info($result);
+-                        $line_count++;
+-
+-                        }
+-                    }
+-
+-
++                    //     Log::info('full_prescription');
++                    //     Log::info($prescription);
++                    //     $store = Store::where('id',$prescription->store_id)->first();
++                    //     $prescribed_by = $prescription->prescribed_by;
+
+-                    foreach($consumables as $key => $consumable)
+-                    {
+-
+-                        // Log::info($prescription);
+-                        $full_consumable = Consumable::where('id',$consumable->id)->first();
+-                        Log::info($full_consumable);
+-                        // {"id":44117,"visit_id":308820,"product_id":170552,"consumable_type_id":2,
+-                        //     "quantity":5,"discount":"0.00","amount":"999999.99","price":"334424.00",
+-                        // "user_id":5,"notes":"sdaasda","cancelled":false,"cancelled_by_id":null,
+-                        // "cancel_reason":null,"finance_evaluation_payment_id":null,
+-                        // "invoice_id":null,"created_at":"2024-03-08 00:04:15","updated_at":"2024-03-08 00:04:15",
+-                        // "store_product_id":492,"deleted_at":null,"bill":1,"date_changed_by":null,"date_adjusted_from":null,
+-                        // "split_bill_id":null,"changes_track":null,"moved_from_chargesheet":null,
+-                        // "is_interim":null,"department":0,
+-                        // "consumable_type_name":"theatre","type":{"id":2,"name":"theatre","description":null,
+-                            // "created_at":"2024-02-09 10:05:20","updated_at":"2024-02-09 10:05:20"}}
+-
+-                        Log::info('full_consumable');
+-                        Log::info($full_consumable);
+-                        $store_product = StoreProduct::where('id',$full_consumable->store_product_id)->first();
+-                        $store = Store::where('id',$store_product->store_id)->first();
+-
+-
+-                        $inventory_product = InventoryProducts::where('id',$full_consumable->product_id)->first();
+-                        $unit = InventoryUnits::where('id', $inventory_product->unit)->first();
+-                        // Log::info(gettype((int) $key+1));
+-                        $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';
+-
+-                            $patient_type = "IP";
+-
+-
+-
+-                        $salesLineData = [
+-                            "documentType"=> "Invoice",
+-                            "documentNo"=>$invoice['invoice_no'],
+-                            "lineNo"=> $line_count,
+-                            "type"=> "Inventory",
+-                            "no"=>$inventory_product->item_no,
+-                            "description"=> $inventory_product->name,
+-                            "unitPrice" => (int) $prescription['payment']['price'],
+-                            "unitOfMeasure" => $unit->name,
+-                            "patientTypeCode"=> $patient_type,
+-                            "departmentCode"=> "",
+-                            "quantity" => (int) $prescription['payment']['quantity'],
+-                            "locationCode" =>  $store->code,
+-                            "amountExclVAT" => (int) $prescription['payment']['amount'],
+-                            "amountInclVAT" => 0,
+-                            "vatAmount" => 0,
+-
+-
+-
+-                        ];
+-
+-                        $jsonData = '{';
+-                            foreach ($salesLineData as $key => $value)
+-                            if (is_int($value) && $key!="documentNo" && $key!="lineNo") {
+-                                // If value is integer, no quotes needed
+-                                $jsonData .= "\"$key\":$value,";
+-                            } else
+-                            {
+-                                $jsonData .= "\"$key\":\"" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . "\",";
+-                            }
+-                        $jsonData = rtrim($jsonData, ',') . '}';
+-                        $singleQuotedData = $jsonData;
+-
+-                        Log::info($singleQuotedData);
+-                        $curl = curl_init();
+-                        curl_setopt_array($curl, array(
+-                            CURLOPT_URL => $salesLineEndpoint,
+-                            CURLOPT_RETURNTRANSFER => true,
+-                            CURLOPT_ENCODING => '',
+-                            CURLOPT_MAXREDIRS => 10,
+-                            CURLOPT_TIMEOUT => 0,
+-                            CURLOPT_FOLLOWLOCATION => true,
+-                            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+-                            CURLOPT_HTTPAUTH => CURLAUTH_NTLM,
+-                            CURLOPT_USERPWD=> $credentials,
+-                            CURLOPT_CUSTOMREQUEST => 'POST',
+-                            CURLOPT_POSTFIELDS =>$singleQuotedData,
+-                            CURLOPT_HTTPHEADER => array(
+-                                'Content-Type: application/json'
+-                            ),
+-                        ));
+-
+-                        $response = curl_exec($curl);
+-                        $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code
+-                        curl_close($curl);
+-                        // $result = json_decode($response['invoice_id'], true);
+-                        $result = $response;
+-
+-                        Log::info('Sales Line');
+-                        Log::info($result);
+-                        $line_count++;
+-                    }
+-
+-
+-              return  $singleQuotedData;
+-
+-            } else {
+-                return false;
+-            }
+-
+-        } catch (\Exception $e) {
+-            // Handle exceptions here
+-            Log::error('An error occurred: ' . $e->getMessage());
+-            return false; // Or handle the error as required
+-        }
+-
+-    }
+-
+-    public function createMicrosoftDynamicsInvoice($invoice, $patient_id , $investigations, $prescriptions, $consumables, $admission){
+-
+-        // Log::info('Investigations');
+-        // Log::info($investigations);
+-
+-        // Log::info('Consumables');
+-        // Log::info($consumables);
+-
+-        // Log::info('Prescriptions');
+-        // Log::info($prescriptions);
+-
+-        // Log::info('Admission');
+-        // Log::info($admission);
+-
+-        try {
+-
+-            Log::info("Creating microsoft dynamics invoice");
+-
+-                            $company =  env('MICROSOFT_DYNAMICS_COMPANY');
+
+        $linkIp = env('MICROSOFT_DYNAMICS_IP');
+
+        $apiEndpoint = 'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesInvoiceHeaders?$expand=salesLinesBuffer';
+-
+-            $username = env('MICROSOFT_DYNAMICS_USERNAME');
+-            $password =  env('MICROSOFT_DYNAMICS_PASSWORD');
+-
+-            // Base64 encode the username and password
+-            $credentials = "$username:$password";
+-            // {"invoice_no":"LCRHHXW1707062532","invoice_no_prefix":"LCRH","visit":308584,"user_id":5,"amount":"4000","company_id":1162,"scheme_id":19,"split_id":null,"created_at":"2024-02-04 19:02:12","actual_invoice_creation_date":null,"updated_at":"2024-02-04 19:02:12","id":379309}
+-
+-            // Log::info('invoice---'.$investigations);
+-            // Log::info($invoice['invoice_no']);
+-
++                    //     $inventory_product = InventoryProducts::where('id',$prescription['drug'])->first();
++                    //     $unit = InventoryUnits::where('id', $inventory_product->unit)->first();
++                    //     Log::info(gettype((int) $key+1));
++                    //     $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';
++                    //     if($prescription->treatment_location_name == 'outpatient')
++                    //     {
++                    //         $patient_type = "OP";
++                    //     }
++                    //     else
++                    //     {
++                    //         $patient_type = "IP";
++                    //     }
+
+
++                    //     $salesLineData = [
++                    //         "documentType"=> "Invoice",
++                    //         "documentNo"=>$invoice['invoice_no'],
++                    //         "lineNo"=> $line_count,
++                    //         "type"=> "Inventory",
++                    //         "no"=>$inventory_product->item_no,
++                    //         "description"=> $inventory_product->name,
++                    //         "unitPrice" => (int) $prescription['payment']['price'],
++                    //         "unitOfMeasure" => $unit->name,
++                    //         "patientTypeCode"=> $patient_type,
++                    //         "departmentCode"=> "",
++                    //         "quantity" => (int) $prescription['payment']['quantity'],
++                    //         "locationCode" =>  $store->code,
++                    //         "amountExclVAT" => (int) $prescription['payment']['amount'],
++                    //         "amountInclVAT" => 0,
++                    //         "vatAmount" => 0,
+
+-            // $patient_id = Invoice::where('id',$invoice->id)->value('patient_id');
+-            $patient = Patients::where('id', $patient_id)->first();
+-            $patient_name = $patient['first_name'] . " " . $patient['middle_name'] . " " . $patient['last_name'];
+-            // Log::info('first name---'.$patient['first_name']);
+
+-            $document_date = \Carbon\Carbon::today()->format("Y-m-d");
+-            $visit = Visit::where('id',$invoice->visit)->first();
+
+-            Log::info("Line 94");
++                    //     ];
+
+-            //Doctor Details
+-            $all_doctors = [];
+-            // $investigations = json_decode($investigations);
+-            // Log::info($investigations);
+-            foreach($investigations as $investigation)
+-            {
+-
+-
+-                if($investigation->performing_doctor)
+-                {
+-                    $procedure_doctor = User::where('id',strval($investigation->performing_doctor))->first();
+-                    array_push($all_doctors, $procedure_doctor);
+-                }
+-
+-
+-            }
+-
+-            // Log::info($all_doctors);
+-
+-
+-            $data = [
+-                "documentType"=> "Invoice",
+-                "no"=> $invoice['invoice_no'],
+-                "customerNo"=> "",
+-                "customerName"=> "",
+-                "patientNo"=> $patient_id,
+-                "patientName"=> $patient_name,
+-                "documentDate"=> $document_date,
+-                "postingDate"=> $document_date,
+-                "admittedByDoctorNo"=> $all_doctors[0]->employee_number ?? null,
+-                "admittingDoctorName"=> $all_doctors[0]->full_name ?? null,
+-                "patientTypeCode"=> "IP",
+-                "departmentCode"=> "",
+-                "wardCode"=> "",
+-                "orderDate"=>$document_date,
+-                "visitNumber"=> $visit->id,
+-                "visitStartDate"=> $visit->created_at->format('Y-m-d'),
+-                "visitEndDate"=> $visit->created_at->format('Y-m-d'),
+-                "icd10Code"=> "",
+-                "insuranceSchemeCode"=> "",
+-                "insuranceSchemeName"=> "",
+-                "billStatus"=> "Final",
+-                "policyNumber"=> "",
+-                "principalMember"=> "",
+-                "relationToPrincipal"=> "Self",
+-                "isCashCustomer" => true,
+-            ];
+-
+-            $jsonData = '{';
+-            foreach ($data as $key => $value) {
+-                $jsonData .= "\"$key\":\"" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . "\",";
+-            }
+-            $jsonData = rtrim($jsonData, ',') . '}';
+-            $singleQuotedData = $jsonData;
++                    //     $jsonData = '{';
++                    //         foreach ($salesLineData as $key => $value)
++                    //         if (is_int($value) && $key!="documentNo" && $key!="lineNo") {
++                    //             // If value is integer, no quotes needed
++                    //             $jsonData .= "\"$key\":$value,";
++                    //         } else
++                    //         {
++                    //             $jsonData .= "\"$key\":\"" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . "\",";
++                    //         }
++                    //     $jsonData = rtrim($jsonData, ',') . '}';
++                    //     $singleQuotedData = $jsonData;
+
+-            // Log::info($singleQuotedData);
+-            $curl = curl_init();
+-            curl_setopt_array($curl, array(
+-                CURLOPT_URL => $apiEndpoint ,
+-                CURLOPT_RETURNTRANSFER => true,
+-                CURLOPT_ENCODING => '',
+-                CURLOPT_MAXREDIRS => 10,
+-                CURLOPT_TIMEOUT => 0,
+-                CURLOPT_FOLLOWLOCATION => true,
+-                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+-                CURLOPT_HTTPAUTH => CURLAUTH_NTLM,
+-                CURLOPT_USERPWD=> $credentials,
+-                CURLOPT_CUSTOMREQUEST => 'POST',
+-                CURLOPT_POSTFIELDS =>$singleQuotedData,
+-                CURLOPT_HTTPHEADER => array(
+-                    'Content-Type: application/json'
+-                ),
+-            ));
+-
+-            $response = curl_exec($curl);
+-            $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code
+-            curl_close($curl);
+-            // $result = json_decode($response['invoice_id'], true);
+-            $result = $response;
+-
+-            Log::info('Invoice response');
+-            Log::info($status_code);
+-            // Log::info(gettype($result));
+-            Log::info($result);
+-
+-            //if response is 201 ok  continue
+-            if ($status_code === 201) {
+-
+-                $line_count = 1;
+-
+-                    foreach($investigations as $key => $investigation)
+-                    {
+-                        // $investigations = Investigations::where('id',$invest)->first();
+-                        Log::info($investigation);
+-                        $procedure = Procedures::where('id',$investigation->procedure)->first();
+-
+-
+-                        $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';
+-                        // \Log::info($proc)
+-                        // $procedure_categories = ProcedureCategories::where('id',$procedure->category)->first();
+-                        $procedure_price = ProcedurePrice::where('evaluation_procedure_id',$procedure->id)->first();
+-                        // if($investigation->admission_id)
+-                        if($investigation->admission_id == null)
+-                        {
+-                            $patient_type = "OP";
+-                        }
+-                        else
+-                        {
+-                            $patient_type = "IP";
+-                        }
+-                        $salesLineData = [
+-                            "documentType"=> "Invoice",
+-                            "documentNo"=> $invoice['invoice_no'],
+-                            "lineNo"=> $line_count,
+-                            "type"=> "Service",
+-                            "no"=>$procedure->code,
+-                            "description"=> $procedure->name,
+-                            "unitPrice" => (int) $procedure_price->insurance_charge,
+-                            "amountExclVAT" => (int) $procedure_price->insurance_charge,
+-                            "amountInclVAT" => (int) $procedure_price->insurance_charge,
+-                            "vatAmount" => 0,
+-                            "quantity" => 1,
+-                            "patientTypeCode"=> $patient_type,
+-                            "departmentCode"=> "",
+-
+-                        ];
+-
+-                            $jsonData = '{';
+-                            foreach ($salesLineData as $key => $value)
+-                            if (is_int($value) && $key!="documentNo" && $key!="lineNo") {
+-                                // If value is integer, no quotes needed
+-                                $jsonData .= "\"$key\":$value,";
+-                            } else
+-                            {
+-                                $jsonData .= "\"$key\":\"" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . "\",";
+-                            }
+-
+-                            $jsonData = rtrim($jsonData, ',') . '}';
+-                            $singleQuotedDataLine = $jsonData;
+-
+-
+-                            $curl = curl_init();
+-                            curl_setopt_array($curl, array(
+-                                CURLOPT_URL => $salesLineEndpoint ,
+-                                CURLOPT_RETURNTRANSFER => true,
+-                                CURLOPT_ENCODING => '',
+-                                CURLOPT_MAXREDIRS => 10,
+-                                CURLOPT_TIMEOUT => 0,
+-                                CURLOPT_FOLLOWLOCATION => true,
+-                                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+-                                CURLOPT_HTTPAUTH => CURLAUTH_NTLM,
+-                                CURLOPT_USERPWD=> $credentials,
+-                                CURLOPT_CUSTOMREQUEST => 'POST',
+-                                CURLOPT_POSTFIELDS =>$singleQuotedDataLine,
+-                                CURLOPT_HTTPHEADER => array(
+-                                    'Content-Type: application/json'
+-                                ),
+-                            ));
+-
+-                            Log::info($singleQuotedDataLine);
+-
+-                            $response = curl_exec($curl);
+-                            $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code
+-                            curl_close($curl);
+-                            // $result = json_decode($response['invoice_id'], true);
+-                            $result = $response;
+-
+-
+-                            Log::info('Sales Line');
+-                            Log::info($result);
+-                            $line_count++;
+-                    }
+-                    //prescriptions
+-                    $prescriptions = json_decode($prescriptions);
+-
+-
++                    //     Log::info($singleQuotedData);
++                    //     $curl = curl_init();
++                    //     curl_setopt_array($curl, array(
++                    //         CURLOPT_URL => $salesLineEndpoint,
++                    //         CURLOPT_RETURNTRANSFER => true,
++                    //         CURLOPT_ENCODING => '',
++                    //         CURLOPT_MAXREDIRS => 10,
++                    //         CURLOPT_TIMEOUT => 0,
++                    //         CURLOPT_FOLLOWLOCATION => true,
++                    //         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
++                    //         CURLOPT_HTTPAUTH => CURLAUTH_NTLM,
++                    //         CURLOPT_USERPWD=> $credentials,
++                    //         CURLOPT_CUSTOMREQUEST => 'POST',
++                    //         CURLOPT_POSTFIELDS =>$singleQuotedData,
++                    //         CURLOPT_HTTPHEADER => array(
++                    //             'Content-Type: application/json'
++                    //         ),
++                    //     ));
+
+-                    foreach($prescriptions as $key => $prescription)
+-                    {
++                    //     $response = curl_exec($curl);
++                    //     $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code
++                    //     curl_close($curl);
++                    //     // $result = json_decode($response['invoice_id'], true);
++                    //     $result = $response;
+
+-                        // Log::info($prescription);
+-                        $prescription = Prescriptions::where('id',$prescription->id)->first();
+-
+-                        Log::info('full_prescription');
+-                        Log::info($prescription);
+-                        $store = Store::where('id',$prescription->store_id)->first();
+-                        if($store)
+-                        {
+-
+-                        $prescribed_by = $prescription->prescribed_by;
+-
+-                        $inventory_product = InventoryProducts::where('id',$prescription['drug'])->first();
+-                        $unit = InventoryUnits::where('id', $inventory_product->unit)->first();
+-                        Log::info(gettype((int) $key+1));
+-                        $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';
+-                        if($prescription->treatment_location_name == 'outpatient')
+-                        {
+-                            $patient_type = "OP";
+-                        }
+-                        else
+-                        {
+-                            $patient_type = "IP";
+-                        }
+-
+-                        Log::info($store);
+-
+-
+-                        $salesLineData = [
+-                            "documentType"=> "Invoice",
+-                            "documentNo"=>$invoice['invoice_no'],
+-                            "lineNo"=> $line_count,
+-                            "type"=> "Inventory",
+-                            "no"=>$inventory_product->item_no,
+-                            "description"=> $inventory_product->name,
+-                            "unitPrice" => (int) $prescription['payment']['price'],
+-                            "unitOfMeasure" => $unit->name,
+-                            "patientTypeCode"=> $patient_type,
+-                            "departmentCode"=> "",
+-                            "quantity" => (int) $prescription['payment']['quantity'],
+-                            "locationCode" =>  $store->code,
+-                            "amountExclVAT" => (int) $prescription['payment']['amount'],
+-                            "amountInclVAT" => 0,
+-                            "vatAmount" => 0,
+-
+-
+-
+-                        ];
+-
+-                        $jsonData = '{';
+-                            foreach ($salesLineData as $key => $value)
+-                            if (is_int($value) && $key!="documentNo" && $key!="lineNo") {
+-                                // If value is integer, no quotes needed
+-                                $jsonData .= "\"$key\":$value,";
+-                            } else
+-                            {
+-                                $jsonData .= "\"$key\":\"" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . "\",";
+-                            }
+-                        $jsonData = rtrim($jsonData, ',') . '}';
+-                        $singleQuotedData = $jsonData;
+-
+-                        Log::info($singleQuotedData);
+-                        $curl = curl_init();
+-                        curl_setopt_array($curl, array(
+-                            CURLOPT_URL => $salesLineEndpoint,
+-                            CURLOPT_RETURNTRANSFER => true,
+-                            CURLOPT_ENCODING => '',
+-                            CURLOPT_MAXREDIRS => 10,
+-                            CURLOPT_TIMEOUT => 0,
+-                            CURLOPT_FOLLOWLOCATION => true,
+-                            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+-                            CURLOPT_HTTPAUTH => CURLAUTH_NTLM,
+-                            CURLOPT_USERPWD=> $credentials,
+-                            CURLOPT_CUSTOMREQUEST => 'POST',
+-                            CURLOPT_POSTFIELDS =>$singleQuotedData,
+-                            CURLOPT_HTTPHEADER => array(
+-                                'Content-Type: application/json'
+-                            ),
+-                        ));
+-
+-                        $response = curl_exec($curl);
+-                        $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code
+-                        curl_close($curl);
+-                        // $result = json_decode($response['invoice_id'], true);
+-                        $result = $response;
+-
+-                        Log::info('Sales Line');
+-                        Log::info($result);
+-                        $line_count++;
+-
+-                        }
+-                    }
+-
+-
++                    //     Log::info('Sales Line');
++                    //     Log::info($result);
++                    //     $line_count++;
++                    // }
+
+                     foreach($consumables as $key => $consumable)
+                     {
+@@ -927,93 +467,87 @@
+                         // Log::info($prescription);
+                         $full_consumable = Consumable::where('id',$consumable->id)->first();
+                         Log::info($full_consumable);
+-                        // {"id":44117,"visit_id":308820,"product_id":170552,"consumable_type_id":2,
+-                        //     "quantity":5,"discount":"0.00","amount":"999999.99","price":"334424.00",
+-                        // "user_id":5,"notes":"sdaasda","cancelled":false,"cancelled_by_id":null,
+-                        // "cancel_reason":null,"finance_evaluation_payment_id":null,
+-                        // "invoice_id":null,"created_at":"2024-03-08 00:04:15","updated_at":"2024-03-08 00:04:15",
+-                        // "store_product_id":492,"deleted_at":null,"bill":1,"date_changed_by":null,"date_adjusted_from":null,
+-                        // "split_bill_id":null,"changes_track":null,"moved_from_chargesheet":null,
+-                        // "is_interim":null,"department":0,
+-                        // "consumable_type_name":"theatre","type":{"id":2,"name":"theatre","description":null,
+-                            // "created_at":"2024-02-09 10:05:20","updated_at":"2024-02-09 10:05:20"}}
+-
+-                        Log::info('full_consumable');
+-                        Log::info($full_consumable);
+-                        $store_product = StoreProduct::where('id',$full_consumable->store_product_id)->first();
+-                        $store = Store::where('id',$store_product->store_id)->first();
+
++                        // Log::info('full_prescription');
++                        // Log::info($prescription);
++                        // $store = Store::where('id',$prescription->store_id)->first();
++                        // $prescribed_by = $prescription->prescribed_by;
+
+-                        $inventory_product = InventoryProducts::where('id',$full_consumable->product_id)->first();
+-                        $unit = InventoryUnits::where('id', $inventory_product->unit)->first();
++                        // $inventory_product = InventoryProducts::where('id',$prescription['drug'])->first();
++                        // $unit = InventoryUnits::where('id', $inventory_product->unit)->first();
+                         // Log::info(gettype((int) $key+1));
+-                        $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';
+-
+-                            $patient_type = "IP";
++                        // $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';
++                        // if($prescription->treatment_location_name == 'outpatient')
++                        // {
++                        //     $patient_type = "OP";
++                        // }
++                        // else
++                        // {
++                        //     $patient_type = "IP";
++                        // }
+
+
++                        // $salesLineData = [
++                        //     "documentType"=> "Invoice",
++                        //     "documentNo"=>$invoice['invoice_no'],
++                        //     "lineNo"=> $line_count,
++                        //     "type"=> "Inventory",
++                        //     "no"=>$inventory_product->item_no,
++                        //     "description"=> $inventory_product->name,
++                        //     "unitPrice" => (int) $prescription['payment']['price'],
++                        //     "unitOfMeasure" => $unit->name,
++                        //     "patientTypeCode"=> $patient_type,
++                        //     "departmentCode"=> "",
++                        //     "quantity" => (int) $prescription['payment']['quantity'],
++                        //     "locationCode" =>  $store->code,
++                        //     "amountExclVAT" => (int) $prescription['payment']['amount'],
++                        //     "amountInclVAT" => 0,
++                        //     "vatAmount" => 0,
+
+-                        $salesLineData = [
+-                            "documentType"=> "Invoice",
+-                            "documentNo"=>$invoice['invoice_no'],
+-                            "lineNo"=> $line_count,
+-                            "type"=> "Inventory",
+-                            "no"=>$inventory_product->item_no,
+-                            "description"=> $inventory_product->name,
+-                            "unitPrice" => (int) $prescription['payment']['price'],
+-                            "unitOfMeasure" => $unit->name,
+-                            "patientTypeCode"=> $patient_type,
+-                            "departmentCode"=> "",
+-                            "quantity" => (int) $prescription['payment']['quantity'],
+-                            "locationCode" =>  $store->code,
+-                            "amountExclVAT" => (int) $prescription['payment']['amount'],
+-                            "amountInclVAT" => 0,
+-                            "vatAmount" => 0,
+
+
++                        // ];
+
+-                        ];
++                        // $jsonData = '{';
++                        //     foreach ($salesLineData as $key => $value)
++                        //     if (is_int($value) && $key!="documentNo" && $key!="lineNo") {
++                        //         // If value is integer, no quotes needed
++                        //         $jsonData .= "\"$key\":$value,";
++                        //     } else
++                        //     {
++                        //         $jsonData .= "\"$key\":\"" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . "\",";
++                        //     }
++                        // $jsonData = rtrim($jsonData, ',') . '}';
++                        // $singleQuotedData = $jsonData;
+
+-                        $jsonData = '{';
+-                            foreach ($salesLineData as $key => $value)
+-                            if (is_int($value) && $key!="documentNo" && $key!="lineNo") {
+-                                // If value is integer, no quotes needed
+-                                $jsonData .= "\"$key\":$value,";
+-                            } else
+-                            {
+-                                $jsonData .= "\"$key\":\"" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . "\",";
+-                            }
+-                        $jsonData = rtrim($jsonData, ',') . '}';
+-                        $singleQuotedData = $jsonData;
++                        // Log::info($singleQuotedData);
++                        // $curl = curl_init();
++                        // curl_setopt_array($curl, array(
++                        //     CURLOPT_URL => $salesLineEndpoint,
++                        //     CURLOPT_RETURNTRANSFER => true,
++                        //     CURLOPT_ENCODING => '',
++                        //     CURLOPT_MAXREDIRS => 10,
++                        //     CURLOPT_TIMEOUT => 0,
++                        //     CURLOPT_FOLLOWLOCATION => true,
++                        //     CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
++                        //     CURLOPT_HTTPAUTH => CURLAUTH_NTLM,
++                        //     CURLOPT_USERPWD=> $credentials,
++                        //     CURLOPT_CUSTOMREQUEST => 'POST',
++                        //     CURLOPT_POSTFIELDS =>$singleQuotedData,
++                        //     CURLOPT_HTTPHEADER => array(
++                        //         'Content-Type: application/json'
++                        //     ),
++                        // ));
+
+-                        Log::info($singleQuotedData);
+-                        $curl = curl_init();
+-                        curl_setopt_array($curl, array(
+-                            CURLOPT_URL => $salesLineEndpoint,
+-                            CURLOPT_RETURNTRANSFER => true,
+-                            CURLOPT_ENCODING => '',
+-                            CURLOPT_MAXREDIRS => 10,
+-                            CURLOPT_TIMEOUT => 0,
+-                            CURLOPT_FOLLOWLOCATION => true,
+-                            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+-                            CURLOPT_HTTPAUTH => CURLAUTH_NTLM,
+-                            CURLOPT_USERPWD=> $credentials,
+-                            CURLOPT_CUSTOMREQUEST => 'POST',
+-                            CURLOPT_POSTFIELDS =>$singleQuotedData,
+-                            CURLOPT_HTTPHEADER => array(
+-                                'Content-Type: application/json'
+-                            ),
+-                        ));
++                        // $response = curl_exec($curl);
++                        // $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code
++                        // curl_close($curl);
++                        // // $result = json_decode($response['invoice_id'], true);
++                        // $result = $response;
+
+-                        $response = curl_exec($curl);
+-                        $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code
+-                        curl_close($curl);
+-                        // $result = json_decode($response['invoice_id'], true);
+-                        $result = $response;
+-
+-                        Log::info('Sales Line');
+-                        Log::info($result);
+-                        $line_count++;
++                        // Log::info('Sales Line');
++                        // Log::info($result);
++                        // $line_count++;
+                     }
+
+
+Index: Repositories/BillingRepository.php
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?php\n\n/**\n * Created by PhpStorm.\n * User: jjoek\n * Date: 05/08/2019\n * Time: 13:00\n * Project: platform\n */\n\nnamespace Ignite\\Finance\\Repositories;\n\nuse Ignite\\Evaluation\\Entities\\Visit;\nuse Ignite\\Finance\\Entities\\EvaluationPayments;\nuse Ignite\\Finance\\Entities\\FinsprintTransaction;\nuse Ignite\\Finance\\Entities\\PreparedBill;\nuse Ignite\\Finance\\Entities\\PreparedBillDetails;\nuse Ignite\\Finance\\Library\\AccountingSoln\\AccountingSolution;\nuse Ignite\\Finance\\Library\\PatientAccounts\\AccountDeposits;\nuse Ignite\\Finance\\Library\\PatientVisitBill;\nuse Ignite\\Finance\\Library\\Payments\\ClientPayments\\Finsprint;\nuse Ignite\\Finance\\Transformers\\PreparedBillResource;\nuse Ignite\\Reception\\Entities\\Patients;\nuse Ignite\\Users\\Entities\\User;\nuse Ignite\\Evaluation\\Entities\\Investigations;\nuse Ignite\\Evaluation\\Entities\\Icd10Note;\nuse Ignite\\Evaluation\\Entities\\DoctorNotes;\nuse Ignite\\Inventory\\Entities\\Store;\nuse Ignite\\Finance\\Entities\\Invoice;\nuse Ignite\\Inventory\\Entities\\InventoryProducts;\nuse Ignite\\Inventory\\Entities\\InventoryUnits;\nuse Ignite\\Evaluation\\Entities\\Procedures;\nuse Ignite\\Evaluation\\Entities\\Dimension;\nuse Ignite\\Evaluation\\Entities\\ProcedureCategories;\nuse Illuminate\\Support\\Facades\\DB;\nuse Ignite\\Finance\\Library\\Traits\\BillPaymentTrait;\nuse Ignite\\Evaluation\\Entities\\Prescriptions;\nuse Illuminate\\Support\\Facades\\Log;\n\nclass BillingRepository\n{\n    use BillPaymentTrait;\n\n    protected $total_paid_amount = 0;\n\n    /*\n    * Inject any necessary dependencies\n    */\n    public function __construct(Finsprint $finsprint)\n    {\n\n        $this->finsprint = $finsprint;\n    }\n    /*\n     * create and update the payment\n     * */\n    public function recordPayment($patient = null, $full_pay = true)\n    {\n        $payment = null;\n\n        try {\n\n            DB::beginTransaction();\n\n\n            $data = request()->has('data') ? request('data') : request()->all();\n\n            $internal = array_has($data, 'internal_payment') ? true : false;\n\n            $patient_id =  $internal ? $data['patient_id'] : $patient;\n\n            if(request('forInpatient'))\n            {\n                $paymentMode = null;\n                $paymentModeData = [];\n\n                $patient = Patients::findOrFail($patient_id);\n\n                foreach($data as $key => $value)\n                {\n                    if(in_array($key, mconfig('finance.config.cash_payment_methods')) and ! is_null($value['amount']))\n                    {\n                        $paymentMode = $key;\n                        $paymentModeData = $value;\n                    }\n                }\n\n                if($paymentMode)\n                {\n                    $IPDData = array_merge($data, [\n                        'payment_mode' => $paymentMode,\n                        'payment_mode_data' => $paymentModeData,\n                        'amount' => $paymentModeData['amount'],\n                        \"receipt\" => finance_generate_receipt_no(),\n                        'receipt_prefix' => m_setting('finance.receipt_prefix') ? m_setting('finance.receipt_prefix') : 'RE',\n                    ]);\n\n                    $deposit = (new AccountDeposits($patient))->recordDeposit($IPDData);\n                    $patientAccount = (new AccountDeposits($patient))->updateAccount($deposit);\n                    $payment = $deposit; // for return purposes\n                }\n\n                /*\n                 * process save insurance max amount if stated\n                 */\n                if(!empty(request('insurance')['amount'])) {\n                    $visit = Visit::find(request('visitId'));\n\n                    $visit->insuranceMaximumAmount()->create([\n                        'scheme_id' => request('insurance')['scheme'],\n                        'maximum_amount' => request('insurance')['amount'],\n                    ]);\n                }\n\n            }\n            else {\n                $from_account = ($data['patientAccount'] && !empty($data['patientAccount']['amount'])) ? $data['patientAccount']['amount'] : 0;\n\n                $payment = EvaluationPayments::create([\n                    \"receipt\" => finance_generate_receipt_no(),\n                    'receipt_prefix' => m_setting('finance.receipt_prefix') ? m_setting('finance.receipt_prefix') : 'RE',\n                    \"patient\" => $patient_id,\n                    \"user\" => doe()->id,\n                    \"amount\" => $data['paid_amount'],\n                    \"total_cash_payment\" => ($data['paid_amount'] - $from_account),\n                    \"discount\" => array_has($data, 'percentage_discount') ? $data['percentage_discount'] : null,\n                    \"discount_reason\" => $data['reason_for_discount'],\n                    \"total_amount_was\" => $data['total_amount'],\n                    \"cash_amount\" => ($data['cash'] && !empty($data['cash']['amount'])) ? $data['cash']['amount'] : 0,\n                    \"card_amount\" => ($data['card'] && !empty($data['card']['amount'])) ? $data['card']['amount'] : 0,\n                    \"mpesa_amount\" => ($data['mpesa'] && !empty($data['mpesa']['amount'])) ? $data['mpesa']['amount'] : 0,\n                    \"cheque_amount\" => ($data['cheque'] && !empty($data['cheque']['amount'])) ? $data['cheque']['amount'] : 0,\n                    \"patientAccount_amount\" => $from_account,\n                ]);\n\n\n                $items = request('selected');\n\n                Log::info($items);\n\n                $visit = request('visitId');\n\n\n\n                $this->createMicrosoftDynamicsData($payment,$items,$visit);\n\n                $details = $internal ? $data['selected'] : $data['details'];\n\n                $this->processPaymentDetails($payment, $details, $full_pay);\n\n                $this->savePaymentModesUsed($data, $payment, $internal);\n\n            }\n\n            if ($data['wallet'] && $data['wallet']['wallet_account_amount'] ) {\n\n                //First check if the patient has transactions which were not marked as complete\n                $finsprint_pending_transactions = FinsprintTransaction::where('status','pending')->get();\n\n\n                if($finsprint_pending_transactions->isNotEmpty()){\n\n                    foreach ($finsprint_pending_transactions as $finsprint_pending_transaction){\n\n                        if ($finsprint_pending_transaction->account_number === $data['wallet']['wallet_number']) {\n                            $post_data = [\n                                'transaction_id' => isset($finsprint_pending_transaction->transaction_id) ? $finsprint_pending_transaction->transaction_id : null,\n                                'action' => \"process\",\n                                'remarks' => 'Process completion',\n                            ];\n\n                            $this->finsprint->initiateCompleteTransaction($post_data);\n                        } else {\n                            // Log a message or perform any other action if account_number doesn't match\n                        }\n\n                    }\n\n                }else{\n                    $post_data = [\n                        \"is_internal\" => false,\n                        \"debit_account_number\" =>$data['wallet']['wallet_number'],\n                        \"credit_account_number\" => \"1115510000203\", // constant\n                        \"transaction_type\" => \"hmis_payment\",\n                        \"currency\" => \"KES\",\n                        \"amount\" => $data['wallet']['wallet_account_amount'],\n                        \"reference_id\" => finance_generate_receipt_no(),\n                        \"remarks\" => \"IP Payment\",\n                        \"result_url\" => \"https://kakamegacounty.collabmed.net/finance/api/finsprint-callback\",\n                        \"auto_complete\"=> true,\n                    ];\n                    $response =$this->finsprint->initiateDebitTransaction($post_data);\n\n                }\n\n\n            }\n\n\n            if(env('ACCOUNTING_SOLN_ON')) {\n                try {\n                    new AccountingSolution('quickbooks', 'saveCashReceipt', $payment);\n                } catch (\\Exception $e) {\n                    Log::info('Error saving inventory invoice ' . $e->getMessage());\n                }\n            }\n\n            DB::commit();\n\n        } catch(\\Exception $e)\n        {\n            DB::rollBack();\n\n            ddd(\"An error occurred! \" . $e->getMessage());\n            return false;\n        }\n\n        return $payment;\n    }\n\n    /*\n     * statuses:\n     *      null -> not acted upon\n     *      0 -> not cleared\n     *      1 -> cleared\n     *\n     * */\n\n    public function createMicrosoftDynamicsData($payment, $items)\n    {\n            Log::info($items);\n            try {\n\n            Log::info(\"Creating microsoft dynamics invoice\");\n\n                            $company =  env('MICROSOFT_DYNAMICS_COMPANY');
+
+        $linkIp = env('MICROSOFT_DYNAMICS_IP');
+
+        $apiEndpoint = 'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesInvoiceHeaders?$expand=salesLinesBuffer';\n\n            $username = env('MICROSOFT_DYNAMICS_USERNAME');\n            $password =  env('MICROSOFT_DYNAMICS_PASSWORD');\n\n            // Base64 encode the username and password\n            $credentials = \"$username:$password\";\n            $visit = Visit::where('patient',$payment['patient'])->latest()->first();\n\n            $notes = DoctorNotes::where('visit',$visit->id)->first();\n            \\Log::info($notes);\n\n\n            // $invoice = Invoice::create([\n            //     'visit' => $visit->id,\n            //     'user_id' => $payment->user,\n            //     'for_cash' => 1,\n            //     'patient_id' => $payment['patient'],\n            //     'amount' => $payment['amount'],\n            //         ]);\n\n            //         Log::info($invoice);\n            $patient = Patients::where('id', $payment['patient'])->first();\n            $patient_name = $patient['first_name'] . \" \" . $patient['middle_name'] . \" \" . $patient['last_name'];\n            Log::info($patient['first_name']);\n            $document_date = \\Carbon\\Carbon::today()->format(\"Y-m-d\");\n            // $visit = Visit::where('id',$invoice->visit)->first();\n            $investigations = [];\n            $prescriptions = [];\n            foreach($items as $item)\n            {\n                if($item['type'] == 'investigation')\n                {\n                    array_push($investigations, $item);\n                }\n                else\n                {\n                    array_push($prescriptions, $item);\n                }\n            }\n\n            //Doctor Details\n            $all_doctors = [];\n            Log::info($investigations);\n\n            foreach($investigations as $invest)\n            {\n\n\n                $investigation = Investigations::where('id',$invest['item_id'])->first();\n                \\Log::info($investigation);\n\n                if($investigation->performing_doctor)\n                {\n                    $procedure_doctor = User::where('id',strval($investigation->performing_doctor))->first();\n                    array_push($all_doctors, $procedure_doctor);\n                }\n\n\n            }\n\n            // Log::info(\"Line 94\");\n            // //check if invoice is insurance/cash if insurance retrieve insurance name and code\n\n            $data = [\n                \"documentType\"=> \"Invoice\",\n                \"no\"=> $payment['receipt'],\n                \"customerNo\"=> \"\",\n                \"customerName\"=> \"\",\n                \"patientNo\"=> $payment['patient'],\n                \"patientName\"=> $patient_name,\n                \"documentDate\"=> $document_date,\n                \"postingDate\"=> $document_date,\n                \"admittedByDoctorNo\"=> $all_doctors[0]->employee_number ?? null,\n                \"admittingDoctorName\"=> $all_doctors[0]->full_name ?? null,\n                \"patientTypeCode\"=> \"\",\n                \"departmentCode\"=> \"\",\n                \"wardCode\"=> \"\",\n                \"orderDate\"=>$document_date,\n                \"visitNumber\"=> $visit->id,\n                \"visitStartDate\"=> $visit->created_at->format('Y-m-d'),\n                \"visitEndDate\"=> $visit->created_at->format('Y-m-d'),\n                \"icd10Code\"=> \"\",\n                \"insuranceSchemeCode\"=> \"\",\n                \"insuranceSchemeName\"=> \"\",\n                \"billStatus\"=> \"Final\",\n                \"policyNumber\"=> \"\",\n                \"principalMember\"=> \"\",\n                \"relationToPrincipal\"=> \"Self\",\n                \"isCashCustomer\" => true,\n            ];\n\n            $jsonData = '{';\n            foreach ($data as $key => $value) {\n                $jsonData .= \"\\\"$key\\\":\\\"\" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . \"\\\",\";\n            }\n            $jsonData = rtrim($jsonData, ',') . '}';\n            $singleQuotedData = $jsonData;\n\n            Log::info($singleQuotedData);\n            $curl = curl_init();\n            curl_setopt_array($curl, array(\n                CURLOPT_URL => $apiEndpoint ,\n                CURLOPT_RETURNTRANSFER => true,\n                CURLOPT_ENCODING => '',\n                CURLOPT_MAXREDIRS => 10,\n                CURLOPT_TIMEOUT => 0,\n                CURLOPT_FOLLOWLOCATION => true,\n                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,\n                CURLOPT_HTTPAUTH => CURLAUTH_NTLM,\n                CURLOPT_USERPWD=> $credentials,\n                CURLOPT_CUSTOMREQUEST => 'POST',\n                CURLOPT_POSTFIELDS =>$singleQuotedData,\n                CURLOPT_HTTPHEADER => array(\n                    'Content-Type: application/json'\n                ),\n            ));\n\n            $response = curl_exec($curl);\n            $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code\n            curl_close($curl);\n            // $result = json_decode($response['invoice_id'], true);\n            $result = $response;\n\n            Log::info('Invoice response');\n            Log::info($status_code);\n            // Log::info(gettype($result));\n            Log::info($result);\n            $invoice = $result;\n\n            // //if response is 201 ok  continue\n            if ($status_code == 201) {\n\n\n                    //Sales Line\n\n\n                    Log::info($items);\n                    $investigations = [];\n                    $prescriptions = [];\n                    foreach($items as $item)\n                    {\n                        if($item['type'] == 'investigation')\n                        {\n                            array_push($investigations, $item);\n                        }\n                        else\n                        {\n                            array_push($prescriptions, $item);\n                        }\n                        }\n\n\n                        $line_count = 1;\n\n                    foreach($investigations as $key => $invest)\n                    {\n\n                        Log::info($invest['name']);\n                        Log::info(gettype((int) $key+1));\n                        $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';\n                        $procedure = Procedures::where('name',$invest['name'])->first();\n                        Log::info($procedure);\n                        $investigation = Investigations::where('id',$invest['item_id'])->first();\n                        $procedure_category = ProcedureCategories::where('id',$procedure->category)->first();\n                        Log::info('category');\n                        Log::info($procedure_category->name);\n                        $dimension = Dimension::where('name','like','%'.$procedure_category->name.'%')->first();\n                        if($dimension)\n                        {\n                            Log::info($dimension->name);\n                        }\n\n                        // Dimension\n                        if($investigation['admission_id'] !== null)\n                        {\n                            $patient_type = \"OP\";\n                        }\n                        else\n                        {\n                            $patient_type = \"IP\";\n                        }\n                        $salesLineData = [\n                            \"documentType\"=> \"Invoice\",\n                            \"documentNo\"=> $payment['receipt'],\n                            \"lineNo\"=> $line_count,\n                            \"type\"=> \"Service\",\n                            \"no\"=>$procedure->code,\n                            \"description\"=> $invest['name'],\n                            \"unitPrice\" => (int) $invest['price'],\n                            \"amountExclVAT\" => (int) $invest['amount'],\n                            \"amountInclVAT\" => (int) $invest['amount'],\n                            \"vatAmount\" => 0,\n                            \"quantity\" => 1,\n                            \"patientTypeCode\"=> $patient_type,\n                            \"departmentCode\"=> $dimension->code ?? null,\n                        ];\n\n                    $jsonData = '{';\n                    foreach ($salesLineData as $key => $value)\n                    if (is_int($value) && $key!=\"documentNo\" && $key!=\"lineNo\") {\n                        // If value is integer, no quotes needed\n                        $jsonData .= \"\\\"$key\\\":$value,\";\n                    } else\n                    {\n                        $jsonData .= \"\\\"$key\\\":\\\"\" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . \"\\\",\";\n                    }\n\n                    $jsonData = rtrim($jsonData, ',') . '}';\n                    $singleQuotedDataLine = $jsonData;\n\n\n                    $curl = curl_init();\n                    curl_setopt_array($curl, array(\n                        CURLOPT_URL => $salesLineEndpoint ,\n                        CURLOPT_RETURNTRANSFER => true,\n                        CURLOPT_ENCODING => '',\n                        CURLOPT_MAXREDIRS => 10,\n                        CURLOPT_TIMEOUT => 0,\n                        CURLOPT_FOLLOWLOCATION => true,\n                        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,\n                        CURLOPT_HTTPAUTH => CURLAUTH_NTLM,\n                        CURLOPT_USERPWD=> $credentials,\n                        CURLOPT_CUSTOMREQUEST => 'POST',\n                        CURLOPT_POSTFIELDS =>$singleQuotedDataLine,\n                        CURLOPT_HTTPHEADER => array(\n                            'Content-Type: application/json'\n                        ),\n                    ));\n\n                    Log::info($singleQuotedDataLine);\n\n                    $response = curl_exec($curl);\n                    $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code\n                    curl_close($curl);\n                    // $result = json_decode($response['invoice_id'], true);\n                    $result = $response;\n\n\n                    Log::info('Sales Line');\n                    Log::info($result);\n                    $line_count++;\n                    }\n                    //prescriptions\n                    // $prescriptions = json_decode($prescriptions);\n\n                    // array (\n                    //     'item_id' => 840781,\n                    //     'name' => 'DYNACORT 6MG TABLET',\n                    //     'type' => 'prescription',\n                    //     'quantity' => 1,\n                    //     'price' => 3554,\n                    //     'visit' => 308593,\n                    //     'amount' => 3554,\n                    //     'paid' => NULL,\n                    //     'service_type' => 'prescription',\n                    //   ),\n\n                    Log::info('All prescriptions');\n                    Log::info($prescriptions);\n\n                    foreach($prescriptions as $key => $prescription)\n                    {\n                        Log::info($prescription);\n                        Log::info(gettype((int) $key+1));\n                        Log::info($prescription['item_id']);\n\n                        $prescription_id = (int) $prescription['item_id'];\n\n                        Log::info($prescription_id);\n\n                        $drug_details = InventoryProducts::where('name',$prescription['name'])->first();\n                        Log::info($drug_details);\n\n\n                        // $full_prescription = Prescriptions::where('id','=',$prescription['item_id'])->first();\n\n                        $full_prescription = \\DB::table('evaluation_prescriptions')->where('id','=',$prescription['item_id'])->orderBy('created_at')->first();\n\n                        Log::info('full_prescription');\n                        Log::info(gettype($full_prescription));\n                        Log::info($full_prescription->id);\n\n                        // $full_\n                        $store = Store::where('id',$full_prescription->store_id)->first();\n                        $prescribed_by = $full_prescription->prescribed_by;\n                        $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';\n                        $drug_details = InventoryProducts::where('name',$prescription['name'])->first();\n                        Log::info($drug_details);\n                        $unit =  InventoryUnits::where('id', $drug_details->unit)->first();\n                        if($full_prescription->treatment_location_name == 'outpatient')\n                                {\n                                    $patient_type = \"OP\";\n                                }\n                                else\n                                {\n                                    $patient_type = \"IP\";\n                                }\n                        Log::info($prescription['item_id']);\n\n                        $salesLineData = [\n                            \"documentType\"=> \"Invoice\",\n                            \"documentNo\"=> $payment['receipt'],\n                            \"lineNo\"=> $line_count,\n                            \"type\"=> \"Inventory\",\n                            \"no\"=>$drug_details->item_no,\n                            \"description\"=> $drug_details->name,\n                            \"unitPrice\" =>  (int) $prescription['amount'],\n                            \"amountExclVAT\" =>  (int) $prescription['amount'],\n                            \"amountInclVAT\" =>  (int) $prescription['amount'],\n                            \"unitOfMeasure\" => $unit->name,\n                            \"vatAmount\" => 0,\n                            \"patientTypeCode\"=> $patient_type,\n                            \"departmentCode\"=> \"\",\n                            \"quantity\" => $full_prescription->quantity,\n                            \"locationCode\" =>  $store->code,\n                            \"expirationDate\" => \"0001-01-01\",\n                            \"visitNumber\" => strval($visit->id),\n                            \"wardCode\" => \"\",\n                            \"specialtyCode\" => \"\"\n                        ];\n\n\n\n                        $jsonData = '{';\n                            foreach ($salesLineData as $key => $value)\n                            if (is_int($value) && $key!=\"documentNo\" && $key!=\"lineNo\") {\n                                // If value is integer, no quotes needed\n                                $jsonData .= \"\\\"$key\\\":$value,\";\n                            } else\n                            {\n                                $jsonData .= \"\\\"$key\\\":\\\"\" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . \"\\\",\";\n                            }\n                        $jsonData = rtrim($jsonData, ',') . '}';\n                        $singleQuotedData = $jsonData;\n\n                        Log::info($singleQuotedData);\n                        $curl = curl_init();\n                        curl_setopt_array($curl, array(\n                            CURLOPT_URL => $salesLineEndpoint,\n                            CURLOPT_RETURNTRANSFER => true,\n                            CURLOPT_ENCODING => '',\n                            CURLOPT_MAXREDIRS => 10,\n                            CURLOPT_TIMEOUT => 0,\n                            CURLOPT_FOLLOWLOCATION => true,\n                            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,\n                            CURLOPT_HTTPAUTH => CURLAUTH_NTLM,\n                            CURLOPT_USERPWD=> $credentials,\n                            CURLOPT_CUSTOMREQUEST => 'POST',\n                            CURLOPT_POSTFIELDS =>$singleQuotedData,\n                            CURLOPT_HTTPHEADER => array(\n                                'Content-Type: application/json'\n                            ),\n                        ));\n\n                        $response = curl_exec($curl);\n                        $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code\n                        curl_close($curl);\n                        // $result = json_decode($response['invoice_id'], true);\n                        $result = $response;\n\n                        Log::info('Sales Line');\n                        Log::info($result);\n\n                        $line_count++;\n                    // return  $singleQuotedData;\n                    }\n\n\n            $this->createMicrosoftDynamicsReceipt($invoice,$payment);\n                return \"done\";\n\n\n    } else {\n        return false;\n    }\n\n        } catch (\\Exception $e) {\n            // Handle exceptions here\n            Log::error('An error occurred: ' . $e->getMessage());\n            return false; // Or handle the error as required\n        }\n\n\n    }\n\n\n    public function createMicrosoftDynamicsReceipt($invoice,$payment)\n    {\n\n                Log::info($payment);\n                $invoice = explode(\",\",$invoice);\n\n                Log::info($invoice);\n                $username = env('MICROSOFT_DYNAMICS_USERNAME');\n                $password =  env('MICROSOFT_DYNAMICS_PASSWORD');\n\n                // Base64 encode the username and password\n                $credentials = \"$username:$password\";\n\n                $receiptEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/PayGate/v1.0/companies('.$company.')/payments';\n\n                $receiptData = [\n                    \"transactionCode\"=> $payment['receipt'],\n                    \"transactionDate\"=> date('Y-m-d\\TH:i:s\\Z'),\n                    \"bankAccountNo\"=> \"\",\n                    \"payerID\"=> \"\",\n                    \"amount\"=> $payment['amount'],\n                    \"description\"=> \"\",\n                    \"paymentMode\"=> \"\",\n                    \"payerNames\"=> \"\",\n                    \"processedDateTime\"=>  date('Y-m-d\\TH:i:s\\Z'),\n                    \"status\"=> \"Pending\",\n                    \"sourceDocumentNo\"=> $payment['receipt'],\n                    \"sourceDocumentType\"=> \"Invoices\",\n                    \"customerNo\"=> \"\",\n                    \"accountNo\"=> \"\",\n                    \"providerID\"=> \"\",\n                    \"promiseToPay\"=> false,\n                    \"isCreditPayment\"=> false,\n                    \"creditReferenceNo\"=> \"\",\n                    \"isOverpaymentApplication\"=> false,\n                    \"overpaymentApplicationNo\"=> \"\",\n                    \"currencyCode\"=> \"\",\n                    \"serviceAmount\"=> 0,\n                    \"base64Attachment\"=> \"\"\n                ];\n\n            $jsonData = '{';\n            foreach ($receiptData as $key => $value)\n            if (is_int($value) && $key!=\"documentNo\" && $key!=\"lineNo\") {\n                // If value is integer, no quotes needed\n                $jsonData .= \"\\\"$key\\\":$value,\";\n            } else\n            {\n                $jsonData .= \"\\\"$key\\\":\\\"\" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . \"\\\",\";\n            }\n\n            $jsonData = rtrim($jsonData, ',') . '}';\n            $singleReceiptLine = $jsonData;\n\n\n            $curl = curl_init();\n            curl_setopt_array($curl, array(\n                CURLOPT_URL => $receiptEndpoint ,\n                CURLOPT_RETURNTRANSFER => true,\n                CURLOPT_ENCODING => '',\n                CURLOPT_MAXREDIRS => 10,\n                CURLOPT_TIMEOUT => 0,\n                CURLOPT_FOLLOWLOCATION => true,\n                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,\n                CURLOPT_HTTPAUTH => CURLAUTH_NTLM,\n                CURLOPT_USERPWD=> $credentials,\n                CURLOPT_CUSTOMREQUEST => 'POST',\n                CURLOPT_POSTFIELDS =>$singleReceiptLine,\n                CURLOPT_HTTPHEADER => array(\n                    'Content-Type: application/json'\n                ),\n            ));\n\n            Log::info($receiptData);\n\n            $response = curl_exec($curl);\n            $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code\n            curl_close($curl);\n            // $result = json_decode($response['invoice_id'], true);\n            $result = $response;\n\n\n            Log::info('Receipt Payment');\n            Log::info($result);\n\n\n    }\n\n    public function prepareBill()\n    {\n        return DB::transaction(function () {\n            $existing_bill = $this->checkUnpaidBill((int)request('patient'));\n\n            if($existing_bill) {\n                $prepared_bill = $existing_bill;\n            } else {\n                $prepared_bill = PreparedBill::create([\n                    'patient_id' => (int)request('patient'),\n                    'mode' => request('mode'),\n                    'total_amount' => (int)request('total_amount'),\n                    'amount_to_pay' => (int)request('amount_to_pay'),\n                    'status' => null\n                ]);\n            }\n\n            foreach(request('bills') as $bill) {\n                $data = array_merge(['prepared_bill_id' => $prepared_bill->id], $bill);\n\n                PreparedBillDetails::updateOrCreate($bill, $data);\n            }\n\n            return response()->json([\n                \"message\" => \"Bill raised successfully\",\n                \"alert\" => \"success\",\n                \"key\" => $prepared_bill->unique_id\n            ]);\n        });\n    }\n\n    public function checkUnpaidBill ($patient_id)\n    {\n        return PreparedBill::where('patient_id', $patient_id)\n            ->whereNull('status')->latest()->first();\n    }\n\n    /*\n     * fetch prepared bill by key\n     * */\n    public function fetchPreparedBill ()\n    {\n        $bill = PreparedBill::where('unique_id', request('bill_id'))->firstOrFail();\n\n        return new PreparedBillResource($bill);\n    }\n\n    /*\n     * settle the previously raised bill\n     * */\n    public function settleRaisedBill ()\n    {\n        return DB::transaction(function () {\n            $data = request('data');\n\n            $bill = PreparedBill::where('unique_id', $data['key'])->firstOrFail();\n\n            if($data['paid_amount'] >= $data['total_amount']) { // means whole amount paid\n                $bill->update([\n                    'status' => \"completed\"\n                ]);\n\n                return $this->recordPayment($bill->patient->id, true);\n            } else {\n                $bill->update([\n                    'status' => \"partially_paid\"\n                ]);\n\n                return $this->recordPayment($bill->patient->id, false);\n            }\n        });\n    }\n\n    /*\n     * get patient account balance\n     * */\n    public  function getPatientAccountBalance ($patient)\n    {\n        $account = $patient->account;\n\n        return $account ?  $account->balance : 0;\n    }\n\n    /*\n     * return visit bills : currently in use when splitting bills\n     * */\n    public function fetchVisitBills ($visit)\n    {\n        ini_set('max_execution_time', 0);\n\n        set_time_limit(0);\n\n        $data = (new PatientVisitBill($visit))->getData();\n\n        return $data;\n    }\n}\n
+===================================================================
+diff --git a/Repositories/BillingRepository.php b/Repositories/BillingRepository.php
+--- a/Repositories/BillingRepository.php
++++ b/Repositories/BillingRepository.php
+@@ -229,381 +229,381 @@
+     public function createMicrosoftDynamicsData($payment, $items)
+     {
+             Log::info($items);
+-            try {
++    try {
+
+-            Log::info("Creating microsoft dynamics invoice");
++    Log::info("Creating microsoft dynamics invoice");
+
+-                            $company =  env('MICROSOFT_DYNAMICS_COMPANY');
+
+        $linkIp = env('MICROSOFT_DYNAMICS_IP');
+
+        $apiEndpoint = 'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesInvoiceHeaders?$expand=salesLinesBuffer';
++                    $company =  env('MICROSOFT_DYNAMICS_COMPANY');
+
+        $linkIp = env('MICROSOFT_DYNAMICS_IP');
+
+        $apiEndpoint = 'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesInvoiceHeaders?$expand=salesLinesBuffer';
+
+-            $username = env('MICROSOFT_DYNAMICS_USERNAME');
+-            $password =  env('MICROSOFT_DYNAMICS_PASSWORD');
++    $username = env('MICROSOFT_DYNAMICS_USERNAME');
++    $password =  env('MICROSOFT_DYNAMICS_PASSWORD');
+
+-            // Base64 encode the username and password
+-            $credentials = "$username:$password";
+-            $visit = Visit::where('patient',$payment['patient'])->latest()->first();
++    // Base64 encode the username and password
++    $credentials = "$username:$password";
++    $visit = Visit::where('patient',$payment['patient'])->latest()->first();
+
+-            $notes = DoctorNotes::where('visit',$visit->id)->first();
+-            \Log::info($notes);
++    $notes = DoctorNotes::where('visit',$visit->id)->first();
++    \Log::info($notes);
+
+
+-            // $invoice = Invoice::create([
+-            //     'visit' => $visit->id,
+-            //     'user_id' => $payment->user,
+-            //     'for_cash' => 1,
+-            //     'patient_id' => $payment['patient'],
+-            //     'amount' => $payment['amount'],
+-            //         ]);
++    // $invoice = Invoice::create([
++    //     'visit' => $visit->id,
++    //     'user_id' => $payment->user,
++    //     'for_cash' => 1,
++    //     'patient_id' => $payment['patient'],
++    //     'amount' => $payment['amount'],
++    //         ]);
+
+-            //         Log::info($invoice);
+-            $patient = Patients::where('id', $payment['patient'])->first();
+-            $patient_name = $patient['first_name'] . " " . $patient['middle_name'] . " " . $patient['last_name'];
+-            Log::info($patient['first_name']);
+-            $document_date = \Carbon\Carbon::today()->format("Y-m-d");
+-            // $visit = Visit::where('id',$invoice->visit)->first();
+-            $investigations = [];
+-            $prescriptions = [];
+-            foreach($items as $item)
+-            {
+-                if($item['type'] == 'investigation')
+-                {
+-                    array_push($investigations, $item);
+-                }
+-                else
+-                {
+-                    array_push($prescriptions, $item);
+-                }
+-            }
++    //         Log::info($invoice);
++    $patient = Patients::where('id', $payment['patient'])->first();
++    $patient_name = $patient['first_name'] . " " . $patient['middle_name'] . " " . $patient['last_name'];
++    Log::info($patient['first_name']);
++    $document_date = \Carbon\Carbon::today()->format("Y-m-d");
++    // $visit = Visit::where('id',$invoice->visit)->first();
++    $investigations = [];
++    $prescriptions = [];
++    foreach($items as $item)
++    {
++        if($item['type'] == 'investigation')
++        {
++            array_push($investigations, $item);
++        }
++        else
++        {
++            array_push($prescriptions, $item);
++        }
++    }
+
+-            //Doctor Details
+-            $all_doctors = [];
+-            Log::info($investigations);
++    //Doctor Details
++    $all_doctors = [];
++    Log::info($investigations);
+
+-            foreach($investigations as $invest)
+-            {
++    foreach($investigations as $invest)
++    {
+
+
+-                $investigation = Investigations::where('id',$invest['item_id'])->first();
+-                \Log::info($investigation);
++        $investigation = Investigations::where('id',$invest['item_id'])->first();
++        \Log::info($investigation);
+
+-                if($investigation->performing_doctor)
+-                {
+-                    $procedure_doctor = User::where('id',strval($investigation->performing_doctor))->first();
+-                    array_push($all_doctors, $procedure_doctor);
+-                }
++        if($investigation->performing_doctor)
++        {
++            $procedure_doctor = User::where('id',strval($investigation->performing_doctor))->first();
++            array_push($all_doctors, $procedure_doctor);
++        }
+
+
+-            }
++    }
+
+-            // Log::info("Line 94");
+-            // //check if invoice is insurance/cash if insurance retrieve insurance name and code
++    // Log::info("Line 94");
++    // //check if invoice is insurance/cash if insurance retrieve insurance name and code
+
+-            $data = [
+-                "documentType"=> "Invoice",
+-                "no"=> $payment['receipt'],
+-                "customerNo"=> "",
+-                "customerName"=> "",
+-                "patientNo"=> $payment['patient'],
+-                "patientName"=> $patient_name,
+-                "documentDate"=> $document_date,
+-                "postingDate"=> $document_date,
+-                "admittedByDoctorNo"=> $all_doctors[0]->employee_number ?? null,
+-                "admittingDoctorName"=> $all_doctors[0]->full_name ?? null,
+-                "patientTypeCode"=> "",
+-                "departmentCode"=> "",
+-                "wardCode"=> "",
+-                "orderDate"=>$document_date,
+-                "visitNumber"=> $visit->id,
+-                "visitStartDate"=> $visit->created_at->format('Y-m-d'),
+-                "visitEndDate"=> $visit->created_at->format('Y-m-d'),
+-                "icd10Code"=> "",
+-                "insuranceSchemeCode"=> "",
+-                "insuranceSchemeName"=> "",
+-                "billStatus"=> "Final",
+-                "policyNumber"=> "",
+-                "principalMember"=> "",
+-                "relationToPrincipal"=> "Self",
+-                "isCashCustomer" => true,
+-            ];
++    $data = [
++        "documentType"=> "Invoice",
++        "no"=> $payment['receipt'],
++        "customerNo"=> "",
++        "customerName"=> "",
++        "patientNo"=> $payment['patient'],
++        "patientName"=> $patient_name,
++        "documentDate"=> $document_date,
++        "postingDate"=> $document_date,
++        "admittedByDoctorNo"=> $all_doctors[0]->employee_number ?? null,
++        "admittingDoctorName"=> $all_doctors[0]->full_name ?? null,
++        "patientTypeCode"=> "",
++        "departmentCode"=> "",
++        "wardCode"=> "",
++        "orderDate"=>$document_date,
++        "visitNumber"=> $visit->id,
++        "visitStartDate"=> $visit->created_at->format('Y-m-d'),
++        "visitEndDate"=> $visit->created_at->format('Y-m-d'),
++        "icd10Code"=> "",
++        "insuranceSchemeCode"=> "",
++        "insuranceSchemeName"=> "",
++        "billStatus"=> "Final",
++        "policyNumber"=> "",
++        "principalMember"=> "",
++        "relationToPrincipal"=> "Self",
++        "isCashCustomer" => true,
++    ];
+
+-            $jsonData = '{';
+-            foreach ($data as $key => $value) {
+-                $jsonData .= "\"$key\":\"" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . "\",";
+-            }
+-            $jsonData = rtrim($jsonData, ',') . '}';
+-            $singleQuotedData = $jsonData;
++    $jsonData = '{';
++    foreach ($data as $key => $value) {
++        $jsonData .= "\"$key\":\"" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . "\",";
++    }
++    $jsonData = rtrim($jsonData, ',') . '}';
++    $singleQuotedData = $jsonData;
+
+-            Log::info($singleQuotedData);
+-            $curl = curl_init();
+-            curl_setopt_array($curl, array(
+-                CURLOPT_URL => $apiEndpoint ,
+-                CURLOPT_RETURNTRANSFER => true,
+-                CURLOPT_ENCODING => '',
+-                CURLOPT_MAXREDIRS => 10,
+-                CURLOPT_TIMEOUT => 0,
+-                CURLOPT_FOLLOWLOCATION => true,
+-                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+-                CURLOPT_HTTPAUTH => CURLAUTH_NTLM,
+-                CURLOPT_USERPWD=> $credentials,
+-                CURLOPT_CUSTOMREQUEST => 'POST',
+-                CURLOPT_POSTFIELDS =>$singleQuotedData,
+-                CURLOPT_HTTPHEADER => array(
+-                    'Content-Type: application/json'
+-                ),
+-            ));
++    Log::info($singleQuotedData);
++    $curl = curl_init();
++    curl_setopt_array($curl, array(
++        CURLOPT_URL => $apiEndpoint ,
++        CURLOPT_RETURNTRANSFER => true,
++        CURLOPT_ENCODING => '',
++        CURLOPT_MAXREDIRS => 10,
++        CURLOPT_TIMEOUT => 0,
++        CURLOPT_FOLLOWLOCATION => true,
++        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
++        CURLOPT_HTTPAUTH => CURLAUTH_NTLM,
++        CURLOPT_USERPWD=> $credentials,
++        CURLOPT_CUSTOMREQUEST => 'POST',
++        CURLOPT_POSTFIELDS =>$singleQuotedData,
++        CURLOPT_HTTPHEADER => array(
++            'Content-Type: application/json'
++        ),
++    ));
+
+-            $response = curl_exec($curl);
+-            $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code
+-            curl_close($curl);
+-            // $result = json_decode($response['invoice_id'], true);
+-            $result = $response;
++    $response = curl_exec($curl);
++    $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code
++    curl_close($curl);
++    // $result = json_decode($response['invoice_id'], true);
++    $result = $response;
+
+-            Log::info('Invoice response');
+-            Log::info($status_code);
+-            // Log::info(gettype($result));
+-            Log::info($result);
+-            $invoice = $result;
++    Log::info('Invoice response');
++    Log::info($status_code);
++    // Log::info(gettype($result));
++    Log::info($result);
++    $invoice = $result;
+
+-            // //if response is 201 ok  continue
+-            if ($status_code == 201) {
++    // //if response is 201 ok  continue
++    if ($status_code == 201) {
+
+
+-                    //Sales Line
++               //Sales Line
+
+
+-                    Log::info($items);
+-                    $investigations = [];
+-                    $prescriptions = [];
+-                    foreach($items as $item)
+-                    {
+-                        if($item['type'] == 'investigation')
+-                        {
+-                            array_push($investigations, $item);
+-                        }
+-                        else
+-                        {
+-                            array_push($prescriptions, $item);
+-                        }
+-                        }
++            Log::info($items);
++            $investigations = [];
++            $prescriptions = [];
++            foreach($items as $item)
++            {
++                if($item['type'] == 'investigation')
++                {
++                    array_push($investigations, $item);
++                }
++                else
++                {
++                    array_push($prescriptions, $item);
++                }
++                }
+
+
+-                        $line_count = 1;
++                $line_count = 1;
+
+-                    foreach($investigations as $key => $invest)
+-                    {
++            foreach($investigations as $key => $invest)
++            {
+
+-                        Log::info($invest['name']);
+-                        Log::info(gettype((int) $key+1));
+-                        $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';
+-                        $procedure = Procedures::where('name',$invest['name'])->first();
+-                        Log::info($procedure);
+-                        $investigation = Investigations::where('id',$invest['item_id'])->first();
+-                        $procedure_category = ProcedureCategories::where('id',$procedure->category)->first();
+-                        Log::info('category');
+-                        Log::info($procedure_category->name);
+-                        $dimension = Dimension::where('name','like','%'.$procedure_category->name.'%')->first();
+-                        if($dimension)
+-                        {
+-                            Log::info($dimension->name);
+-                        }
++                Log::info($invest['name']);
++                Log::info(gettype((int) $key+1));
++                $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';
++                $procedure = Procedures::where('name',$invest['name'])->first();
++                Log::info($procedure);
++                $investigation = Investigations::where('id',$invest['item_id'])->first();
++                $procedure_category = ProcedureCategories::where('id',$procedure->category)->first();
++                Log::info('category');
++                Log::info($procedure_category->name);
++                $dimension = Dimension::where('name','like','%'.$procedure_category->name.'%')->first();
++                if($dimension)
++                {
++                    Log::info($dimension->name);
++                }
+
+-                        // Dimension
+-                        if($investigation['admission_id'] !== null)
+-                        {
+-                            $patient_type = "OP";
+-                        }
+-                        else
+-                        {
+-                            $patient_type = "IP";
+-                        }
+-                        $salesLineData = [
+-                            "documentType"=> "Invoice",
+-                            "documentNo"=> $payment['receipt'],
+-                            "lineNo"=> $line_count,
+-                            "type"=> "Service",
+-                            "no"=>$procedure->code,
+-                            "description"=> $invest['name'],
+-                            "unitPrice" => (int) $invest['price'],
+-                            "amountExclVAT" => (int) $invest['amount'],
+-                            "amountInclVAT" => (int) $invest['amount'],
+-                            "vatAmount" => 0,
+-                            "quantity" => 1,
+-                            "patientTypeCode"=> $patient_type,
+-                            "departmentCode"=> $dimension->code ?? null,
+-                        ];
++                // Dimension
++                if($investigation['admission_id'] !== null)
++                {
++                    $patient_type = "OP";
++                }
++                else
++                {
++                    $patient_type = "IP";
++                }
++                $salesLineData = [
++                    "documentType"=> "Invoice",
++                    "documentNo"=> $payment['receipt'],
++                    "lineNo"=> $line_count,
++                    "type"=> "Service",
++                    "no"=>$procedure->code,
++                    "description"=> $invest['name'],
++                    "unitPrice" => (int) $invest['price'],
++                    "amountExclVAT" => (int) $invest['amount'],
++                    "amountInclVAT" => (int) $invest['amount'],
++                    "vatAmount" => 0,
++                    "quantity" => 1,
++                    "patientTypeCode"=> $patient_type,
++                    "departmentCode"=> $dimension->code ?? null,
++                ];
+
+-                    $jsonData = '{';
+-                    foreach ($salesLineData as $key => $value)
+-                    if (is_int($value) && $key!="documentNo" && $key!="lineNo") {
+-                        // If value is integer, no quotes needed
+-                        $jsonData .= "\"$key\":$value,";
+-                    } else
+-                    {
+-                        $jsonData .= "\"$key\":\"" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . "\",";
+-                    }
++            $jsonData = '{';
++            foreach ($salesLineData as $key => $value)
++            if (is_int($value) && $key!="documentNo" && $key!="lineNo") {
++                // If value is integer, no quotes needed
++                $jsonData .= "\"$key\":$value,";
++            } else
++            {
++                $jsonData .= "\"$key\":\"" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . "\",";
++            }
+
+-                    $jsonData = rtrim($jsonData, ',') . '}';
+-                    $singleQuotedDataLine = $jsonData;
++            $jsonData = rtrim($jsonData, ',') . '}';
++            $singleQuotedDataLine = $jsonData;
+
+
+-                    $curl = curl_init();
+-                    curl_setopt_array($curl, array(
+-                        CURLOPT_URL => $salesLineEndpoint ,
+-                        CURLOPT_RETURNTRANSFER => true,
+-                        CURLOPT_ENCODING => '',
+-                        CURLOPT_MAXREDIRS => 10,
+-                        CURLOPT_TIMEOUT => 0,
+-                        CURLOPT_FOLLOWLOCATION => true,
+-                        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+-                        CURLOPT_HTTPAUTH => CURLAUTH_NTLM,
+-                        CURLOPT_USERPWD=> $credentials,
+-                        CURLOPT_CUSTOMREQUEST => 'POST',
+-                        CURLOPT_POSTFIELDS =>$singleQuotedDataLine,
+-                        CURLOPT_HTTPHEADER => array(
+-                            'Content-Type: application/json'
+-                        ),
+-                    ));
++            $curl = curl_init();
++            curl_setopt_array($curl, array(
++                CURLOPT_URL => $salesLineEndpoint ,
++                CURLOPT_RETURNTRANSFER => true,
++                CURLOPT_ENCODING => '',
++                CURLOPT_MAXREDIRS => 10,
++                CURLOPT_TIMEOUT => 0,
++                CURLOPT_FOLLOWLOCATION => true,
++                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
++                CURLOPT_HTTPAUTH => CURLAUTH_NTLM,
++                CURLOPT_USERPWD=> $credentials,
++                CURLOPT_CUSTOMREQUEST => 'POST',
++                CURLOPT_POSTFIELDS =>$singleQuotedDataLine,
++                CURLOPT_HTTPHEADER => array(
++                    'Content-Type: application/json'
++                ),
++            ));
+
+-                    Log::info($singleQuotedDataLine);
++            Log::info($singleQuotedDataLine);
+
+-                    $response = curl_exec($curl);
+-                    $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code
+-                    curl_close($curl);
+-                    // $result = json_decode($response['invoice_id'], true);
+-                    $result = $response;
++            $response = curl_exec($curl);
++            $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code
++            curl_close($curl);
++            // $result = json_decode($response['invoice_id'], true);
++            $result = $response;
+
+
+-                    Log::info('Sales Line');
+-                    Log::info($result);
+-                    $line_count++;
+-                    }
+-                    //prescriptions
+-                    // $prescriptions = json_decode($prescriptions);
++            Log::info('Sales Line');
++            Log::info($result);
++            $line_count++;
++            }
++            //prescriptions
++            // $prescriptions = json_decode($prescriptions);
+
+-                    // array (
+-                    //     'item_id' => 840781,
+-                    //     'name' => 'DYNACORT 6MG TABLET',
+-                    //     'type' => 'prescription',
+-                    //     'quantity' => 1,
+-                    //     'price' => 3554,
+-                    //     'visit' => 308593,
+-                    //     'amount' => 3554,
+-                    //     'paid' => NULL,
+-                    //     'service_type' => 'prescription',
+-                    //   ),
++            // array (
++            //     'item_id' => 840781,
++            //     'name' => 'DYNACORT 6MG TABLET',
++            //     'type' => 'prescription',
++            //     'quantity' => 1,
++            //     'price' => 3554,
++            //     'visit' => 308593,
++            //     'amount' => 3554,
++            //     'paid' => NULL,
++            //     'service_type' => 'prescription',
++            //   ),
+
+-                    Log::info('All prescriptions');
+-                    Log::info($prescriptions);
++            Log::info('All prescriptions');
++            Log::info($prescriptions);
+
+-                    foreach($prescriptions as $key => $prescription)
+-                    {
+-                        Log::info($prescription);
+-                        Log::info(gettype((int) $key+1));
+-                        Log::info($prescription['item_id']);
++            foreach($prescriptions as $key => $prescription)
++            {
++                Log::info($prescription);
++                Log::info(gettype((int) $key+1));
++                Log::info($prescription['item_id']);
+
+-                        $prescription_id = (int) $prescription['item_id'];
++                $prescription_id = (int) $prescription['item_id'];
+
+-                        Log::info($prescription_id);
++                Log::info($prescription_id);
+
+-                        $drug_details = InventoryProducts::where('name',$prescription['name'])->first();
+-                        Log::info($drug_details);
++                $drug_details = InventoryProducts::where('name',$prescription['name'])->first();
++                Log::info($drug_details);
+
+
+-                        // $full_prescription = Prescriptions::where('id','=',$prescription['item_id'])->first();
++                // $full_prescription = Prescriptions::where('id','=',$prescription['item_id'])->first();
+
+-                        $full_prescription = \DB::table('evaluation_prescriptions')->where('id','=',$prescription['item_id'])->orderBy('created_at')->first();
++                $full_prescription = \DB::table('evaluation_prescriptions')->where('id','=',$prescription['item_id'])->orderBy('created_at')->first();
+
+-                        Log::info('full_prescription');
+-                        Log::info(gettype($full_prescription));
+-                        Log::info($full_prescription->id);
++                Log::info('full_prescription');
++                Log::info(gettype($full_prescription));
++                Log::info($full_prescription->id);
+
+-                        // $full_
+-                        $store = Store::where('id',$full_prescription->store_id)->first();
+-                        $prescribed_by = $full_prescription->prescribed_by;
+-                        $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';
+-                        $drug_details = InventoryProducts::where('name',$prescription['name'])->first();
+-                        Log::info($drug_details);
+-                        $unit =  InventoryUnits::where('id', $drug_details->unit)->first();
+-                        if($full_prescription->treatment_location_name == 'outpatient')
+-                                {
+-                                    $patient_type = "OP";
+-                                }
+-                                else
+-                                {
+-                                    $patient_type = "IP";
+-                                }
+-                        Log::info($prescription['item_id']);
++                // $full_
++                $store = Store::where('id',$full_prescription->store_id)->first();
++                $prescribed_by = $full_prescription->prescribed_by;
++                $salesLineEndpoint =   'http://34.195.156.236:7048/BC230/api/Nexus/apollo/v1.0/companies(('.$company.'))/salesLinesBuffer';
++                $drug_details = InventoryProducts::where('name',$prescription['name'])->first();
++                Log::info($drug_details);
++                $unit =  InventoryUnits::where('id', $drug_details->unit)->first();
++                if($full_prescription->treatment_location_name == 'outpatient')
++                        {
++                            $patient_type = "OP";
++                        }
++                        else
++                        {
++                            $patient_type = "IP";
++                        }
++                Log::info($prescription['item_id']);
+
+-                        $salesLineData = [
+-                            "documentType"=> "Invoice",
+-                            "documentNo"=> $payment['receipt'],
+-                            "lineNo"=> $line_count,
+-                            "type"=> "Inventory",
+-                            "no"=>$drug_details->item_no,
+-                            "description"=> $drug_details->name,
+-                            "unitPrice" =>  (int) $prescription['amount'],
+-                            "amountExclVAT" =>  (int) $prescription['amount'],
+-                            "amountInclVAT" =>  (int) $prescription['amount'],
+-                            "unitOfMeasure" => $unit->name,
+-                            "vatAmount" => 0,
+-                            "patientTypeCode"=> $patient_type,
+-                            "departmentCode"=> "",
+-                            "quantity" => $full_prescription->quantity,
+-                            "locationCode" =>  $store->code,
+-                            "expirationDate" => "0001-01-01",
+-                            "visitNumber" => strval($visit->id),
+-                            "wardCode" => "",
+-                            "specialtyCode" => ""
+-                        ];
++                $salesLineData = [
++                    "documentType"=> "Invoice",
++                    "documentNo"=> $payment['receipt'],
++                    "lineNo"=> $line_count,
++                    "type"=> "Inventory",
++                    "no"=>$drug_details->item_no,
++                    "description"=> $drug_details->name,
++                    "unitPrice" =>  (int) $prescription['amount'],
++                    "amountExclVAT" =>  (int) $prescription['amount'],
++                    "amountInclVAT" =>  (int) $prescription['amount'],
++                    "unitOfMeasure" => $unit->name,
++                    "vatAmount" => 0,
++                    "patientTypeCode"=> $patient_type,
++                    "departmentCode"=> "",
++                    "quantity" => $full_prescription->quantity,
++                    "locationCode" =>  $store->code,
++                    "expirationDate" => "0001-01-01",
++                    "visitNumber" => strval($visit->id),
++                    "wardCode" => "",
++                    "specialtyCode" => ""
++                ];
+
+
+
+-                        $jsonData = '{';
+-                            foreach ($salesLineData as $key => $value)
+-                            if (is_int($value) && $key!="documentNo" && $key!="lineNo") {
+-                                // If value is integer, no quotes needed
+-                                $jsonData .= "\"$key\":$value,";
+-                            } else
+-                            {
+-                                $jsonData .= "\"$key\":\"" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . "\",";
+-                            }
+-                        $jsonData = rtrim($jsonData, ',') . '}';
+-                        $singleQuotedData = $jsonData;
++                $jsonData = '{';
++                    foreach ($salesLineData as $key => $value)
++                    if (is_int($value) && $key!="documentNo" && $key!="lineNo") {
++                        // If value is integer, no quotes needed
++                        $jsonData .= "\"$key\":$value,";
++                    } else
++                    {
++                        $jsonData .= "\"$key\":\"" . (is_bool($value) ? ($value ? 'true' : 'false') : $value) . "\",";
++                    }
++                $jsonData = rtrim($jsonData, ',') . '}';
++                $singleQuotedData = $jsonData;
+
+-                        Log::info($singleQuotedData);
+-                        $curl = curl_init();
+-                        curl_setopt_array($curl, array(
+-                            CURLOPT_URL => $salesLineEndpoint,
+-                            CURLOPT_RETURNTRANSFER => true,
+-                            CURLOPT_ENCODING => '',
+-                            CURLOPT_MAXREDIRS => 10,
+-                            CURLOPT_TIMEOUT => 0,
+-                            CURLOPT_FOLLOWLOCATION => true,
+-                            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+-                            CURLOPT_HTTPAUTH => CURLAUTH_NTLM,
+-                            CURLOPT_USERPWD=> $credentials,
+-                            CURLOPT_CUSTOMREQUEST => 'POST',
+-                            CURLOPT_POSTFIELDS =>$singleQuotedData,
+-                            CURLOPT_HTTPHEADER => array(
+-                                'Content-Type: application/json'
+-                            ),
+-                        ));
++                Log::info($singleQuotedData);
++                $curl = curl_init();
++                curl_setopt_array($curl, array(
++                    CURLOPT_URL => $salesLineEndpoint,
++                    CURLOPT_RETURNTRANSFER => true,
++                    CURLOPT_ENCODING => '',
++                    CURLOPT_MAXREDIRS => 10,
++                    CURLOPT_TIMEOUT => 0,
++                    CURLOPT_FOLLOWLOCATION => true,
++                    CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
++                    CURLOPT_HTTPAUTH => CURLAUTH_NTLM,
++                    CURLOPT_USERPWD=> $credentials,
++                    CURLOPT_CUSTOMREQUEST => 'POST',
++                    CURLOPT_POSTFIELDS =>$singleQuotedData,
++                    CURLOPT_HTTPHEADER => array(
++                        'Content-Type: application/json'
++                    ),
++                ));
+
+-                        $response = curl_exec($curl);
+-                        $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code
+-                        curl_close($curl);
+-                        // $result = json_decode($response['invoice_id'], true);
+-                        $result = $response;
++                $response = curl_exec($curl);
++                $status_code = curl_getinfo($curl, CURLINFO_HTTP_CODE); // Get the HTTP status code
++                curl_close($curl);
++                // $result = json_decode($response['invoice_id'], true);
++                $result = $response;
+
+-                        Log::info('Sales Line');
+-                        Log::info($result);
++                Log::info('Sales Line');
++                Log::info($result);
+
+-                        $line_count++;
+-                    // return  $singleQuotedData;
+-                    }
++                $line_count++;
++            // return  $singleQuotedData;
++            }
+
+
+-            $this->createMicrosoftDynamicsReceipt($invoice,$payment);
+-                return "done";
++       $this->createMicrosoftDynamicsReceipt($invoice,$payment);
++        return "done";
+
+
+     } else {
+Index: Resources/views/payments/invoiced.blade.php
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?php\nextract($data);\n?>\n\n@extends('finance::payments.includes.layout')\n@section('box_title', 'Patient Cash Invoices Section')\n\n@section('extra_search')\n\n@stop\n\n@section('tab')\n    @if($invoiced instanceof \\Illuminate\\Pagination\\LengthAwarePaginator)\n        {{ $invoiced->appends(request()->all())->links() }}\n    @endif\n\n    <div class=\"table-responsive\">\n        <table class=\"table data-table\">\n            <thead>\n            <tr>\n                <th>#</th>\n                <th>Name</th>\n                <th>Mobile</th>\n                <th>Invoice No</th>\n                <th>Amount</th>\n                <th>Waived</th>\n                <th>Paid</th>\n                <th>Balance</th>\n                <th>Status</th>\n                <th>Actions</th>\n            </tr>\n            </thead>\n            <tbody>\n            @foreach($invoiced as $item)\n                <tr>\n                    <td>{{ $loop->iteration }}</td>\n                    <td>{{ optional($item->patient)->full_name ?? '' }}</td>\n                    <td>{{ optional($item->patient)->mobile ??'' }}</td>\n                    <td>{{ $item->invoice_no }}</td>\n                    <td>{{ number_format($item->amount, 2) }}</td>\n                    <td>{{ number_format($item->waivers->sum('amount'), 2) }}</td>\n                    <td>{{ number_format($item->paid, 2) }}</td>\n                    <td>{{ number_format($item->balance, 2) }}</td>\n                    <td>\n                        @if($item->balance <= 0)\n                            <span class=\"label label-success\"><i class=\"fa fa-check\"></i> complete</span>\n                        @else\n                            <span class=\"label label-danger\"><i class=\"fa fa-times\"></i> Incomplete</span>\n                        @endif\n                    </td>\n\n\n\n                    <td>\n                        @if(permit(\"finance.operation-buttons\"))\n                        <a href=\"{{ route('finance.cash.action', ['invoiced', 'receive-payment', 'patient_id' => optional($item->patient)->id, 'invoice_id' => $item->id]) }}\" class=\"btn btn-primary btn-xs\">\n                            <i class=\"fa fa-hand-lizard-o\"></i> Receive Payment\n                        </a>\n                        @endif\n\n                        <a class=\"btn btn-success btn-xs\" href=\"{{ route('finance.account.index', [optional($item->patient)->id, 'overview']) }}\">\n                            <i class=\"fa fa-address-book-o\"></i> View Account\n                        </a>\n\n                        @if(m_setting('finance.enable_waivers'))\n                            <a href=\"{{ route('finance.waivers.index', $item->id) }}\" class=\"btn btn-warning btn-xs\">\n                                <i class=\"fa fa-flag\"></i> Waiver\n                            </a>\n                        @endif\n\n                        @if(m_setting('finance.enable_collaterals'))\n                            <a href=\"{{ route('finance.collaterals.index', [optional($item->patient)->id, 'invoice_id' => $item->id]) }}\" class=\"btn btn-danger btn-xs\">\n                                <i class=\"fa fa-certificate\"></i> Collateral\n                            </a>\n                        @endif\n\n                        <a href=\"{{ route('finance.view_invoice_bill', $item->id) }}\" class=\"btn btn-info btn-xs\">\n                            <i class=\"fa fa-eye\"></i> View Invoice\n                        </a>\n\n                    </td>\n\n                </tr>\n            @endforeach\n            </tbody>\n        </table>\n    </div>\n\n    <script>\n        $(document).ready(function() {\n            $('.data-table').dataTable({\n                order: [],\n                scrollY:        400,\n                scrollX:        true,\n                scrollCollapse: true,\n                paging:         false,\n                fixedColumns:   {\n                    leftColumns: 2,\n                },\n                language: {\n                    searchPlaceholder: \"Search in this page...\"\n                }\n            });\n        });\n    </script>\n\n@stop\n\n
+===================================================================
+diff --git a/Resources/views/payments/invoiced.blade.php b/Resources/views/payments/invoiced.blade.php
+--- a/Resources/views/payments/invoiced.blade.php
++++ b/Resources/views/payments/invoiced.blade.php
+@@ -48,15 +48,10 @@
+                             <span class="label label-danger"><i class="fa fa-times"></i> Incomplete</span>
+                         @endif
+                     </td>
+-
+-
+-
+                     <td>
+-                        @if(permit("finance.operation-buttons"))
+                         <a href="{{ route('finance.cash.action', ['invoiced', 'receive-payment', 'patient_id' => optional($item->patient)->id, 'invoice_id' => $item->id]) }}" class="btn btn-primary btn-xs">
+                             <i class="fa fa-hand-lizard-o"></i> Receive Payment
+                         </a>
+-                        @endif
+
+                         <a class="btn btn-success btn-xs" href="{{ route('finance.account.index', [optional($item->patient)->id, 'overview']) }}">
+                             <i class="fa fa-address-book-o"></i> View Account
+@@ -79,7 +74,6 @@
+                         </a>
+
+                     </td>
+-
+                 </tr>
+             @endforeach
+             </tbody>
+Index: Library/PatientVisitBill.php
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?php\n/**\n * Created by PhpStorm\n * User: jjoek\n * Date: 2020-01-10\n * Time: 21:15\n */\n\nnamespace Ignite\\Finance\\Library;\n\n\nuse Ignite\\Reception\\Transformers\\PatientResource;\nuse Ignite\\Theatre\\Entities\\TheatreOperation;\nuse Ignite\\Theatre\\Library\\Evaluation\\TheatreOperations\\Charges;\n\nclass PatientVisitBill\n{\n    protected $visit;\n\n    protected $total;\n\n    public function __construct($visit)\n    {\n        $this->visit = $visit;\n    }\n\n    /*\n     * $visit -> visit model\n     * */\n    public function getData ()\n    {\n        ini_set('max_execution_time', 0);\n\n        set_time_limit(0);\n\n        $data = array_merge(\n            $this->getInvestigations(),\n            $this->getPrescriptions(),\n            $this->getCopayments(),\n            request()->has('split_bill') && request('split_bill') ? [] : $this->getChangedToCash(),\n            $this->getConsumables(),\n            $this->getWardCharges(),\n            $this->getOtherInpatientCharges(),\n            $this->getTheatreOperationRoomCharges(),\n            // $this->getClinicianCharges(),\n            $this->getRebates()\n        );\n\n        return [\n            'patient' => new PatientResource($this->visit->patients),\n            'data' => $data,\n        ];\n    }\n\n    /*\n     * get ward charges in cases where the this was an inpatient case\n     * */\n    public function getWardCharges ()\n    {\n        ini_set('max_execution_time', 0);\n\n        set_time_limit(0);\n\n        $data = [];\n\n        $query = $this->visit->wards()->whereNull('is_interim'); // avoid NULL\n\n        $visit_wards = $query->whereNull('moved_from_chargesheet')->get();\n\n        if($visit_wards->isNotEmpty()) {\n            $days_admitted  = $this->visit->admission->days_admitted;\n\n            foreach($visit_wards as $ward_charge) {\n\n                $ward = $ward_charge->ward;\n\n                $quantity = $ward_charge->changes_track ? $ward_charge->quantity : $days_admitted;\n\n                $amount = $quantity * $ward_charge->price;\n\n                if(!$ward_charge->split_bill_id && !$ward_charge->moved_from_chargesheet) {\n                    array_push($data, [\n                        \"item_id\" => $ward_charge->id,\n                        \"name\" => $ward->name,\n                        \"type\" => \"Ward charge\",\n                        \"quantity\" => $quantity,\n                        \"price\" => (int)$ward_charge->price,\n                        \"visit\" => (int)$ward_charge->visit_id,\n                        \"amount\" => (float) $amount,\n                        \"paid\" => null,\n                        \"service_type\" => 'ward'\n                    ]);\n                }\n            }\n        }\n\n        return $data;\n    }\n\n    /*\n     * get other inpatient charges\n     * */\n    public function getOtherInpatientCharges ()\n    {\n        ini_set('max_execution_time', 0);\n\n        set_time_limit(0);\n\n        $data = [];\n\n        $query = $this->visit->inpatientCharges()->whereNull('is_interim')->where('cancelled', 0);\n\n        $visitCharges = $query->whereNull('moved_from_chargesheet')->get();\n\n        if($visitCharges->isNotEmpty()) {\n            $days_admitted  = $this->visit->admission->days_admitted;\n\n            foreach($visitCharges as $charge) {\n\n                if($charge->charge->type == 'recurring' || $charge->chages_track) {\n                    $quantity = $charge->changes_track != null ? $charge->quantity : $days_admitted;\n                } else {\n                    $quantity = $charge->quantity;\n                }\n\n                $amount = $quantity * $charge->price;\n\n                if((!$charge->cancelled && !$charge->split_bill_id && !$charge->moved_from_chargesheet)) {\n                    array_push($data, [\n                        \"item_id\" => $charge->id,\n                        \"name\" => @$charge->charge->name,\n                        \"type\" => \"Admission + Daily charges\",\n                        \"quantity\" => $quantity,\n                        \"price\" => (int)$charge->price,\n                        \"visit\" => (int)$charge->visit_id,\n                        \"amount\" => (float) $amount,\n                        \"paid\" => null,\n                        \"service_type\" => 'admission_charges'\n                    ]);\n                }\n            }\n        }\n\n        return $data;\n    }\n\n    /*\n     * prepare investigation bills\n     * */\n    private function getInvestigations()\n    {\n        ini_set('max_execution_time', 0);\n\n        set_time_limit(0);\n\n        $data = [];\n\n        $visit_investigations = $this->visit->investigations()\n            ->whereNull('moved_from_chargesheet')\n            ->whereNull('is_interim')\n            ->get();\n\n        foreach ($visit_investigations as $bill) {\n            if (!$bill->payment_details_id  && !$bill->moved_from_chargesheet) {\n                array_push($data, [\n                    \"item_id\" => $bill->id,\n                    \"name\" => @$bill->procedures->name,\n                    \"type\" => \"investigation\",\n                    \"quantity\" => $bill->quantity,\n                    \"price\" => (int)$bill->price,\n                    \"visit\" => (int)$bill->visit,\n                    \"discount\" => $bill->discount,\n                    \"amount\" => (float)$bill->amount,\n                    \"paid\" => null,\n                    \"service_type\" => 'investigation'\n                ]);\n\n                $this->total += $bill->amount;\n            }\n        }\n\n        return $data;\n    }\n\n    /*\n     * prepare prescription bills\n     * */\n    private function getPrescriptions()\n    {\n        ini_set('max_execution_time', 0);\n\n        set_time_limit(0);\n\n        $data = [];\n\n        $visit_prescriptions = $this->visit->prescriptions()\n            ->whereNull('moved_from_chargesheet')\n            ->whereNull('is_interim')\n            ->where('canceled', 0)\n            ->get();\n\n        foreach ($visit_prescriptions as $bill) {\n            if (!$bill->payment_details_id) {\n                $price = $bill->price;\n\n                $quantity = @$bill->quantity;\n\n                $amount = ((double) $price * (double) $quantity);\n\n                array_push($data, [\n                    \"item_id\" => $bill->id,\n                    \"name\" => @$bill->drug_name,\n                    \"type\" => \"prescription\",\n                    \"quantity\" => $quantity,\n                    \"price\" => (int) $price,\n                    \"visit\" => (int)@$bill->visit,\n                    \"discount\" => 0,\n                    \"amount\" => (float) $amount,\n                    \"paid\" => null,\n                    \"service_type\" => 'prescription'\n                ]);\n\n                $this->total += $amount;\n            }\n        }\n\n        return $data;\n    }\n\n    /*\n     * get consumables used\n     * */\n    public function getConsumables ()\n    {\n        ini_set('max_execution_time', 0);\n\n        set_time_limit(0);\n\n        $data = [];\n\n        foreach ($this->visit->consumables()->whereNull('moved_from_chargesheet')\n                     ->whereNull('is_interim')\n                     ->get() as $bill) {\n\n            if (!$bill->stopped && $bill->bill && !$bill->invoice_id && !$bill->split_bill_id && !$bill->moved_from_chargesheet  || // outpatient check\n                $this->visit->admission\n            ) {\n                array_push($data, [\n                    \"item_id\" => @$bill->id,\n                    \"name\" => @$bill->product->name,\n                    \"type\" => \"consumable\",\n                    \"quantity\" => @$bill->quantity,\n                    \"price\" => (int) @$bill->price,\n                    \"amount\" => (float) @$bill->amount,\n                    \"paid\" => null,\n                    \"visit\" => (int)@$bill->visit_id,\n                    \"service_type\" => 'consumable'\n                ]);\n            }\n        }\n\n        return $data;\n    }\n\n    /*\n     * copayments\n     * */\n    private function getCopayments ()\n    {\n        ini_set('max_execution_time', 0);\n\n        set_time_limit(0);\n\n        $data = [];\n\n        if($this->visit->payment_mode === 'insurance') {\n            if($this->visit->copay->isNotEmpty())  {\n\n                $copayments = $this->visit->copay;\n\n                foreach($copayments as $bill) {\n                    if(!@$bill->payment_id) {\n                        array_push($data, [\n                            \"item_id\" => @$bill->id,\n                            \"name\" => 'Insurance copay',\n                            \"type\" => \"copay\",\n                            \"quantity\" => 1,\n                            \"price\" => $bill->amount,\n                            \"visit\" => $this->visit->id,\n                            \"amount\" => (float) @$bill->amount,\n                            \"paid\" => null\n                        ]);\n                    }\n                }\n            }\n        }\n\n        return $data;\n    }\n\n    /*\n     * fetch rebates\n     * */\n    private function getRebates()\n    {\n        ini_set('max_execution_time', 0);\n\n        set_time_limit(0);\n\n        $rebates = $this->visit->inpatientRebates()->with('rebate', 'user')->get();\n\n        if($rebates->isNotEmpty()) {\n            $data = [];\n\n            foreach($rebates as $rebate) {\n                array_push($data, [\n                    \"item_id\" => @$rebate->id,\n                    \"name\" => \"NHIF Rebate\",\n                    \"type\" => \"rebate\",\n                    \"quantity\" => 1,\n                    \"price\" => @$rebate->amount,\n                    \"visit\" => $this->visit->id,\n                    \"amount\" => (float) @$rebate->amount,\n                    \"paid\" => null,\n                ]);\n            }\n\n            return $data;\n        } else {\n            return [];\n        }\n    }\n\n    /*\n     * get what is changed to cash from insurance (int)@$bill->payment->price\n     * */\n    private function getChangedToCash ()\n    {\n        ini_set('max_execution_time', 0);\n\n        set_time_limit(0);\n\n        $data = [];\n\n        if($this->visit->payment_mode === 'insurance')\n        {\n            if(!empty($this->visit->to_cash)) {\n                foreach ($this->visit->to_cash as $bill) {\n                    if($bill->prescription_id) {\n                        if (!$bill->payment_details_id and !$bill->prescription->stopped && !$bill->invoiced ) {\n                            array_push($data, [\n                                \"item_id\" => $bill->prescription_id,\n                                \"name\" => @$bill->prescription->drugs->name,\n                                \"type\" => \"changed to cash\",\n                                \"quantity\" => $bill->prescription->payment->quantity,\n                                \"price\" =>$bill->prescription->payment->price,\n                                \"visit\" => (int)@$bill->visit_id,\n                                \"amount\" =>$bill->prescription->payment->amount,\n                                \"paid\" => null,\n                                \"service_type\" =>'prescription'\n                            ]);\n\n                        }\n                    } else if($bill->procedure_id) {\n                        if (!$bill->investigation->is_paid && !$bill->invoiced ) {\n                            array_push($data, [\n                                \"item_id\" => $bill->procedure_id,\n                                \"name\" => @$bill->investigation->procedures->name,\n                                \"type\" => \"changed to cash\",\n                                \"quantity\" => $bill->investigation->quantity,\n                                \"price\" => $bill->investigation->price,\n                                \"visit\" => (int)@$bill->visit_id,\n                                \"amount\" => $bill->investigation->amount,\n                                \"paid\" => null,\n                                \"service_type\" => 'investigation'\n                            ]);\n\n                        }\n                    }\n                }\n            }\n        }\n\n        return $data;\n    }\n\n\n    /**\n     * @return array\n     */\n    public function getTheatreOperationRoomCharges()\n    {\n        $theatre_operation = TheatreOperation::where('visit_id', $this->visit->id)->first();\n\n        if($theatre_operation) {\n            $fee = (new Charges($theatre_operation))->theatreFees();\n            \\Log::info($fee);\n            return [\n                [\n                    // 'item_id' => $fee['id'],\n                    'name' => $fee['name'],\n                    'type' => 'Theatre fee',\n                    'quantity' => $fee['minutes'],\n                    // 'price' => $fee['rate'],\n                    'visit' => $this->visit->id,\n                    'amount' => $fee['total'],\n                    'paid' => null,\n                    'service_type' => 'theatre_fee',\n                ]\n            ];\n        } else {\n            return [];\n        }\n    }\n\n    /**\n     * @return array|\\Illuminate\\Support\\Collection\n     */\n    public function getClinicianCharges()\n    {\n        $theatre_operation = TheatreOperation::where('visit_id', $this->visit->id)->first();\n        \\Log::info($theatre_operation);\n        if($theatre_operation) {\n            $fees = (new Charges($theatre_operation))->medicFees($theatre_operation);\n\n            return collect($fees)->transform(function ($fee) {\n                return [\n                    'item_id' => $fee['id'],\n                    'name' => $fee['name'],\n                    'type' => 'Theatre clinician fee',\n                    'quantity' => $fee['time'],\n                    'price' => $fee['rate'],\n                    'visit' => $this->visit->id,\n                    'amount' => $fee['total'],\n                    'paid' => null,\n                    'service_type' => 'theatre_clinician_fee',\n                ];\n            })->toArray();\n        } else {\n            return [];\n        }\n    }\n}\n
+===================================================================
+diff --git a/Library/PatientVisitBill.php b/Library/PatientVisitBill.php
+--- a/Library/PatientVisitBill.php
++++ b/Library/PatientVisitBill.php
+@@ -42,7 +42,7 @@
+             $this->getWardCharges(),
+             $this->getOtherInpatientCharges(),
+             $this->getTheatreOperationRoomCharges(),
+-            // $this->getClinicianCharges(),
++            $this->getClinicianCharges(),
+             $this->getRebates()
+         );
+
+@@ -394,14 +394,14 @@
+
+         if($theatre_operation) {
+             $fee = (new Charges($theatre_operation))->theatreFees();
+-            \Log::info($fee);
++
+             return [
+                 [
+-                    // 'item_id' => $fee['id'],
++                    'item_id' => $fee['id'],
+                     'name' => $fee['name'],
+                     'type' => 'Theatre fee',
+                     'quantity' => $fee['minutes'],
+-                    // 'price' => $fee['rate'],
++                    'price' => $fee['rate'],
+                     'visit' => $this->visit->id,
+                     'amount' => $fee['total'],
+                     'paid' => null,
+@@ -419,7 +419,7 @@
+     public function getClinicianCharges()
+     {
+         $theatre_operation = TheatreOperation::where('visit_id', $this->visit->id)->first();
+-        \Log::info($theatre_operation);
++
+         if($theatre_operation) {
+             $fees = (new Charges($theatre_operation))->medicFees($theatre_operation);
+

@@ -1,0 +1,422 @@
+Index: Repositories/PatientRepository.php
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?php\n\n/*\n * =============================================================================\n *\n * Collabmed Solutions Ltd\n * Project: Collabmed Health Platform\n * Author: Samuel Okoth <sodhiambo@collabmed.com>\n *\n * =============================================================================\n */\n\nnamespace Ignite\\Reports\\Repositories;\n\n/**\n * Description of Patient\n *\n * @author samueldervis\n */\ninterface PatientRepository {\n\n}\n
+===================================================================
+diff --git a/Repositories/PatientRepository.php b/Repositories/PatientRepository.php
+--- a/Repositories/PatientRepository.php	
++++ b/Repositories/PatientRepository.php	
+@@ -1,22 +1,397 @@
+ <?php
++/**
++ * Created by PhpStorm.
++ * User: kisiara
++ * Date: 06/08/2018
++ * Time: 07:54
++ */
++
++namespace Ignite\Reception\Repositories;
++
++
++use Carbon\Carbon;
++use Ignite\Core\Foundation\ShouldEncrypt;
++use Ignite\Evaluation\Entities\Visit;
++use Ignite\Inpatient\Entities\Vitals;
++use Ignite\Reception\Entities\NextOfKin;
++use Ignite\Reception\Entities\PatientDependants;
++use Ignite\Reception\Entities\PatientMovement;
++use Ignite\Reception\Entities\Patients;
++use Ignite\Reception\Library\DependantsManager;
++use Ignite\Reception\Library\Facades\Usher;
++use Ignite\Reception\Library\SearchPatient;
++use Ignite\Reception\Library\Traits\PatientCreationTrait;
++use Ignite\Reception\Library\Traits\PatientSearchTrait;
++use Ignite\Reception\Transformers\PatientCollectionResource;
++use Ignite\Reception\Transformers\PatientResource;
++use Ignite\Reception\Transformers\PatientTransformer;
++use Ignite\Settings\Entities\Clinics;
++use Illuminate\Support\Facades\DB;
++use Illuminate\Support\Facades\Storage;
++use League\Fractal\Pagination\IlluminatePaginatorAdapter;
++use League\Fractal\Resource\Collection;
++use League\Fractal\Resource\Item;
++
++class PatientRepository
++{
++    use PatientSearchTrait, PatientCreationTrait;
++
++    /*
++     * Fetch a single patient from the database
++     */
++    public function find($id, $object = null)
++    {
++        $patient = Patients::find($id);
++
++        return $object ? $patient : new PatientResource($patient);
++    }
+ 
+-/*
+- * =============================================================================
+- *
+- * Collabmed Solutions Ltd
+- * Project: Collabmed Health Platform
+- * Author: Samuel Okoth <sodhiambo@collabmed.com>
+- *
+- * =============================================================================
+- */
++    /*
++     * Get all the patients in the database
++     */
++    public function all($builder)
++    {
++        $patients = new Collection($builder->latest()->get(), new PatientTransformer());
++
++        return app("fractal")->createData($patients)->toArray()["data"];
++    }
++
++    /*
++     * Return paginated set of results from persistence
++     */
++    public function paginate()
++    {
++        $query = Patients::latest()
++            ->whereNull('deceased')
++            ->orWhere('deceased', 0)
++            ->whereNull('customer_id');
+ 
+-namespace Ignite\Reports\Repositories;
++        if(request()->has('screened')) {
++            $patients =$query->where("screening", 1)->paginate(mconfig("core.config.pagination.s"));
++        } else {
++            $patients = $query->paginate(mconfig("core.config.pagination.s"));
++        }
+ 
+-/**
+- * Description of Patient
+- *
+- * @author samueldervis
+- */
+-interface PatientRepository {
++        return new PatientCollectionResource($patients);
++    }
++
++    public function check()
++    {
++
++    }
++
++    /*
++     * Add a new patient to persistence
++     */
++    public function create()
++    {
++//        try {
++            DB::beginTransaction();
++
++            $profile = $this->setPatientProfile();
++
++            //mobile miss configs
++            if(request("name") && request("name")) {
++                $names = explode(' ', request('name'));
++
++                $profile["first_name"] = $names[0];
++                $profile["middle_name"] = count($names) >= 3 ? $names[1] : null;
++                $profile["last_name"] = count($names) >= 3 ? $names[2] : $names[1];
++            }
++
++            \Log::info($profile);
++
++            request()->has('screening') && request("screening") ? $profile["screening"] = true : $profile["screening"] = false;
++
++            $schemes = $this->setPatientSchemes();
++
++            if(request("web")) {
++                $profile['source'] = 'web';
++                $patient = Patients::create($profile);
++            } else {
++                $profile['source'] = request('source');
++
++                 if(Carbon::parse($profile['dob'])->diffInYears(now()) > 18) {
++                    $existence_check = Patients::where('id_no',  $this->encrypt($profile['id_no']))
++                        ->latest()
++                        ->get();
++
++                    if($existence_check && $existence_check->count() > 0) {
++                        $existence_check->first()->update([$profile]);
++
++                        $patient = $existence_check->first();
++                    } else {
++                        $patient = Patients::create($profile);
++                    }
++
++//                    @todo: uncomment this for covid patient registrations from the mobile app and comment out above
++//                    if(!array_key_exists('confirmed_revisit', request()->all())) {
++//
++//                        $p = $existence_check->first();
++//
++//                        $message = "Patient " . $p->full_name . ' with id no. ' . $p->id_no . ' exists';
++//
++//                        abort(500, $message);
++//                    }
++                } else {
++                     $patient = Patients::create($profile);
++                }
++
++//                if($existence_check && $existence_check->count() > 0) {
++//
++//                } else {
++//                    $patient = Patients::create($profile);
++//                }
++            }
++
++            $noks = array_key_exists('noks', request()->all()) ? request('noks') : [];
++
++            $patient->nok()->createMany($noks);
++
++            $patient->schemes()->createMany($schemes);
++
++            if(request()->has('allergies') && request('allergies')) {
++
++                $patient->meta()->updateOrCreate(['patient_id' => $patient->id], ["allergies" => request("allergies")]);
++            }
++
++            if(request()->has('dependants') && request('dependants'))
++            {
++                (new DependantsManager())->add($patient, request('dependants'));
++            }
++
++            DB::commit();
++
++//        } catch(\Exception $e) {
++//            DB::rollBack();
++//
++//            if(env('APP_DEBUG')) {
++//                echo $e->getMessage();
++//            } else {
++//                null;
++//            }
++//
++//            return false;
++//        }
++
++        if(request("screening") && request("screening"))
++        {
++            return $this->screenPatient($patient);
++        } else {
++            return $patient;
++        }
++    }
++
++    /*
++     * screen patient,
++     * * create visit and add their supplied vitals
++     * */
++    public function screenPatient($patient)
++    {
++        $visit = Visit::create([
++            "patient" => $patient->id,
++            "clinic" => get_clinic() ? get_clinic()->id : Clinics::first()->id,
++            "user" => doe() ? doe()->id : 1,
++            "region_id" => session('region_id'),
++            "payment_mode" => "cash"
++        ]);
++
++        Usher::receive($visit)->queue(['nursing', /*'laboratory'*/]);
++
++        \Ignite\Evaluation\Entities\Vitals::create([
++            "visited_places" => request('vitals')['visited_places'],
++            "temperature" => request('vitals')["temperature"],
++            "symptoms" => json_encode(request('vitals')['symptoms']),
++            "visit" => $visit->id,
++            "user" => request()->has("screened_by") ? request('screened_by') : doe()
++        ]);
++
++        return [
++            "message" => "successfully recorded",
++            "patient" => (new PatientResource($patient)),
++            "visit" => $visit->id
++        ];
++    }
++
++    /*
++     * Update a patients details
++     * @todo figure out how to update next of kin data
++     * removing patient schemes is not a good idea
++     * because of the extra checks when dispatching
++     */
++    public function update($patientId)
++    {
++        $patient = $this->find($patientId, true);
++
++        try {
++            DB::beginTransaction();
++
++//            $schemes =  $this->setPatientSchemes();
++
++            $patient->update($this->setPatientProfile(true));
++
++            foreach(request("noks") as $nok) {
++                $id = $nok['id'] ?? null;
++                $patient->nok()->updateOrCreate(['id' => $id], $nok);
++            }
++
++            if(request('hasInsurance'))
++            {
++                // remove deleted schemes
++//                $patientSchemes = $patient->schemes;
++                /*$providedSchemes = collect(request("schemes"))->pluck('id')->toArray();
++
++                foreach($patientSchemes as $sch)
++                {
++                    if(!in_array($sch->id, $providedSchemes)) {
++                        $sch->delete();
++                    }
++                }*/
++
++                foreach(request("schemes") as $scheme)
++                {
++                    $id = $scheme['id'] ?? null;
++                    $patient->schemes()->updateOrCreate(['id' => $id], [
++                        'scheme' => $scheme['scheme_id'],
++                        'policy_number' => $scheme['policy_number'],
++                        'principal' => $scheme['principal'],
++                        'dob' => $scheme['dob'],
++                        'relationship_id' => $scheme['relationship_id'],
++                    ]);
++                }
++            }
++            /*else {
++                foreach($patient->schemes as $s) {
++                    $s->delete();
++                }
++            }*/
++
++            if(request()->has('dependants') && request('dependants'))
++            {
++                (new DependantsManager())->add($patient, request('dependants'));
++            }
++
++            DB::commit();
++        } catch(\Exception $e) {
++            DB::rollBack();
++
++            env('APP_DEBUG') ? dd($e->getMessage()) : null;
++
++            return false;
++        }
++
++        return $patient->id;
++    }
++
++    /*
++     * Check if a patient already exists. Useful during registering a new patient
++     * We check the first_name, middle-name, last_name and id_number to validate the patient
++     * If you are a future developer thinking - "Hmmmm! What if there exists a
++     * parent who named their kid the exact same way they were named themselves!
++     * We would like to tell you that in that situation then feel free to modify this. We failed
++     * to get proper validation in such scenarios and simply ignored it. We imagined
++     * that in future tech will be better and developers will be wiser so you should be able to figure it out. :)"
++     */
++    public function patientExists($patient)
++    {
++        $exists = false;
++
++        $middleName = isset($patient["middle_name"]) ?? $patient["middle_name"];
++
++        $fullName = $patient["first_name"] . " " . $middleName . " " . $patient["last_name"];
++
++        $idNumber = $patient["id_no"];
++
++        Patients::chunk(250, function ($patients) use($fullName, $idNumber, &$exists){
++            foreach ($patients as $patient)
++            {
++                if(strcasecmp($patient->fullName, trim($fullName)) == 0 and strcasecmp(trim($patient->id_no), trim($idNumber)) == 0)
++                {
++                    $exists = true;
++
++                    return false;
++                }
++            }
++        });
++
++        return $exists;
++    }
++
++    /*
++     * transform movements
++     *
++     * */
++    public function transformMovements($movements)
++    {
++        $data = [
++            "markers" => [],
++            "lines" => [],
++        ];
++
++        $counter = 0;
++
++        foreach($movements as $index => $movement) {
++
++            array_push($data['markers'], [
++                "id" => $movement->id,
++                "position" => [
++                    "lat" => (int) $movement->lat,
++                    "lng" => (int) $movement->long
++                ]
++            ]);
++
++            if($index + 1 < count($movements)) {
++                $next = PatientMovement::findOrFail($movement->id + 1);
+ 
++                array_push($data["lines"], [
++                    "id" => $counter,
++                    "path" => [
++                        ["lat" => (int) $movement->lat, "lng" => (int) $movement->long],
++                        ["lat" => (int) $next->lat, "lng" => (int) $next->long],
++                    ]
++                ]);
++            }
++
++            $counter++;
++        }
++
++        if($counter > 0) {
++            $data["center"] = $data['markers'][ceil($counter / 2) - 1]["position"];
++        }
++
++        return $data;
++    }
++
++    /*
++     * upload patient image
++     * */
++    public function uploadPatientImage($patient_id)
++    {
++        request()->validate([
++            'image' => 'file|image|mimes:jpeg,png,PNG,JPEG'
++        ]);
++
++        $patient = Patients::findOrFail($patient_id);
++
++        $file = request()->file("image");
++
++        if ($file) {
++            if($patient->image) {
++                Storage::disk('public')->delete($patient->image);
++            }
++
++            $file_name = "patient_images/" . 'image_' . $patient_id . '.' . $file->extension();
++
++            Storage::disk('public')->put( $file_name, file_get_contents($file));
++
++            $patient->image = $file_name;
++
++            $patient->save();
++        }
++
++        return response()->json([
++            'message' => 'Successfully uploaded',
++            'alert' => 'success'
++        ]);
++    }
+ }

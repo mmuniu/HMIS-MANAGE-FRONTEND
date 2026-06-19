@@ -1,0 +1,569 @@
+Index: reception/counties/sub-counties.json
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>[\n  {\n    \"code\": 1,\n    \"county_code\": 1,\n    \"name\": \"Changamwe\"\n  },\n  {\n    \"code\": 2,\n    \"county_code\": 1,\n    \"name\": \"Jomvu\"\n  },\n  {\n    \"code\": 3,\n    \"county_code\": 1,\n    \"name\": \"Kisauni\"\n  },\n  {\n    \"code\": 4,\n    \"county_code\": 1,\n    \"name\": \"Nyali\"\n  },\n  {\n    \"code\": 5,\n    \"county_code\": 1,\n    \"name\": \"Likoni\"\n  },\n  {\n    \"code\": 6,\n    \"county_code\": 1,\n    \"name\": \"Mvita\"\n  },\n  {\n    \"code\": 7,\n    \"county_code\": 2,\n    \"name\": \"Msambweni\"\n  },\n  {\n    \"code\": 8,\n    \"county_code\": 2,\n    \"name\": \"Lunga Lunga\"\n  },\n  {\n    \"code\": 9,\n    \"county_code\": 2,\n    \"name\": \"Matuga\"\n  },\n  {\n    \"code\": 10,\n    \"county_code\": 2,\n    \"name\": \"Kinango\"\n  },\n  {\n    \"code\": 1,\n    \"county_code\": 3,\n    \"name\": \"Ganze\"\n  },\n  {\n    \"code\": 2,\n    \"county_code\": 3,\n    \"name\": \"Kaloleni\"\n  },\n  {\n    \"code\": 3,\n    \"county_code\": 3,\n    \"name\": \"Kilifi\"\n  },\n\n  {\n    \"code\": 5,\n    \"county_code\": 3,\n    \"name\": \"Magarini\"\n  },\n  {\n    \"code\": 6,\n    \"county_code\": 3,\n    \"name\": \"Malindi\"\n  },\n  {\n    \"code\": 7,\n    \"county_code\": 3,\n    \"name\": \"Rabai\"\n  },\n\n  {\n    \"code\": 18,\n    \"county_code\": 4,\n    \"name\": \"Bura\"\n  },\n  {\n    \"code\": 19,\n    \"county_code\": 4,\n    \"name\": \"Galole\"\n  },\n  {\n    \"code\": 20,\n    \"county_code\": 4,\n    \"name\": \"Garsen\"\n  },\n  {\n    \"code\": 21,\n    \"county_code\": 5,\n    \"name\": \"Lamu East\"\n  },\n  {\n    \"code\": 22,\n    \"county_code\": 5,\n    \"name\": \"Lamu West\"\n  },\n  {\n    \"code\": 23,\n    \"county_code\": 6,\n    \"name\": \"Taveta\"\n  },\n  {\n    \"code\": 24,\n    \"county_code\": 6,\n    \"name\": \"Wundanyi(Taita)\"\n  },\n  {\n    \"code\": 25,\n    \"county_code\": 6,\n    \"name\": \"Mwatate\"\n  },\n  {\n    \"code\": 26,\n    \"county_code\": 6,\n    \"name\": \"Voi\"\n  },\n  {\n    \"code\": 27,\n    \"county_code\": 7,\n    \"name\": \"Dujis\"\n  },\n  {\n    \"code\": 28,\n    \"county_code\": 7,\n    \"name\": \"Ijara\"\n  },\n  {\n    \"code\": 29,\n    \"county_code\": 7,\n    \"name\": \"Balambala\"\n  },\n  {\n    \"code\": 30,\n    \"county_code\": 7,\n    \"name\": \"Lagdera\"\n  },\n  {\n    \"code\": 31,\n    \"county_code\": 7,\n    \"name\": \"Dadaab\"\n  },\n  {\n    \"code\": 32,\n    \"county_code\": 7,\n    \"name\": \"Fafi\"\n  },\n  {\n    \"code\": 33,\n    \"county_code\": 7,\n    \"name\": \"Ijara\"\n  },\n  {\n    \"code\": 34,\n    \"county_code\": 8,\n    \"name\": \"Wajir North\"\n  },\n  {\n    \"code\": 35,\n    \"county_code\": 8,\n    \"name\": \"Wajir East\"\n  },\n\n  {\n    \"code\": 38,\n    \"county_code\": 8,\n    \"name\": \"Tarbaj\"\n  },\n  {\n    \"code\": 39,\n    \"county_code\": 8,\n    \"name\": \"Wajir West\"\n  },\n  {\n    \"code\": 40,\n    \"county_code\": 8,\n    \"name\": \"Eldas\"\n  },\n  {\n    \"code\": 41,\n    \"county_code\": 8,\n    \"name\": \"Wajir South\"\n  },\n  {\n    \"code\": 42,\n    \"county_code\": 9,\n    \"name\": \"Mandera West\"\n  },\n  {\n    \"code\": 43,\n    \"county_code\": 9,\n    \"name\": \"Banisa\"\n  },\n  {\n    \"code\": 44,\n    \"county_code\": 9,\n    \"name\": \"Mandera North\"\n  },\n  {\n    \"code\": 45,\n    \"county_code\": 9,\n    \"name\": \"Lafey\"\n  },\n  {\n    \"code\": 46,\n    \"county_code\": 9,\n    \"name\": \"Mandera East\"\n  },\n  {\n    \"code\": 47,\n    \"county_code\": 9,\n    \"name\": \"Lafey\"\n  },\n  {\n    \"code\": 48,\n    \"county_code\": 10,\n    \"name\": \"Moyale\"\n  },\n  {\n    \"code\": 49,\n    \"county_code\": 10,\n    \"name\": \"Laisamis\"\n  },\n  {\n    \"code\": 50,\n    \"county_code\": 10,\n    \"name\": \"North Horr\"\n  },\n  {\n    \"code\": 51,\n    \"county_code\": 10,\n    \"name\": \"Saku\"\n  },\n\n  {\n    \"code\": 55,\n    \"county_code\": 11,\n    \"name\": \"Garbatula\"\n  },\n  {\n    \"code\": 56,\n    \"county_code\": 11,\n    \"name\": \"Isiolo\"\n  },\n  {\n    \"code\": 57,\n    \"county_code\": 11,\n    \"name\": \"Merti\"\n  },\n  {\n    \"code\": 58,\n    \"county_code\": 12,\n    \"name\": \"Igembe South\"\n  },\n  {\n    \"code\": 59,\n    \"county_code\": 12,\n    \"name\": \"Igembe Central\"\n  },\n  {\n    \"code\": 60,\n    \"county_code\": 12,\n    \"name\": \"Igembe North\"\n  },\n  {\n    \"code\": 61,\n    \"county_code\": 12,\n    \"name\": \"South Imenti\"\n  },\n  {\n    \"code\": 62,\n    \"county_code\": 12,\n    \"name\": \"North Imenti\"\n  },\n  {\n    \"code\": 63,\n    \"county_code\": 12,\n    \"name\": \"Meru Central\"\n  },\n\n  {\n    \"code\": 65,\n    \"county_code\": 12,\n    \"name\": \"Tigania East\"\n  },\n  {\n    \"code\": 66,\n    \"county_code\": 12,\n    \"name\": \"Tigania West\"\n  },\n  {\n    \"code\": 67,\n    \"county_code\": 12,\n    \"name\": \"Buuri\"\n  },\n  {\n    \"code\": 68,\n    \"county_code\": 13,\n    \"name\": \"Meru South\"\n  },\n  {\n    \"code\": 69,\n    \"county_code\": 13,\n    \"name\": \"Maara\"\n  },\n  {\n    \"code\": 70,\n    \"county_code\": 13,\n    \"name\": \"Tharaka South\"\n  },\n  {\n    \"code\": 71,\n    \"county_code\": 13,\n    \"name\": \"Tharaka North\"\n  },\n  {\n    \"code\": 72,\n    \"county_code\": 14,\n    \"name\": \"Manyatta\"\n  },\n  {\n    \"code\": 73,\n    \"county_code\": 14,\n    \"name\": \"Runyenjes\"\n  },\n\n  {\n    \"code\": 75,\n    \"county_code\": 14,\n    \"name\": \"Mbeere North\"\n  },\n  {\n    \"code\": 76,\n    \"county_code\": 14,\n    \"name\": \"Mbeere South\"\n  },\n  {\n    \"code\": 77,\n    \"county_code\": 15,\n    \"name\": \"Kitui South\"\n  },\n  {\n    \"code\": 78,\n    \"county_code\": 15,\n    \"name\": \"Mwingi West\"\n  },\n  {\n    \"code\": 79,\n    \"county_code\": 15,\n    \"name\": \"Mwingi East\"\n  },\n  {\n    \"code\": 80,\n    \"county_code\": 15,\n    \"name\": \"Kitui West\"\n  },\n  {\n    \"code\": 81,\n    \"county_code\": 15,\n    \"name\": \"Kitui Central\"\n  },\n  {\n    \"code\": 81,\n    \"county_code\": 15,\n    \"name\": \"Kitui Rural\"\n  },\n  {\n    \"code\": 78,\n    \"county_code\": 15,\n    \"name\": \"Mwingi North\"\n  },\n\n  {\n    \"code\": 93,\n    \"county_code\": 16,\n    \"name\": \"Masinga\"\n  },\n  {\n    \"code\": 94,\n    \"county_code\": 16,\n    \"name\": \"Yatta\"\n  },\n  {\n    \"code\": 95,\n    \"county_code\": 16,\n    \"name\": \"Kangundo\"\n  },\n  {\n    \"code\": 96,\n    \"county_code\": 16,\n    \"name\": \"Matungulu\"\n  },\n  {\n    \"code\": 97,\n    \"county_code\": 16,\n    \"name\": \"Kathiani\"\n  },\n  {\n    \"code\": 98,\n    \"county_code\": 16,\n    \"name\": \"Athi River\"\n  },\n  {\n    \"code\": 99,\n    \"county_code\": 16,\n    \"name\": \"Machakos Town\"\n  },\n  {\n    \"code\": 100,\n    \"county_code\": 16,\n    \"name\": \"Mwala\"\n  },\n  {\n    \"code\": 101,\n    \"county_code\": 17,\n    \"name\": \"Kibwezi East\"\n  },\n  {\n    \"code\": 101,\n    \"county_code\": 17,\n    \"name\": \"Kibwezi West\"\n  },\n  {\n    \"code\": 102,\n    \"county_code\": 17,\n    \"name\": \"Kaiti\"\n  },\n  {\n    \"code\": 103,\n    \"county_code\": 17,\n    \"name\": \"Kilome\"\n  },\n  {\n    \"code\": 104,\n    \"county_code\": 17,\n    \"name\": \"Makueni\"\n  },\n  {\n    \"code\": 105,\n    \"county_code\": 17,\n    \"name\": \"Mbooni\"\n  },\n\n  {\n    \"code\": 110,\n    \"county_code\": 18,\n    \"name\": \"Kinangop\"\n  },\n  {\n    \"code\": 111,\n    \"county_code\": 18,\n    \"name\": \"Kipipiri\"\n  },\n  {\n    \"code\": 112,\n    \"county_code\": 18,\n    \"name\": \"Ndaragua\"\n  },\n  {\n    \"code\": 113,\n    \"county_code\": 18,\n    \"name\": \"Nyandarua\"\n  },\n  {\n    \"code\": 113,\n    \"county_code\": 18,\n    \"name\": \"Ol Jorok\"\n  },\n  {\n    \"code\": 113,\n    \"county_code\": 18,\n    \"name\": \"Ol Kalou\"\n  },\n  {\n    \"code\": 117,\n    \"county_code\": 19,\n    \"name\": \"Tetu\"\n  },\n  {\n    \"code\": 118,\n    \"county_code\": 19,\n    \"name\": \"Kieni East\"\n  },\n  {\n    \"code\": 119,\n    \"county_code\": 19,\n    \"name\": \"Kieni West\"\n  },\n  {\n    \"code\": 120,\n    \"county_code\": 19,\n    \"name\": \"Mathira East\"\n  },\n  {\n    \"code\": 121,\n    \"county_code\": 19,\n    \"name\": \"Mathira West\"\n  },\n  {\n    \"code\": 122,\n    \"county_code\": 19,\n    \"name\": \"Mukurweini\"\n  },\n  {\n    \"code\": 123,\n    \"county_code\": 19,\n    \"name\": \"Nyeri Town\"\n  },\n  {\n    \"code\": 124,\n    \"county_code\": 19,\n    \"name\": \"Othaya\"\n  },\n  {\n    \"code\": 124,\n    \"county_code\": 19,\n    \"name\": \"Tetu\"\n  },\n  {\n    \"code\": 125,\n    \"county_code\": 20,\n    \"name\": \"Gichugu\"\n  },\n  {\n    \"code\": 125,\n    \"county_code\": 20,\n    \"name\": \"Kirinyaga Central\"\n  },\n  {\n    \"code\": 128,\n    \"county_code\": 20,\n    \"name\": \"Mwea\"\n  },\n  {\n    \"code\": 129,\n    \"county_code\": 20,\n    \"name\": \"Ndia\"\n  },\n  {\n    \"code\": 121,\n    \"county_code\": 21,\n    \"name\": \"Gatanga\"\n  },\n  {\n    \"code\": 122,\n    \"county_code\": 21,\n    \"name\": \"Kahuro\"\n  },\n  {\n    \"code\": 123,\n    \"county_code\": 21,\n    \"name\": \"Kandara\"\n  },\n  {\n    \"code\": 124,\n    \"county_code\": 21,\n    \"name\": \"Kangema\"\n  },\n  {\n    \"code\": 125,\n    \"county_code\": 21,\n    \"name\": \"Kigumo\"\n  },\n  {\n    \"code\": 126,\n    \"county_code\": 21,\n    \"name\": \"Kiharu\"\n  },\n  {\n    \"code\": 131,\n    \"county_code\": 21,\n    \"name\": \"Mathioya\"\n  },\n  {\n    \"code\": 128,\n    \"county_code\": 21,\n    \"name\": \"Murang’a south\"\n  },\n\n  {\n    \"code\": 141,\n    \"county_code\": 22,\n    \"name\": \"Gatundu north\"\n  },\n  {\n    \"code\": 142,\n    \"county_code\": 22,\n    \"name\": \"Gatundu south\"\n  },\n  {\n    \"code\": 143,\n    \"county_code\": 22,\n    \"name\": \"Githunguri\"\n  },\n  {\n    \"code\": 144,\n    \"county_code\": 22,\n    \"name\": \"Juja\"\n  },\n  {\n    \"code\": 145,\n    \"county_code\": 22,\n    \"name\": \"Kabete\"\n  },\n  {\n    \"code\": 146,\n    \"county_code\": 22,\n    \"name\": \"Kiambaa\"\n  },\n  {\n    \"code\": 147,\n    \"county_code\": 22,\n    \"name\": \"Kiambu\"\n  },\n  {\n    \"code\": 148,\n    \"county_code\": 22,\n    \"name\": \"Kikuyu\"\n  },\n  {\n    \"code\": 149,\n    \"county_code\": 22,\n    \"name\": \"Limuru\"\n  },\n  {\n    \"code\": 150,\n    \"county_code\": 22,\n    \"name\": \"Ruiru\"\n  },\n  {\n    \"code\": 151,\n    \"county_code\": 22,\n    \"name\": \"Thika town\"\n  },\n  {\n    \"code\": 152,\n    \"county_code\": 22,\n    \"name\": \"lari\"\n  },\n  {\n    \"code\": 151,\n    \"county_code\": 23,\n    \"name\": \"Turkana North\"\n  },\n  {\n    \"code\": 152,\n    \"county_code\": 23,\n    \"name\": \"Turkana West\"\n  },\n  {\n    \"code\": 153,\n    \"county_code\": 23,\n    \"name\": \"Turkana Central\"\n  },\n  {\n    \"code\": 154,\n    \"county_code\": 23,\n    \"name\": \"Loima\"\n  },\n  {\n    \"code\": 155,\n    \"county_code\": 23,\n    \"name\": \"Turkana South\"\n  },\n  {\n    \"code\": 156,\n    \"county_code\": 23,\n    \"name\": \"Turkana East\"\n  },\n\n  {\n    \"code\": 159,\n    \"county_code\": 24,\n    \"name\": \"Pokot Central\"\n  },\n  {\n    \"code\": 160,\n    \"county_code\": 24,\n    \"name\": \"North Pokot \"\n  },\n  {\n    \"code\": 161,\n    \"county_code\": 24,\n    \"name\": \"Pokot South\"\n  },\n  {\n    \"code\": 162,\n    \"county_code\": 24,\n    \"name\": \"West Pokot\"\n  },\n  {\n    \"code\": 163,\n    \"county_code\": 25,\n    \"name\": \"Samburu Central\"\n  },\n  {\n    \"code\": 164,\n    \"county_code\": 25,\n    \"name\": \"Samburu North\"\n  },\n  {\n    \"code\": 165,\n    \"county_code\": 25,\n    \"name\": \"Samburu East\"\n  },\n  {\n    \"code\": 161,\n    \"county_code\": 26,\n    \"name\": \"Cherangany\"\n  },\n  {\n    \"code\": 162,\n    \"county_code\": 26,\n    \"name\": \"Endebess\"\n  },\n  {\n    \"code\": 163,\n    \"county_code\": 26,\n    \"name\": \"Kiminini\"\n  },\n  {\n    \"code\": 164,\n    \"county_code\": 26,\n    \"name\": \"Kwanza\"\n  },\n  {\n    \"code\": 165,\n    \"county_code\": 26,\n    \"name\": \"Saboti\"\n  },\n  {\n    \"code\": 171,\n    \"county_code\": 27,\n    \"name\": \"Ainabkoi\"\n  },\n  {\n    \"code\": 172,\n    \"county_code\": 27,\n    \"name\": \"Kapseret\"\n  },\n  {\n    \"code\": 173,\n    \"county_code\": 27,\n    \"name\": \"Kesses\"\n  },\n  {\n    \"code\": 174,\n    \"county_code\": 27,\n    \"name\": \"Moiben\"\n  },\n  {\n    \"code\": 175,\n    \"county_code\": 27,\n    \"name\": \"Soy\"\n  },\n  {\n    \"code\": 176,\n    \"county_code\": 27,\n    \"name\": \"Turbo\"\n  },\n  {\n    \"code\": 177,\n    \"county_code\": 28,\n    \"name\": \"Marakwet East\"\n  },\n  {\n    \"code\": 178,\n    \"county_code\": 28,\n    \"name\": \"Marakwet West\"\n  },\n  {\n    \"code\": 179,\n    \"county_code\": 28,\n    \"name\": \"Keiyo North\"\n  },\n  {\n    \"code\": 180,\n    \"county_code\": 28,\n    \"name\": \"Keiyo South\"\n  },\n  {\n    \"code\": 181,\n    \"county_code\": 29,\n    \"name\": \"Aldai\"\n  },\n  {\n    \"code\": 182,\n    \"county_code\": 29,\n    \"name\": \"Chesumei\"\n  },\n  {\n    \"code\": 183,\n    \"county_code\": 29,\n    \"name\": \"Emgwen\"\n  },\n  {\n    \"code\": 184,\n    \"county_code\": 29,\n    \"name\": \"Mosop\"\n  },\n  {\n    \"code\": 185,\n    \"county_code\": 29,\n    \"name\": \"Namdi hills\"\n  },\n  {\n    \"code\": 186,\n    \"county_code\": 29,\n    \"name\": \"Tindiret\"\n  },\n  {\n    \"code\": 187,\n    \"county_code\": 30,\n    \"name\": \"East Pokot\"\n  },\n  {\n    \"code\": 188,\n    \"county_code\": 30,\n    \"name\": \"Baringo North\"\n  },\n  {\n    \"code\": 189,\n    \"county_code\": 30,\n    \"name\": \"Baringo Central\"\n  },\n  {\n    \"code\": 190,\n    \"county_code\": 30,\n    \"name\": \"Baringo South\"\n  },\n  {\n    \"code\": 191,\n    \"county_code\": 30,\n    \"name\": \"Marigat\"\n  },\n  {\n    \"code\": 191,\n    \"county_code\": 30,\n    \"name\": \"Eldama Ravine\"\n  }, {\n  \"code\": 191,\n  \"county_code\": 30,\n  \"name\": \"Tiaty\"\n},\n  {\n    \"code\": 192,\n    \"county_code\": 30,\n    \"name\": \"Mogotio\"\n  },\n  {\n    \"code\": 193,\n    \"county_code\": 31,\n    \"name\": \"Laikipia West\"\n  },\n  {\n    \"code\": 194,\n    \"county_code\": 31,\n    \"name\": \"Laikipia East\"\n  },\n  {\n    \"code\": 195,\n    \"county_code\": 31,\n    \"name\": \"Laikipia North\"\n  },\n  {\n    \"code\": 196,\n    \"county_code\": 31,\n    \"name\": \"Laikipia West\"\n  },\n\n  {\n    \"code\": 191,\n    \"county_code\": 32,\n    \"name\": \"Bahati\"\n  },\n  {\n    \"code\": 192,\n    \"county_code\": 32,\n    \"name\": \"Gilgil\"\n  },\n  {\n    \"code\": 193,\n    \"county_code\": 32,\n    \"name\": \"Kuresoi north\"\n  },\n  {\n    \"code\": 194,\n    \"county_code\": 32,\n    \"name\": \"Kuresoi south\"\n  },\n  {\n    \"code\": 195,\n    \"county_code\": 32,\n    \"name\": \"Molo\"\n  },\n  {\n    \"code\": 196,\n    \"county_code\": 32,\n    \"name\": \"Naivasha\"\n  },\n  {\n    \"code\": 197,\n    \"county_code\": 32,\n    \"name\": \"Nakuru town east\"\n  },\n  {\n    \"code\": 198,\n    \"county_code\": 32,\n    \"name\": \"Nakuru town west\"\n  },\n  {\n    \"code\": 199,\n    \"county_code\": 32,\n    \"name\": \"Njoro\"\n  },\n  {\n    \"code\": 200,\n    \"county_code\": 32,\n    \"name\": \"Rongai\"\n  },\n  {\n    \"code\": 201,\n    \"county_code\": 32,\n    \"name\": \"Subukia\"\n  },\n  {\n    \"code\": 211,\n    \"county_code\": 33,\n    \"name\": \"Narok east\"\n  },\n  {\n    \"code\": 212,\n    \"county_code\": 33,\n    \"name\": \"Narok north\"\n  },\n  {\n    \"code\": 213,\n    \"county_code\": 33,\n    \"name\": \"Narok south\"\n  },\n  {\n    \"code\": 214,\n    \"county_code\": 33,\n    \"name\": \"Narok west\"\n  },\n  {\n    \"code\": 215,\n    \"county_code\": 33,\n    \"name\": \"Transmara east\"\n  },\n  {\n    \"code\": 216,\n    \"county_code\": 33,\n    \"name\": \"Transmara west\"\n  },\n  {\n    \"code\": 215,\n    \"county_code\": 34,\n    \"name\": \"Kajiado North\"\n  },\n  {\n    \"code\": 216,\n    \"county_code\": 34,\n    \"name\": \"Kajiado Central\"\n  },\n  {\n    \"code\": 217,\n    \"county_code\": 34,\n    \"name\": \"Kajiado East\"\n  },\n  {\n    \"code\": 217,\n    \"county_code\": 34,\n    \"name\": \"Kajiado West\"\n  },\n  {\n    \"code\": 217,\n    \"county_code\": 34,\n    \"name\": \"Kajiado North\"\n  },\n  {\n    \"code\": 218,\n    \"county_code\": 34,\n    \"name\": \"Kajiado South\"\n  },\n  {\n    \"code\": 219,\n    \"county_code\": 34,\n    \"name\": \"Loitokitok\"\n  },\n  {\n    \"code\": 220,\n    \"county_code\": 34,\n    \"name\": \"Mashuuru\"\n  },\n  {\n    \"code\": 221,\n    \"county_code\": 35,\n    \"name\": \"Ainamoi\"\n  },\n  {\n    \"code\": 222,\n    \"county_code\": 35,\n    \"name\": \"Belgut\"\n  },\n  {\n    \"code\": 223,\n    \"county_code\": 35,\n    \"name\": \"Bureti\"\n  },\n  {\n    \"code\": 224,\n    \"county_code\": 35,\n    \"name\": \"Kipkelion east\"\n  },\n  {\n    \"code\": 225,\n    \"county_code\": 35,\n    \"name\": \"Kipkelion west\"\n  },\n  {\n    \"code\": 226,\n    \"county_code\": 35,\n    \"name\": \"Soin sigowet\"\n  },\n  {\n    \"code\": 227,\n    \"county_code\": 36,\n    \"name\": \"Sotik\"\n  },\n  {\n    \"code\": 228,\n    \"county_code\": 36,\n    \"name\": \"Chepalungu\"\n  },\n  {\n    \"code\": 229,\n    \"county_code\": 36,\n    \"name\": \"Bomet East\"\n  },\n  {\n    \"code\": 230,\n    \"county_code\": 36,\n    \"name\": \"Bomet\"\n  },\n  {\n    \"code\": 231,\n    \"county_code\": 36,\n    \"name\": \"Konoin\"\n  },\n  {\n    \"code\": 232,\n    \"county_code\": 37,\n    \"name\": \"Butere\"\n  },\n  {\n    \"code\": 233,\n    \"county_code\": 37,\n    \"name\": \"Ikolomani\"\n  },\n  {\n    \"code\": 234,\n    \"county_code\": 37,\n    \"name\": \"Likuyani\"\n  },\n  {\n    \"code\": 234,\n    \"county_code\": 37,\n    \"name\": \"Malava\"\n  },\n\n  {\n    \"code\": 235,\n    \"county_code\": 37,\n    \"name\": \"Matungu\"\n  },\n  {\n    \"code\": 236,\n    \"county_code\": 37,\n    \"name\": \"Mumias West\"\n  },\n  {\n    \"code\": 236,\n    \"county_code\": 37,\n    \"name\": \"Khwisero\"\n  },\n  {\n    \"code\": 237,\n    \"county_code\": 37,\n    \"name\": \"Lugari\"\n  },\n  {\n    \"code\": 238,\n    \"county_code\": 37,\n    \"name\": \"Likuyani\"\n  },\n  {\n    \"code\": 239,\n    \"county_code\": 37,\n    \"name\": \"Lurambi\"\n  },\n  {\n    \"code\": 240,\n    \"county_code\": 37,\n    \"name\": \"Matete\"\n  },\n  {\n    \"code\": 241,\n    \"county_code\": 37,\n    \"name\": \"Mumias East\"\n  },\n  {\n    \"code\": 241,\n    \"county_code\": 37,\n    \"name\": \"Navakholo\"\n  },\n  {\n    \"code\": 241,\n    \"county_code\": 37,\n    \"name\": \"Shinyalu\"\n  },\n  {\n    \"code\": 242,\n    \"county_code\": 37,\n    \"name\": \"Mutungu\"\n  },\n  {\n    \"code\": 245,\n    \"county_code\": 38,\n    \"name\": \"Vihiga\"\n  },\n  {\n    \"code\": 246,\n    \"county_code\": 38,\n    \"name\": \"Sabatia\"\n  },\n  {\n    \"code\": 247,\n    \"county_code\": 38,\n    \"name\": \"Hamisi\"\n  },\n  {\n    \"code\": 248,\n    \"county_code\": 38,\n    \"name\": \"Luanda\"\n  },\n  {\n    \"code\": 249,\n    \"county_code\": 38,\n    \"name\": \"Emuhaya\"\n  },\n  {\n    \"code\": 250,\n    \"county_code\": 39,\n    \"name\": \"Mt. Elgon\"\n  },\n  {\n    \"code\": 251,\n    \"county_code\": 39,\n    \"name\": \"Bungoma Central\"\n  },\n  {\n    \"code\": 252,\n    \"county_code\": 39,\n    \"name\": \"Bungoma East\"\n  },\n  {\n    \"code\": 253,\n    \"county_code\": 39,\n    \"name\": \"Bungoma North\"\n  },\n  {\n    \"code\": 254,\n    \"county_code\": 39,\n    \"name\": \"Bungoma South\"\n  },\n  {\n    \"code\": 255,\n    \"county_code\": 39,\n    \"name\": \"Bungoma West\"\n  },\n  {\n    \"code\": 256,\n    \"county_code\": 39,\n    \"name\": \"Webuye West\"\n  },\n  {\n    \"code\": 257,\n    \"county_code\": 39,\n    \"name\": \"Cheptais\"\n  },\n  {\n    \"code\": 258,\n    \"county_code\": 39,\n    \"name\": \"Kimilili\"\n  },\n  {\n    \"code\": 259,\n    \"county_code\": 39,\n    \"name\": \"Bumula\"\n  },\n  {\n    \"code\": 261,\n    \"county_code\": 40,\n    \"name\": \"Budalangi\"\n  },\n  {\n    \"code\": 262,\n    \"county_code\": 40,\n    \"name\": \"Butula\"\n  },\n  {\n    \"code\": 263,\n    \"county_code\": 40,\n    \"name\": \"Funyula\"\n  },\n  {\n    \"code\": 264,\n    \"county_code\": 40,\n    \"name\": \"Nambele\"\n  },\n  {\n    \"code\": 265,\n    \"county_code\": 40,\n    \"name\": \"Teso North\"\n  },\n  {\n    \"code\": 266,\n    \"county_code\": 40,\n    \"name\": \"Teso South\"\n  },\n  {\n    \"code\": 267,\n    \"county_code\": 41,\n    \"name\": \"Ugenya\"\n  },\n  {\n    \"code\": 268,\n    \"county_code\": 41,\n    \"name\": \"Ugunja\"\n  },\n  {\n    \"code\": 269,\n    \"county_code\": 41,\n    \"name\": \"Siaya\"\n  },\n  {\n    \"code\": 270,\n    \"county_code\": 41,\n    \"name\": \"Gem\"\n  },\n  {\n    \"code\": 271,\n    \"county_code\": 41,\n    \"name\": \"Bondo\"\n  },\n  {\n    \"code\": 272,\n    \"county_code\": 41,\n    \"name\": \"Rarieda\"\n  },\n\n  {\n    \"code\": 273,\n    \"county_code\": 42,\n    \"name\": \"Kisumu central\"\n  },\n  {\n    \"code\": 274,\n    \"county_code\": 42,\n    \"name\": \"Kisumu east\"\n  },\n  {\n    \"code\": 273,\n    \"county_code\": 42,\n    \"name\": \"Kisumu west\"\n  },\n  {\n    \"code\": 274,\n    \"county_code\": 42,\n    \"name\": \"Mohoroni\"\n  },\n  {\n    \"code\": 275,\n    \"county_code\": 42,\n    \"name\": \"Nyakach\"\n  },\n  {\n    \"code\": 276,\n    \"county_code\": 42,\n    \"name\": \"Nyando\"\n  },\n  {\n    \"code\": 277,\n    \"county_code\": 42,\n    \"name\": \"Seme\"\n  },\n  {\n    \"code\": 405,\n    \"county_code\": 43,\n    \"name\": \"Homabay town\"\n  },\n  {\n    \"code\": 406,\n    \"county_code\": 43,\n    \"name\": \"Kabondo\"\n  },\n  {\n    \"code\": 407,\n    \"county_code\": 43,\n    \"name\": \"Karachwonyo\"\n  },\n  {\n    \"code\": 408,\n    \"county_code\": 43,\n    \"name\": \"Kasipul\"\n  },\n  {\n    \"code\": 409,\n    \"county_code\": 43,\n    \"name\": \"Mbita\"\n  },\n  {\n    \"code\": 410,\n    \"county_code\": 43,\n    \"name\": \"Ndhiwa\"\n  },\n  {\n    \"code\": 411,\n    \"county_code\": 43,\n    \"name\": \"Rangwe\"\n  },\n  {\n    \"code\": 412,\n    \"county_code\": 43,\n    \"name\": \"Suba\"\n  },\n  {\n    \"code\": 413,\n    \"county_code\": 44,\n    \"name\": \"Awendo\"\n  },\n  {\n    \"code\": 414,\n    \"county_code\": 44,\n    \"name\": \"Kuria east\"\n  },\n  {\n    \"code\": 415,\n    \"county_code\": 44,\n    \"name\": \"Kuria west\"\n  },\n  {\n    \"code\": 416,\n    \"county_code\": 44,\n    \"name\": \"Mabera\"\n  },\n  {\n    \"code\": 417,\n    \"county_code\": 44,\n    \"name\": \"Ntimaru\"\n  },\n  {\n    \"code\": 418,\n    \"county_code\": 44,\n    \"name\": \"Rongo\"\n  },\n  {\n    \"code\": 419,\n    \"county_code\": 44,\n    \"name\": \"Suna east\"\n  },\n  {\n    \"code\": 420,\n    \"county_code\": 44,\n    \"name\": \"Suna west\"\n  },\n  {\n    \"code\": 421,\n    \"county_code\": 44,\n    \"name\": \"Uriri\"\n  },\n  {\n    \"code\": 422,\n    \"county_code\": 46,\n    \"name\": \"Borabu\"\n  },\n  {\n    \"code\": 423,\n    \"county_code\": 46,\n    \"name\": \"Manga\"\n  },\n  {\n    \"code\": 424,\n    \"county_code\": 46,\n    \"name\": \"Masaba north\"\n  },\n  {\n    \"code\": 425,\n    \"county_code\": 46,\n    \"name\": \"Nyamira north\"\n  },\n  {\n    \"code\": 426,\n    \"county_code\": 46,\n    \"name\": \"Nyamira south\"\n  },\n  {\n    \"code\": 427,\n    \"county_code\": 47,\n    \"name\": \"Dagoretti North Sub County\"\n  },\n  {\n    \"code\": 428,\n    \"county_code\": 47,\n    \"name\": \"Dagoretti South Sub County\"\n  },\n  {\n    \"code\": 429,\n    \"county_code\": 47,\n    \"name\": \"Embakasi Central Sub County\"\n  },\n  {\n    \"code\": 430,\n    \"county_code\": 47,\n    \"name\": \"Embakasi East Sub County\"\n  },\n  {\n    \"code\": 431,\n    \"county_code\": 47,\n    \"name\": \"Embakasi North Sub County\"\n  },\n  {\n    \"code\": 432,\n    \"county_code\": 47,\n    \"name\": \"Embakasi South Sub County\"\n  },\n  {\n    \"code\": 433,\n    \"county_code\": 47,\n    \"name\": \"Embakasi West Sub County\"\n  },\n  {\n    \"code\": 434,\n    \"county_code\": 47,\n    \"name\": \"Kamukunji Sub County\"\n  },\n  {\n    \"code\": 435,\n    \"county_code\": 47,\n    \"name\": \"Kasarani Sub County\"\n  },\n  {\n    \"code\": 436,\n    \"county_code\": 47,\n    \"name\": \"Kibra Sub County\"\n  },\n  {\n    \"code\": 437,\n    \"county_code\": 47,\n    \"name\": \"Lang'ata Sub County\"\n  },\n  {\n    \"code\": 438,\n    \"county_code\": 47,\n    \"name\": \"Makadara Sub County\"\n  },\n  {\n    \"code\": 439,\n    \"county_code\": 47,\n    \"name\": \"Mathare Sub County\"\n  },\n  {\n    \"code\": 440,\n    \"county_code\": 47,\n    \"name\": \"Roysambu Sub County\"\n  },\n  {\n    \"code\": 441,\n    \"county_code\": 47,\n    \"name\": \"Ruaraka Sub County\"\n  },\n  {\n    \"code\": 442,\n    \"county_code\": 47,\n    \"name\": \"Starehe Sub County\"\n  },\n  {\n    \"code\": 443,\n    \"county_code\": 47,\n    \"name\": \"Westlands Sub County\"\n  }\n\n]\n\n
+===================================================================
+diff --git a/reception/counties/sub-counties.json b/reception/counties/sub-counties.json
+--- a/reception/counties/sub-counties.json	
++++ b/reception/counties/sub-counties.json	
+@@ -157,11 +157,6 @@
+     "name": "Fafi"
+   },
+   {
+-    "code": 33,
+-    "county_code": 7,
+-    "name": "Ijara"
+-  },
+-  {
+     "code": 34,
+     "county_code": 8,
+     "name": "Wajir North"
+@@ -220,7 +215,7 @@
+   {
+     "code": 47,
+     "county_code": 9,
+-    "name": "Lafey"
++    "name": "Mandera South"
+   },
+   {
+     "code": 48,
+@@ -286,7 +281,7 @@
+   {
+     "code": 63,
+     "county_code": 12,
+-    "name": "Meru Central"
++    "name": "Central Imenti"
+   },
+ 
+   {
+@@ -380,7 +375,11 @@
+     "county_code": 15,
+     "name": "Mwingi North"
+   },
+-
++  {
++    "code": 444,
++    "county_code": 15,
++    "name": "Kitui East"
++  },
+   {
+     "code": 93,
+     "county_code": 16,
+@@ -409,7 +408,7 @@
+   {
+     "code": 98,
+     "county_code": 16,
+-    "name": "Athi River"
++    "name": "Mavoko"
+   },
+   {
+     "code": 99,
+@@ -468,11 +467,6 @@
+     "name": "Ndaragua"
+   },
+   {
+-    "code": 113,
+-    "county_code": 18,
+-    "name": "Nyandarua"
+-  },
+-  {
+     "code": 113,
+     "county_code": 18,
+     "name": "Ol Jorok"
+@@ -523,11 +517,6 @@
+     "name": "Othaya"
+   },
+   {
+-    "code": 124,
+-    "county_code": 19,
+-    "name": "Tetu"
+-  },
+-  {
+     "code": 125,
+     "county_code": 20,
+     "name": "Gichugu"
+@@ -812,7 +801,7 @@
+   {
+     "code": 185,
+     "county_code": 29,
+-    "name": "Namdi hills"
++    "name": "Nandi hills"
+   },
+   {
+     "code": 186,
+@@ -820,11 +809,6 @@
+     "name": "Tindiret"
+   },
+   {
+-    "code": 187,
+-    "county_code": 30,
+-    "name": "East Pokot"
+-  },
+-  {
+     "code": 188,
+     "county_code": 30,
+     "name": "Baringo North"
+@@ -839,20 +823,17 @@
+     "county_code": 30,
+     "name": "Baringo South"
+   },
+-  {
+-    "code": 191,
+-    "county_code": 30,
+-    "name": "Marigat"
+-  },
++
+   {
+     "code": 191,
+     "county_code": 30,
+     "name": "Eldama Ravine"
+-  }, {
+-  "code": 191,
+-  "county_code": 30,
+-  "name": "Tiaty"
+-},
++  },
++  {
++    "code": 191,
++    "county_code": 30,
++    "name": "Tiaty"
++  },
+   {
+     "code": 192,
+     "county_code": 30,
+@@ -873,12 +854,6 @@
+     "county_code": 31,
+     "name": "Laikipia North"
+   },
+-  {
+-    "code": 196,
+-    "county_code": 31,
+-    "name": "Laikipia West"
+-  },
+-
+   {
+     "code": 191,
+     "county_code": 32,
+@@ -957,12 +932,12 @@
+   {
+     "code": 215,
+     "county_code": 33,
+-    "name": "Transmara east"
++    "name": "Emurua Dikirr"
+   },
+   {
+     "code": 216,
+     "county_code": 33,
+-    "name": "Transmara west"
++    "name": "Kilgoris"
+   },
+   {
+     "code": 215,
+@@ -985,39 +960,24 @@
+     "name": "Kajiado West"
+   },
+   {
+-    "code": 217,
+-    "county_code": 34,
+-    "name": "Kajiado North"
+-  },
+-  {
+     "code": 218,
+     "county_code": 34,
+     "name": "Kajiado South"
+   },
+   {
+-    "code": 219,
+-    "county_code": 34,
+-    "name": "Loitokitok"
+-  },
+-  {
+-    "code": 220,
+-    "county_code": 34,
+-    "name": "Mashuuru"
+-  },
+-  {
+     "code": 221,
+     "county_code": 35,
+-    "name": "Ainamoi"
++    "name": "Kericho East"
+   },
+   {
+     "code": 222,
+     "county_code": 35,
+-    "name": "Belgut"
++    "name": "Kericho West"
+   },
+   {
+     "code": 223,
+     "county_code": 35,
+-    "name": "Bureti"
++    "name": "Buret"
+   },
+   {
+     "code": 224,
+@@ -1032,7 +992,7 @@
+   {
+     "code": 226,
+     "county_code": 35,
+-    "name": "Soin sigowet"
++    "name": "Sigowet"
+   },
+   {
+     "code": 227,
+@@ -1052,7 +1012,7 @@
+   {
+     "code": 230,
+     "county_code": 36,
+-    "name": "Bomet"
++    "name": "Bomet Central"
+   },
+   {
+     "code": 231,
+@@ -1072,23 +1032,17 @@
+   {
+     "code": 234,
+     "county_code": 37,
+-    "name": "Likuyani"
+-  },
+-  {
+-    "code": 234,
+-    "county_code": 37,
+-    "name": "Malava"
++    "name": "Navakholo"
+   },
+-
+   {
+     "code": 235,
+     "county_code": 37,
+-    "name": "Matungu"
++    "name": "Shinyalu"
+   },
+   {
+     "code": 236,
+     "county_code": 37,
+-    "name": "Mumias West"
++    "name": "Malava"
+   },
+   {
+     "code": 236,
+@@ -1103,7 +1057,7 @@
+   {
+     "code": 238,
+     "county_code": 37,
+-    "name": "Likuyani"
++    "name": "Mumias East"
+   },
+   {
+     "code": 239,
+@@ -1111,29 +1065,14 @@
+     "name": "Lurambi"
+   },
+   {
+-    "code": 240,
+-    "county_code": 37,
+-    "name": "Matete"
+-  },
+-  {
+-    "code": 241,
+-    "county_code": 37,
+-    "name": "Mumias East"
+-  },
+-  {
+-    "code": 241,
+-    "county_code": 37,
+-    "name": "Navakholo"
+-  },
+-  {
+     "code": 241,
+     "county_code": 37,
+-    "name": "Shinyalu"
++    "name": "Mumias West"
+   },
+   {
+     "code": 242,
+     "county_code": 37,
+-    "name": "Mutungu"
++    "name": "Matungu"
+   },
+   {
+     "code": 245,
+@@ -1168,27 +1107,27 @@
+   {
+     "code": 251,
+     "county_code": 39,
+-    "name": "Bungoma Central"
++    "name": "Kabuchai"
+   },
+   {
+     "code": 252,
+     "county_code": 39,
+-    "name": "Bungoma East"
++    "name": "Kanduyi"
+   },
+   {
+     "code": 253,
+     "county_code": 39,
+-    "name": "Bungoma North"
++    "name": "Sirisia"
+   },
+   {
+     "code": 254,
+     "county_code": 39,
+-    "name": "Bungoma South"
++    "name": "Tongeren"
+   },
+   {
+     "code": 255,
+     "county_code": 39,
+-    "name": "Bungoma West"
++    "name": "Webuye East"
+   },
+   {
+     "code": 256,
+@@ -1196,11 +1135,6 @@
+     "name": "Webuye West"
+   },
+   {
+-    "code": 257,
+-    "county_code": 39,
+-    "name": "Cheptais"
+-  },
+-  {
+     "code": 258,
+     "county_code": 39,
+     "name": "Kimilili"
+@@ -1216,6 +1150,11 @@
+     "name": "Budalangi"
+   },
+   {
++    "code": 261,
++    "county_code": 445,
++    "name": "Matayos"
++  },
++  {
+     "code": 262,
+     "county_code": 40,
+     "name": "Butula"
+@@ -1228,7 +1167,7 @@
+   {
+     "code": 264,
+     "county_code": 40,
+-    "name": "Nambele"
++    "name": "Nambale"
+   },
+   {
+     "code": 265,
+@@ -1253,7 +1192,7 @@
+   {
+     "code": 269,
+     "county_code": 41,
+-    "name": "Siaya"
++    "name": "Alego Usonga"
+   },
+   {
+     "code": 270,
+@@ -1289,7 +1228,7 @@
+   {
+     "code": 274,
+     "county_code": 42,
+-    "name": "Mohoroni"
++    "name": "Muhoroni"
+   },
+   {
+     "code": 275,
+@@ -1309,12 +1248,12 @@
+   {
+     "code": 405,
+     "county_code": 43,
+-    "name": "Homabay town"
++    "name": "Homa Bay"
+   },
+   {
+     "code": 406,
+     "county_code": 43,
+-    "name": "Kabondo"
++    "name": "Kabondo Kasipul"
+   },
+   {
+     "code": 407,
+@@ -1364,12 +1303,7 @@
+   {
+     "code": 416,
+     "county_code": 44,
+-    "name": "Mabera"
+-  },
+-  {
+-    "code": 417,
+-    "county_code": 44,
+-    "name": "Ntimaru"
++    "name": "Nyatike"
+   },
+   {
+     "code": 418,
+@@ -1392,6 +1326,51 @@
+     "name": "Uriri"
+   },
+   {
++    "code": 422,
++    "county_code": 45,
++    "name": "Bobasi"
++  },
++  {
++    "code": 423,
++    "county_code": 45,
++    "name": "Bomachoge Borabu"
++  },
++  {
++    "code": 424,
++    "county_code": 45,
++    "name": "Bomachoge Chache"
++  },
++  {
++    "code": 425,
++    "county_code": 45,
++    "name": "Bonchari"
++  },
++  {
++    "code": 426,
++    "county_code": 45,
++    "name": "Kitutu Chache North"
++  },
++  {
++    "code": 422,
++    "county_code": 45,
++    "name": "Kitutu Chache South"
++  },
++  {
++    "code": 423,
++    "county_code": 45,
++    "name": "Nyaribari Chache"
++  },
++  {
++    "code": 424,
++    "county_code": 45,
++    "name": "Nyaribari Masaba"
++  },
++  {
++    "code": 425,
++    "county_code": 45,
++    "name": "South Mugirango"
++  },
++  {
+     "code": 422,
+     "county_code": 46,
+     "name": "Borabu"
+@@ -1414,93 +1393,95 @@
+   {
+     "code": 426,
+     "county_code": 46,
+-    "name": "Nyamira south"
++    "name": "Nyamira"
+   },
+   {
+     "code": 427,
+     "county_code": 47,
+-    "name": "Dagoretti North Sub County"
++    "name": "Dagoretti North"
+   },
+   {
+     "code": 428,
+     "county_code": 47,
+-    "name": "Dagoretti South Sub County"
++    "name": "Dagoretti South"
+   },
+   {
+     "code": 429,
+     "county_code": 47,
+-    "name": "Embakasi Central Sub County"
++    "name": "Embakasi Central"
+   },
+   {
+     "code": 430,
+     "county_code": 47,
+-    "name": "Embakasi East Sub County"
++    "name": "Embakasi East"
+   },
+   {
+     "code": 431,
+     "county_code": 47,
+-    "name": "Embakasi North Sub County"
++    "name": "Embakasi North"
+   },
+   {
+     "code": 432,
+     "county_code": 47,
+-    "name": "Embakasi South Sub County"
++    "name": "Embakasi South"
+   },
+   {
+     "code": 433,
+     "county_code": 47,
+-    "name": "Embakasi West Sub County"
++    "name": "Embakasi West"
+   },
+   {
+     "code": 434,
+     "county_code": 47,
+-    "name": "Kamukunji Sub County"
++    "name": "Kamukunji"
+   },
+   {
+     "code": 435,
+     "county_code": 47,
+-    "name": "Kasarani Sub County"
++    "name": "Kasarani"
+   },
+   {
+     "code": 436,
+     "county_code": 47,
+-    "name": "Kibra Sub County"
++    "name": "Kibra"
+   },
+   {
+     "code": 437,
+     "county_code": 47,
+-    "name": "Lang'ata Sub County"
++    "name": "Lang'ata"
+   },
+   {
+     "code": 438,
+     "county_code": 47,
+-    "name": "Makadara Sub County"
++    "name": "Makadara"
+   },
+   {
+     "code": 439,
+     "county_code": 47,
+-    "name": "Mathare Sub County"
++    "name": "Mathare"
+   },
+   {
+     "code": 440,
+     "county_code": 47,
+-    "name": "Roysambu Sub County"
++    "name": "Roysambu"
+   },
+   {
+     "code": 441,
+     "county_code": 47,
+-    "name": "Ruaraka Sub County"
++    "name": "Ruaraka"
+   },
+   {
+     "code": 442,
+     "county_code": 47,
+-    "name": "Starehe Sub County"
++    "name": "Starehe"
+   },
+   {
+     "code": 443,
+     "county_code": 47,
+-    "name": "Westlands Sub County"
++    "name": "Westlands"
+   }
++
++
+ 
+ ]
+ 

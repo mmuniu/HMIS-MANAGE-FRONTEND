@@ -1,0 +1,743 @@
+Index: Repositories/VisitRepository.php
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?php\n\nnamespace Ignite\\Evaluation\\Repositories;\n\nuse Ignite\\Evaluation\\Entities\\Visit;\nuse Ignite\\Core\\Repositories\\EloquentBaseRepository;\n\nclass VisitRepository extends EloquentBaseRepository\n{\n    protected $visit;\n\n    /**\n     * @var \\Illuminate\\Database\\Eloquent\\Model An instance of the Eloquent Model\n     */\n    protected $model;\n\n    /**\n     * @param Model $model\n     */\n    public function __construct(Visit $model)\n    {\n        $this->model = $model;\n    }\n\n    /**\n    * Get a visit from the evaluation_visits table\n    */\n    public function findById($id)\n    {\n        return $this->model->with(['admissionRequest', 'patients'])->findOrFail($id);\n    }\n\n}
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/Repositories/VisitRepository.php b/Repositories/VisitRepository.php
+--- a/Repositories/VisitRepository.php	(revision b43adb95b83158b7aa2eda179fdfbbb687f8c226)
++++ b/Repositories/VisitRepository.php	(date 1712239984897)
+@@ -1,33 +1,715 @@
+ <?php
++/**
++ * Created by PhpStorm.
++ * User: kisiara
++ * Date: 19/09/2018
++ * Time: 13:23
++ */
+ 
+-namespace Ignite\Evaluation\Repositories;
++namespace Ignite\Reception\Repositories;
+ 
++use Carbon\Carbon;
++use Ignite\Core\Entities\SystemLog;
++use Ignite\Core\Library\Datatable;
++use Ignite\Evaluation\Entities\Investigations;
++use Ignite\Evaluation\Entities\Procedures;
+ use Ignite\Evaluation\Entities\Visit;
+-use Ignite\Core\Repositories\EloquentBaseRepository;
++use Ignite\Evaluation\Entities\VisitConsultants;
++use Ignite\Evaluation\Entities\VisitDestination;
++use Ignite\Evaluation\Entities\VisitDestinations;
++use Ignite\Evaluation\Library\Traits\ProcedurePricesTrait;
++use Ignite\Finance\Entities\FinsprintWallets;
++use Ignite\Finance\Library\Payments\ClientPayments\Finsprint;
++use Ignite\Inpatient\Repositories\Traits\AdmissionRequestTrait;
++use Ignite\Reception\Entities\Patients;
++use Ignite\Reception\Entities\TimeTracker;
++use Ignite\Reception\Events\VisitCreated;
++use Ignite\Reception\Library\Facades\Usher;
++use Ignite\Reception\Transformers\VisitCollectionResource;
++use Ignite\Reception\Transformers\VisitDestinationResource;
++use Ignite\Reception\Transformers\VisitResource;
++use Ignite\Settings\Entities\SettingsDestination;
++use Illuminate\Http\RedirectResponse;
++use Illuminate\Support\Facades\DB;
++
++class VisitRepository
++{
++    use AdmissionRequestTrait, ProcedurePricesTrait;
++
++    /*
++     * Inject any necessary dependencies
++     */
++    public function __construct(Finsprint $finsprint)
++    {
++        $this->finsprint = $finsprint;
++    }
++
++    /*
++     * Get a single visit from persistence
++     */
++    public function find($visitId)
++    {
++        $visit = Visit::with(["vitals", "patients.dialysis"])->find($visitId);
++
++        return new VisitResource($visit);
++    }
++
++    /*
++     * Check in a patient into a queue
++     */
++    public function create()
++    {
++
++        $resp = $this->performExtraChecks();
++
++        if (! $resp || $resp instanceof RedirectResponse) {
++            return $resp;
++        }
++
++
++        return DB::transaction(function() use ($resp){
++
++            $visit = Visit::create(request("visit"));
++
++            TimeTracker::create([
++                "visit_id" => $visit->id,
++                "user_id" => doe()->id,
++                "destination_name" => 'Reception',
++                "time_in" =>  now(),
++            ]);
++
++            event(new VisitCreated($visit));
++
++            if(m_setting('finance.wallet_integrated') && request('visit')['payment_mode'] !== 'insurance' ) {
++
++                $patientId = request()->input('visit.patient');
++
++                //check if patient has a created finsprint patient wallet account,if not create one for them
++                $patient_finsprint_wallet = FinsprintWallets::where('patient_id', $patientId)->first();
++                if (!$patient_finsprint_wallet) {
++
++                    $patient = Patients::where('id', $patientId)->first();
++                    //call on create finsprint account endpoint and ensure id_no exists before going further
++
++
++                    $create_account_data = [
++                        'first_name' => $patient->first_name,
++                        'second_name' => $patient->middle_name,
++                        'last_name' => $patient->last_name,
++                        'document_type' => 'id_number',
++                        'document_number' => strval($patient->patient_no),
++                        'email' => $patient->email,
++                        'phone_number' => $patient->mobile,
++                        'statement_preference' => 'yes',
++                        'account_type'=> "",
++                        'notification_preference' => 'yes',
++                        'currency' => 'KES',
++                        'remarks' => 'Kakamega Level 5',
++                    ];
++                    $create_finsprint_account = $this->finsprint->createPatientAccount($create_account_data, $patientId);
++
++                    if ($create_finsprint_account['response_code'] === 200) {
++
++                        //here we did a create transaction do return message patient listed successful
++                        return [
++                            "message" => "Patient listed successfully",
++                            "alert" => "success",
++                        ];
++
++                    } else {
++
++                        flash()->error("An error occurred during patient checkin. Please try again");
++                        return redirect()->back();
++                    }
++
++
++
++                }else {
++                    //here lien the transaction if patient already has a finsprint account and we have chosen a procedure
++                    $totalCharge = 0;
++
++//                    $visit = request('visit');
++                    foreach (request("precharges") as $procedureId) {
++                        $procedure = Procedures::find($procedureId);
++                        $procedurePrices = $this->calculateProcedurePrices($procedure);
++                        $pricing = $visit['payment_mode'] === 'cash' ? $procedurePrices['cash_charge'] : $procedurePrices['insurance_charge'];
++
++                        $totalCharge += $pricing;
++                    }
++
++
++
++
++                    \Log::info(" ");
++                    \Log::info($patient_finsprint_wallet->wallet_number);
++
++//                    $wallet_number = '111'.$patient_finsprint_wallet->wallet_number;
++                    $post_data = [
++                        "is_internal" => false,
++                        "debit_account_number" => $patient_finsprint_wallet->wallet_number,
++                        "credit_account_number" => "1115510000203", // constant for debit
++                        "transaction_type" => "hmis_payment",
++                        "currency" => "KES",
++                        "amount" => $totalCharge,
++                        "reference_id" => $visit->id,
++                        "remarks" => "OrderPayment",
++                        "result_url" => "https://kakamegacounty.collabmed.net/finance/api/finsprint-callback",
++                        "auto_complete" => false,
++                    ];
++
++
++                    $response = $this->finsprint->initiateDebitTransaction($post_data);
++
++                    if (isset($response['message'])) {
++
++                        //throw the relevant error to the user
++                        if ($response['message'] == 'Insufficient funds') {
++
++                            $message = 'Kindly advise patient to top up their wallet before final point of receipt';
++                        } else {
++                            $message = $response['message'];
++                        }
++
++                        $resp=  [
++                            "message" => $message,
++                            "alert" => "error",
++                        ];
++                    }else{
++                        $resp =  [
++                            "message" => "Patient listed successfully",
++                            "alert" => "success",
++                        ];
++                    }
++                }
++
++            }
++
++
++            if(m_setting('finance.wallet_integrated')){
++
++                if (!is_array($resp)) {
++                    $resp = array();
++                }
++                $resp['visit'] = $visit;
++                return $resp;
++
++            }
++            return $visit;
++
++        });
++    }
++
++    /*
++     * Fetch a paginated result set
++     */
++    public function paginate($builder = false)
++    {
++        $builder = $builder ? $builder : Visit::query();
++
++        $visits = $builder->latest()->paginate(core_paginate('k'));
++
++        return array_merge([
++            'data' => $this->transformVisitsData($visits),
++            'headers' => (new Datatable)->headers([ "patient name", "destinations", "date", "actions"])
++        ], manual_paginator($visits));
++//        return new VisitCollectionResource($visits);
++    }
++
++    /**
++     * @param $visits
++     * transform visits data for faster loads
++     */
++    public function transformVisitsData($visits)
++    {
++        $data = [];
++
++
++        foreach($visits as $visit) {
++            $data[] = [
++                "id" => (int)$visit->id,
++                "inpatient" => (bool)$visit->inpatient,
++                "clinic_id" => $visit->clinic,
++                "facility_id" => $visit->clinic,
++                "patient_id" => $visit->patient,
++                "user_id" => $visit->user,
++                "patient_name" => ucwords(strtolower($visit->patients->full_name)),
++                "purpose" => $visit->purpose,
++                "external_doctor" => $visit->external_doctor,
++                "payment_mode" => $visit->payment_mode,
++                "mode" => $this->getMode($visit),
++                "insurance_id" => $visit->scheme ? @$visit->patient_scheme->schemes->company : null,
++                "scheme_id" => $visit->scheme,
++                "next_appointment" => $visit->next_appointment,
++                "status" => $visit->status,
++                'doctor_notes' => $visit->notes,
++                'queued_at' => $visit->queues,
++                'created_at' => eclair($visit->created_at),
++                'created_at_friendly' => eclair($visit->created_at, false),
++                'created_at_w3c' => eclair($visit->created_at, true, true),
++                "admission_request_id" => optional($visit->admissionRequest)->id,
++                "has_pharmacy_bill" => false, //patient_has_pharmacy_bill($this),
++                "unique_visit_key" => $visit->unique_id,
++                "emergency" => $visit->emergency,
++
++                // relationships
++//                'visit_pre_charges'     => $this->getPrechargedInvestigations(),
++//                'vitals'                => new VitalsResource($this->whenLoaded('vitals')),
++//                'prescriptions'         => count($this->prescriptions->where('canceled', '!=', 1)) > 0 ? PrescriptionResource::collection($this->prescriptions()->where('canceled', '!=', 1)->paginate(core_paginate('s'))) : null,
++//                "patient"               => new PatientResource($this->patients),
++//                "user"                  => new EvaluationUserResource($this->users),
++//                "clinic"                => $visit->clinics ? new ClinicResource($visit->clinics) : null,
++                "destinations" => VisitDestinationResource::collection($visit->destinations),
++//                "patient_scheme"        => $visit->patient_scheme ? new PatientInsuranceResource($visit->patient_scheme) : null,
++                "referring_doctor" => null,
++                "purpose_of_visit" => @$visit->purposeOfVisit->name,
++                "consultants" => $visit->consultants
++            ];
++        }
++
++        return $data;
++    }
++
++    /*
++     * Returns the mode in a human friendly way
++     */
++    public function getMode($visit)
++    {
++        if ($visit->payment_mode === 'insurance') {
++            try {
++                return ucfirst($visit->payment_mode) . ' | ' .
++                    $visit->patient_scheme->desc;
++            } catch (\Exception $exc) {
++                return $visit->payment_mode;
++            }
++
++        }
++        return $visit->payment_mode;
++    }
++
++    /*
++     * if patient id is provided fetch all visits for the given patient
++     * */
++    public function getPatientVisits ($patient_id)
++    {
++        $visits = Visit::where('patient',$patient_id)->latest()->paginate(45);
++
++        return new VisitCollectionResource($visits);
++    }
++
++    /**
++     * for some destinations, perform extra checks
++     */
++    public function performExtraChecks()
++    {
++        $resp = true;
++//        \Log::info("returning check");
++
++
++        $destinations = request('destinations');
++        $patientId = request()->input('visit.patient');
++
++        if(in_array("inpatient", $destinations))
++        {
++
++            if(! $this->ascertainPatientCanBeCheckedInToInpatient($patientId)) {
++                flash()->error("Patient already has an admission request today or is already admitted!");
++                return redirect()->back();
++            }
++
++            if(Visit::where('patient', $patientId)->whereBetween('created_at', [now()->startOfDay(), now()->endOfDay()])->first() && !m_setting("reception.disable_visit_checkin_check"))
++            {
++                flash()->error("Patient already has an active visit for today! Please use the current visit or checkout the patient");
++                return redirect()->back();
++            }
++        }
++
++        return $resp;
++    }
++
++    /**
++     * check the last visit when a patient with a TSC Number was used
++     * a TSC Number can be shared between dependants for a specific patient
++     *
++     * @param $tscNumber
++     *
++     * @return mixed
++     */
++    public function checkTscNumberLastVisit($tscNumber)
++    {
++        $patients = Patients::where('tsc_number', $tscNumber)->select(['id'])->get();
++
++        return Visit::whereIn('patient', $patients->pluck('id'))
++            ->orderBy('created_at', 'desc')
++            ->first();
++    }
++
++    /*
++     * update visit info:
++     *      a lot will happen here:
++     *          update payment modes
++     *          update visit destinations accordingly etc
++     *          validating each step
++     * */
++    public function updateVisitInfo ($visit_id)
++    {
++        $visit = Visit::findOrFail($visit_id);
++
++        SystemLog::create([
++            'user_id' => doe()->id,
++            'action' => 'tried to update/updated visit info',
++            'comment' => json_encode(request()->all())
++        ]);
++
++        if($this->updateValidity($visit)) {
++            return DB::transaction(function () use($visit) {
++
++                $visit->update(request('visit'));
++
++                $this->updateVisitPaymentMode($visit);
++
++                $this->syncVisitDestinations($visit, request('destinations'));
++
++                $this->updateVisitPrechargedInvestigations($visit);
+ 
+-class VisitRepository extends EloquentBaseRepository
+-{
+-    protected $visit;
++                $this->updateConsultants($visit);
++
++                \Log::info("Visit info updated");
++                return response()->json([
++                    'alert' => 'success',
++                    'message' => 'Visit details updated successfully',
++                ]);
++            });
++        } else {
++            return response()->json([
++                "message" => "A visit can only be updated if and only if created within the last 24hrs",
++                "alert" => "error"
++            ]);
++        }
++    }
++
++    /*
++     * update all the pre-charged investigations
++     * better known as consultations
++     * */
++    public function updateVisitPrechargedInvestigations ($visit)
++    {
++        if(request()->has("precharges"))
++        {
++            foreach(request("precharges") as $procedureId)
++            {
++                $procedure = Procedures::find($procedureId);
++
++                $procedurePrices = $this->calculateProcedurePrices($procedure);
++
++                $category = $procedure->categories->name;
++
++                $pricing =  $visit->payment_mode === 'cash' ? $procedurePrices['cash_charge'] : $procedurePrices['insurance_charge'];
++
++                Investigations::updateOrCreate([
++                    'visit' => $visit->id,
++                    'procedure' => $procedureId,
++                ], [
++                    'type' => preg_match('/Lab/', $category) ? 'laboratory' : $category,
++                    'quantity' => 1,
++                    'discount' => 0,
++                    'amount' =>  $pricing,
++                    'price' =>  $pricing,
++                    'user' => doe()->id,
++                    'ordered' => 1
++                ]);
++            }
++        }
++    }
++
++    /*
++     * update the payment mode attached to the visit
++     * having the validity checks in mind
++     * */
++    public function updateVisitPaymentMode ($visit)
++    {
++        if($visit->prescriptions->isEmpty() && $visit->investigations()->where('type', '!=', 'consultation')->get()->isEmpty()) {
++            $visit->update([
++                'payment_mode' => request('visit')['payment_mode'],
++                'scheme' => request('visit')['payment_mode'] === 'insurance' ? request('visit')['scheme'] : null
++            ]);
++        } else {
++            return response()->json([
++                "message" => "Payment modes not changed! patient already has either active prescriptions or investigations (non consultations)",
++                "alert" => "warning"
++            ]);
++        }
++    }
+ 
+     /**
+-     * @var \Illuminate\Database\Eloquent\Model An instance of the Eloquent Model
++     * @param $visit
+      */
+-    protected $model;
++    public function updateConsultants($visit)
++    {
++        if(request()->has('consultants')) {
++            $visit->consultants()->delete();
++
++            foreach(request('consultants') as $consultant) {
++                VisitConsultants::updateOrCreate([
++                    'visit_id' => $visit->id,
++                    'patient_id' => $visit->patient,
++                    'consultant_id' => $consultant['id'],
++                ], [
++                    'visit_id' => $visit->id,
++                    'patient_id' => $visit->patient,
++                    'patient_name' => $visit->patients->full_name,
++                    'consultant_id' => $consultant['id'],
++                    'consultant_name' => $consultant['name'],
++                ]);
++            }
++        }
++    }
++
+ 
+     /**
+-     * @param Model $model
++     * @param $visit
++     * @param $destinations
++     * add/remove visit destinations
++     * i.e. either add or switch
++     *
++     * TODO: add destination
++     * TODO: remove destination
++     * TODO: undo-destination removal
+      */
+-    public function __construct(Visit $model)
++    public function syncVisitDestinations ($visit, $destinations)
++    {
++        $selected_destinations = [];
++
++        foreach ($destinations as $destination) {
++            $dest = SettingsDestination::where('slug', $destination)->first();
++
++            array_push($selected_destinations, $dest->id);
++        }
++
++        $this->addDestination($visit, $selected_destinations);
++
++        $this->detachVisitDestination($visit, $selected_destinations);
++
++        $this->undoDestinationRemoval($visit, $selected_destinations);
++    }
++
++    /*
++     * add destination to visit
++     * */
++    public function addDestination ($visit, $selected_destinations)
++    {
++        $destinations_to_add = [];
++
++        foreach ($selected_destinations as $selected_destination) {
++
++            $visit_destinations = $visit->destinations()->withTrashed()->get()->pluck('destination_id')->toArray();
++
++            if(!in_array($selected_destination, $visit_destinations)) {
++                array_push($destinations_to_add, $selected_destination);
++            }
++        }
++
++        Usher::receive($visit)->queueByDestinationIds($destinations_to_add);
++    }
++
++    /*
++     * remove the removed destinations
++     * */
++    public function detachVisitDestination ($visit, $selected_destinations)
+     {
+-        $this->model = $model;
++        $removed_destinations = [];
++
++        foreach ($visit->destinations->pluck('destination_id')->toArray() as $visit_destination) {
++            if(!in_array($visit_destination, $selected_destinations)) {
++                array_push($removed_destinations, $visit_destination);
++            }
++        }
++
++        foreach($removed_destinations as $removed_destination) {
++            $dest = $visit->destinations()->where('destination_id', $removed_destination)->first();
++
++            VisitDestinations::destroy($dest->id);
++        }
+     }
+ 
++    /*
++     * un-delete the deleted destinations
++     * */
++    public function undoDestinationRemoval ($visit, $selected_destinations)
++    {
++        foreach($visit->destinations()->withTrashed()->get() as $deleted_destination) {
++            if(in_array($deleted_destination->destination_id, $selected_destinations)) {
++                $deleted_destination->deleted_at = null;
++            }
++        }
++    }
++
++    /*
++     * check that this visit was created within the last 24 hours
++     * and can be updated
++     * */
++    public function updateValidity ($visit)
++    {
++        $diff = $visit->created_at->diffInHours(now(), false);
++
++        if($diff < 24) {
++            return true;
++        } else {
++            return false;
++        }
++    }
++
++    /*
++     * check if visit has capitation and its status
++     *
++     * */
++    public function checkCapitation ($id)
++    {
++        $visit = $this->find($id);
++        $capitation_reached = false;
++        $scheme = $visit->patient_scheme;
++
++        if($scheme && $scheme->schemes->amount)
++        {
++            $scheme = $scheme->schemes;
++
++            // backwards compatibility; should be removed/refactored as time goes
++            $theType = $scheme->type_name ?? mconfig('settings.system.scheme_types')[$scheme->type];
++
++            if(strtolower($theType) == 'capitation')
++            {
++                $capAmount = $scheme->amount;
++                $capitation_reached = $visit->unpaid_amount > $capAmount;
++            }
++        }
++
++        $total =  $visit->unpaid_amount;
++        $capitation_state = $capitation_reached;
++
++        return response()->json([
++            'total' => $total ,
++            'capitation_reached' => $capitation_state, // return false if scheme has no capitation
++        ], 200);
++    }
++
++    /**
++     * @param $patient_id
++     * @return array|string
++     */
++    public function lasVisitMeta ($patient_id)
++    {
++        $patient = Patients::findOrFail($patient_id);
++
++        $last_visits = $patient->visits()->latest()->take(3)->get();
++
++
++        $response = $last_visits->map(function($visit) use ($patient) {
++            return [
++                'lvd_friendly' => eclair($visit->created_at, false),
++                'lvd_w3c' => eclair($visit->created_at, true, true),
++                'tsc_number' => !m_setting('reception.change_tsc_no_to_file_no') ? $patient->tsc_number : null,
++                'alert' => $this->getLastVistMetaAlertType($patient, $visit->created_at)
++            ];
++        });
++
++        return response()->json($response->toArray());
++
++    }
++
++
+     /**
+-    * Get a visit from the evaluation_visits table
+-    */
+-    public function findById($id)
++     * @param $patient
++     * @param $date
++     * @return string
++     */
++    public function getLastVistMetaAlertType($patient, $date)
++    {
++        if($patient->tsc_number && !m_setting('reception.change_tsc_no_to_file_no')) {
++            return Carbon::parse($date)->diffInDays() < 7 ? 'error' : 'success';
++        } else {
++            return 'success';
++        }
++    }
++
++    /*
++     * cancel visit
++     * */
++    public function cancelVisit ($visit_id)
++    {
++        $visit = Visit::findOrFail($visit_id);
++
++        if($this->canBeCancelled($visit)) {
++
++            Visit::destroy($visit_id);
++
++            TimeTracker::where('visit_id', $visit_id)->delete();
++
++            return response()->json([
++                "message" => "Visit cancelled successfully",
++                "alert" => "success"
++            ]);
++
++        } else {
++            return response()->json([
++                "message" => "Can't cancel an ongoing visit which has been acted upon already",
++                "alert" => "error"
++            ]);
++        }
++    }
++
++    public function changePaymentMode ($visitId)
++    {
++        if($this->checkChangeValidity($visitId)) {
++            $this->changeMode($visitId);
++
++            return response()->json([
++                "message" => "Action completed successfully",
++                "alert" => "success"
++            ]);
++        } else {
++            return response()->json([
++                "message" => "Can't cancel an ongoing visit",
++                "alert" => "error"
++            ]);
++        }
++    }
++
++    /*
++     * check whether visit can be cancelled
++     * */
++    public function canBeCancelled ($visit)
++    {
++        return !$visit->notes && !$visit->opnotes && $visit->icd10Notes->isEmpty() && $visit->prescriptions->isEmpty() ? true : false;
++    }
++
++    /*
++     * return a quick checkin management point on the dashboard
++     * */
++    public function getQuickView ($filter)
+     {
+-        return $this->model->with(['admissionRequest', 'patients'])->findOrFail($id);
+-    }
++        $visits = Visit::latest()->whereHas("patients", function($query) {
++            return $query->whereNull("customer_id");
++        })->whereBetween('created_at', [now()->startOfDay(), now()->endOfDay()])
++            ->where('clinic', get_clinic()->id)
++            ->paginate(50);
++
++        $data = [];
++
++        foreach($visits as $visit) {
++
++            array_push($data, [
++                "id" => $visit->id,
++                "patient_id" => $visit->patient,
++//                 "mobile" => @$visit->patient->mobile,
++                "patient_name" => @$visit->patients->full_name,
++//                 "created_at" => smart_date(@$visit->created_at),
++                "current_destination" => @$visit->destinations->toArray()[@$visit->destinations->count() - 1]['destination']['name'],
++                "time_in" => $visit->created_at->format('H:m a'),
++                "time_spent" => $visit->created_at->diffForHumans(),
++                "clinic" => $visit->clinics->name,
++                "visit" => new VisitResource($visit)
++            ]);
++        }
+ 
+-}
+\ No newline at end of file
++        return $data;
++    }
++}

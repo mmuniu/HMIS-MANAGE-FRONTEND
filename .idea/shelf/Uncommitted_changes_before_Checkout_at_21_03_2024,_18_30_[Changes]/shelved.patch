@@ -1,0 +1,24 @@
+Index: Config/laratrust.php
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?php\n\nreturn [\n    'general' => [\n        'barcode-generate', 'checkin-and-treat'\n    ],\n\n    'resource' => [\n        'appointments', 'patient-docs', 'patients', 'appointment-categories', \"visits\", 'barcode', 'contact-tracing',\n        'follow-up'\n    ]\n];\n
+===================================================================
+diff --git a/Config/laratrust.php b/Config/laratrust.php
+--- a/Config/laratrust.php	
++++ b/Config/laratrust.php	
+@@ -1,12 +1,11 @@
+ <?php
+-
+ return [
+     'general' => [
+-        'barcode-generate', 'checkin-and-treat'
++        'management', 'setup', 'inpatient-finance', 'insurance-workbench', 'theatre', 'cancel-receipts', 'issue-refunds',
++        'view-company-statements', 'view-insurance-company-account', 'can-issue-out-money'
+     ],
+ 
+     'resource' => [
+-        'appointments', 'patient-docs', 'patients', 'appointment-categories', "visits", 'barcode', 'contact-tracing',
+-        'follow-up'
++        'waivers', 'collaterals', 'service-charges', 'payment-modes', 'credit-notes', "invoices"
+     ]
+ ];

@@ -1,0 +1,56 @@
+Index: .idea/shelf/Uncommitted_changes_before_Checkout_at_28_02_2024__11_19__Changes_.xml
+===================================================================
+diff --git a/.idea/shelf/Uncommitted_changes_before_Checkout_at_28_02_2024__11_19__Changes_.xml b/.idea/shelf/Uncommitted_changes_before_Checkout_at_28_02_2024__11_19__Changes_.xml
+deleted file mode 100644
+--- a/.idea/shelf/Uncommitted_changes_before_Checkout_at_28_02_2024__11_19__Changes_.xml	
++++ /dev/null	
+@@ -1,4 +0,0 @@
+-<changelist name="Uncommitted_changes_before_Checkout_at_28_02_2024,_11_19_[Changes]" date="1709108374827" recycled="true" deleted="true">
+-  <option name="PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Checkout_at_28_02_2024,_11_19_[Changes]/shelved.patch" />
+-  <option name="DESCRIPTION" value="Uncommitted changes before Checkout at 28/02/2024, 11:19 [Changes]" />
+-</changelist>
+\ No newline at end of file
+Index: .idea/shelf/Uncommitted_changes_before_Checkout_at_28_02_2024,_11_19_[Changes]/shelved.patch
+===================================================================
+diff --git a/.idea/shelf/Uncommitted_changes_before_Checkout_at_28_02_2024,_11_19_[Changes]/shelved.patch b/.idea/shelf/Uncommitted_changes_before_Checkout_at_28_02_2024,_11_19_[Changes]/shelved.patch
+deleted file mode 100644
+--- a/.idea/shelf/Uncommitted_changes_before_Checkout_at_28_02_2024,_11_19_[Changes]/shelved.patch	
++++ /dev/null	
+@@ -1,37 +0,0 @@
+-Index: .gitignore
+-IDEA additional info:
+-Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+-<+>.DS_Store\nDatabase/.DS_Store
+-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+-<+>UTF-8
+-===================================================================
+-diff --git a/.gitignore b/.gitignore
+---- a/.gitignore	(revision a0a19c55fb75de20f04b619b16a053d02eaddf82)
+-+++ b/.gitignore	(date 1709108363857)
+-@@ -1,2 +1,24 @@
+- .DS_Store
+--Database/.DS_Store
+-\ No newline at end of file
+-+Database/.DS_Store
+-+/.idea/codeception.xml
+-+/evaluation/js/libs/documents/Documents.js
+-+/.idea/git_toolbox_prj.xml
+-+/.idea/php.xml
+-+/.idea/phpspec.xml
+-+/.idea/phpunit.xml
+-+/.idea/shelf/Uncommitted_changes_before_Checkout_at_26_02_2024,_08_09_[Changes]/shelved.patch
+-+/.idea/shelf/Uncommitted_changes_before_Checkout_at_26_02_2024,_08_09_[Changes]1/shelved.patch
+-+/.idea/shelf/Uncommitted_changes_before_Checkout_at_26_02_2024,_11_29_[Changes]/shelved.patch
+-+/.idea/shelf/Uncommitted_changes_before_Checkout_at_26_02_2024,_11_29_[Changes]1/shelved.patch
+-+/.idea/shelf/Uncommitted_changes_before_Checkout_at_28_02_2024,_11_17_[Changes]/shelved.patch
+-+/.idea/shelf/Uncommitted_changes_before_Checkout_at_28_02_2024,_11_17_[Changes]1/shelved.patch
+-+/.idea/shelf/Uncommitted_changes_before_Checkout_at_26_02_2024__08_09__Changes_.xml
+-+/.idea/shelf/Uncommitted_changes_before_Checkout_at_26_02_2024__11_29__Changes_.xml
+-+/.idea/vcs.xml
+-+/.idea/workspace.xml
+-+/.idea/shelf/Uncommitted_changes_before_Checkout_at_26_02_2024,_08_09_[Changes]/shelved.patch
+-+/.idea/shelf/Uncommitted_changes_before_Checkout_at_26_02_2024,_08_09_[Changes]1/shelved.patch
+-+/.idea/shelf/Uncommitted_changes_before_Checkout_at_26_02_2024,_11_29_[Changes]/shelved.patch
+-+/.idea/shelf/Uncommitted_changes_before_Checkout_at_26_02_2024,_11_29_[Changes]1/shelved.patch
+-+/.idea/shelf/Uncommitted_changes_before_Checkout_at_28_02_2024,_11_17_[Changes]/shelved.patch
+-+/.idea/shelf/Uncommitted_changes_before_Checkout_at_28_02_2024,_11_17_[Changes]1/shelved.patch

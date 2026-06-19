@@ -1,0 +1,598 @@
+Index: inpatient/js/components/admissions/partials/PatientVitalsForm.vue
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><template>\n    <div class=\"panel-body\">\n      <form @submit.prevent=\"submitForm\" id=\"vitals-form\" class=\"row\">\n        <input type=\"hidden\" name=\"visit_id\" :value=\"visit\">\n        <input type=\"hidden\" name=\"user_id\" :value=\"user\">\n        <input type=\"hidden\" name=\"admission_id\" :value=\"visit\">\n        <div class=\"col-md-4\">\n          <div class=\"form-group\">\n            <label for=\"date_recorded\">Date Recorded</label>\n            <input type=\"date\" name=\"date_recorded\" v-model=\"dateRecorded\" class=\"form-control\">\n          </div>\n        </div>\n        <div class=\"col-md-2\">\n          <div class=\"form-group\">\n            <label for=\"time_recorded\">Time Recorded</label>\n            <input type=\"time\" name=\"time_recorded\" v-model=\"timeRecorded\" class=\"form-control\">\n          </div>\n        </div>\n\n        <!-- Other form fields go here with Vue.js v-model bindings -->\n\n        <div class=\"col-md-6\">\n          <div class=\"form-group\">\n            <label for=\"waist\">Waist Circumference:[cm]</label>\n            <input type=\"number\" name=\"waist\" v-model=\"waist\" class=\"form-control\">\n          </div>\n        </div>\n\n        <!-- Repeat the structure for other form fields -->\n\n        <div class=\"col-md-6\">\n          <div class=\"form-group\">\n            <label for=\"temperature\">Temperature:[Celsius]</label>\n            <input type=\"text\" name=\"temperature\" v-model=\"temperature\" class=\"form-control\" required>\n          </div>\n        </div>\n\n        <div class=\"col-md-6\">\n          <div class=\"form-group\">\n            <label for=\"temperature_location\">Temperature Location</label>\n            <select name=\"temperature_location\" v-model=\"temperatureLocation\" class=\"form-control\">\n              <option value=\"Oral\">Oral</option>\n              <option value=\"Tympanic Membrane\">Tympanic Membrane</option>\n              <option value=\"Axillary\">Axillary</option>\n              <option value=\"Temporal Artery\">Temporal Artery</option>\n              <option value=\"Rectal\">Rectal</option>\n            </select>\n          </div>\n        </div>\n\n        <!-- Repeat the structure for other form fields -->\n\n        <div class=\"col-md-6\">\n          <div class=\"form-group\">\n            <label for=\"oxygen\">Oxygen Saturation:[%]</label>\n            <input type=\"number\" name=\"oxygen\" v-model=\"oxygen\" class=\"form-control\" required>\n          </div>\n        </div>\n\n        <div class=\"col-md-6\">\n          <div class=\"form-group\">\n            <button type=\"submit\" class=\"btn btn-primary col-md-4\">Record Vitals</button>\n          </div>\n        </div>\n\n      </form>\n    </div>\n</template>\n\n<script>\nexport default {\n\n    props: {\n        visit: {\n            default() {\n                return {};\n            },\n        },\n        admission: {\n            default() {\n                return {};\n            },\n        },\n        user: {\n            default() {\n                return {};\n            },\n\n        },\n    },\n    data() {\n        return {\n            currentUser: {},\n            dateRecorded: '',\n            timeRecorded: '',\n            waist: null,\n            temperature: '',\n            temperatureLocation: 'Oral',\n            oxygen: null,\n        };\n    },\n    methods: {\n        submitForm() {\n        },\n    },\n};\n</script>\n
+===================================================================
+diff --git a/inpatient/js/components/admissions/partials/PatientVitalsForm.vue b/inpatient/js/components/admissions/partials/PatientVitalsForm.vue
+--- a/inpatient/js/components/admissions/partials/PatientVitalsForm.vue	
++++ b/inpatient/js/components/admissions/partials/PatientVitalsForm.vue	
+@@ -1,107 +1,501 @@
+ <template>
+-    <div class="panel-body">
+-      <form @submit.prevent="submitForm" id="vitals-form" class="row">
+-        <input type="hidden" name="visit_id" :value="visit">
+-        <input type="hidden" name="user_id" :value="user">
+-        <input type="hidden" name="admission_id" :value="visit">
+-        <div class="col-md-4">
+-          <div class="form-group">
+-            <label for="date_recorded">Date Recorded</label>
+-            <input type="date" name="date_recorded" v-model="dateRecorded" class="form-control">
+-          </div>
+-        </div>
+-        <div class="col-md-2">
+-          <div class="form-group">
+-            <label for="time_recorded">Time Recorded</label>
+-            <input type="time" name="time_recorded" v-model="timeRecorded" class="form-control">
+-          </div>
+-        </div>
++  <div class="panel-body">
++    <form @submit.prevent="submitForm" id="vitals-form" class="row">
++      <input type="hidden" name="visit_id" :value="vitalsObj.visit">
++      <input type="hidden" name="user_id" :value="vitalsObj.user">
++      <input type="hidden" name="admission_id" :value="vitalsObj.visit">
++      <div class="col-md-4">
++        <div class="form-group">
++          <label for="date_recorded">Date Recorded</label>
++          <input type="date" name="date_recorded" v-model="vitalsObj.date_recorded" class="form-control">
++        </div>
++      </div>
++      <div class="col-md-2">
++        <div class="form-group">
++          <label for="time_recorded">Time Recorded</label>
++          <input type="time" name="time_recorded" v-model="vitalsObj.time_recorded" class="form-control">
++        </div>
++      </div>
+ 
+-        <!-- Other form fields go here with Vue.js v-model bindings -->
++      <!-- Other form fields go here with Vue.js v-model bindings -->
+ 
+-        <div class="col-md-6">
+-          <div class="form-group">
+-            <label for="waist">Waist Circumference:[cm]</label>
+-            <input type="number" name="waist" v-model="waist" class="form-control">
+-          </div>
+-        </div>
+-
+-        <!-- Repeat the structure for other form fields -->
+-
+-        <div class="col-md-6">
+-          <div class="form-group">
+-            <label for="temperature">Temperature:[Celsius]</label>
+-            <input type="text" name="temperature" v-model="temperature" class="form-control" required>
+-          </div>
+-        </div>
++      <div class="col-md-6">
++        <div class="form-group">
++          <label for="waist">Waist Circumference:[cm]</label>
++          <input type="number" name="waist" v-model="vitalsObj.waist_circumference" class="form-control">
++        </div>
++      </div>
++
++      <div class="col-md-6">
++        <div class="form-group">
++          <div class="row" style="padding: 15px 0px;">
++            <div class="col-md-6">
++              <label for="waist">Weight:[Kgs]</label>
++            </div>
++            <div class="col-md-6">
++              <div :class="bmiClass" v-if="bmiLabel">
++                <v-chip v-if="showChip" :color="chipColor" text-color="black" small>{{ chipText }}</v-chip>
++              </div>
++            </div>
++          </div>
++
++          <input type="number" name="waist" v-model="vitalsObj.weight" class="form-control">
++        </div>
++      </div>
++
++      <div class="col-md-6">
++        <div class="form-group">
++          <label for="waist">Hip Circumference:[cm]</label>
++          <input type="number" name="waist" v-model="vitalsObj.hip_circumference" class="form-control">
++        </div>
++      </div>
++      <div class="col-md-6">
++        <div class="form-group">
++          <label for="waist">Height:[{{ vitalCMMeasurement }}]</label>
++          <input type="number" name="waist" v-model="vitalsObj.height" class="form-control">
++        </div>
++      </div>
++      <div class="col-md-6">
++        <div class="form-group">
++          <label for="waist">Blood Sugar</label>
++          <input type="number" name="waist" v-model="vitalsObj.blood_sugar" class="form-control">
++        </div>
++      </div>
++      <div class="col-md-6">
++        <div class="form-group">
++          <label for="bp_systolic">BP Systolic (mm/hg)</label>
++          <input type="number" name="bp_systolic" v-model="vitalsObj.bp_systolic" class="form-control" @change="validateSystolic">
++          <div v-if="systolicError" class="text-danger">{{ systolicError }}</div>
++
++        </div>
++      </div>
++
++      <div class="col-md-6">
++        <div class="form-group">
++          <label for="bp_diastolic">BP Diastolic (mm/hg)</label>
++          <input type="number" name="bp_diastolic" v-model="vitalsObj.bp_diastolic" class="form-control" @change="validateDiastolic">
++          <div v-if="diastolicError" class="text-danger">{{ diastolicError }}</div>
++          <v-chip v-if="bpShowChip" :color="bpChipColor" text-color="black" small>{{ bpChipText }}</v-chip>
++
++        </div>
++      </div>
++
++      <div class="col-md-6">
++        <div class="form-group">
++          <div class="row">
++            <div class="col-md-6">
++              <label for="bp_diastolic">Blood Sugar Units</label>
++            </div>
++
++          </div>
++          <input type="number" name="bp_diastolic" v-model="vitalsObj.blood_sugar_units" class="form-control">
++        </div>
++      </div>
++
++
++      <div class="col-md-6">
++        <div class="form-group">
++          <label for="bp_diastolic">Allergies</label>
++          <input type="number" name="bp_diastolic" v-model="vitalsObj.allergies" class="form-control">
++        </div>
++      </div>
++
++
++      <div class="col-md-6">
++        <div class="form-group">
++          <label for="bp_diastolic">Pulse:[Per Min]</label>
++          <input type="text" name="bp_diastolic" v-model="vitalsObj.pulse_per_min" class="form-control">
++        </div>
++      </div>
++      <div class="col-md-6">
++        <div class="form-group">
++          <label for="chronic_illnesses">Chronic Illnesses</label>
++          <input type="text" name="chronic_illnesses" v-model="vitalsObj.chronic_illnesses" class="form-control" required>
++        </div>
++      </div>
++      <div class="col-md-6">
++        <div class="form-group">
++          <label for="respiration">Respiration:[Per min]</label>
++          <input type="number" name="respiration" v-model="vitalsObj.respiratory_rate" class="form-control" @change="validateRespiration">
++          <div v-if="respirationError" class="text-danger">{{ respirationError }}</div>
++          <v-chip v-if="respirationShowChip" :color="respirationChipColor" text-color="black" style="margin-top: 5px;" small>{{ respirationChipText }}</v-chip>
++        </div>
++      </div>
+ 
+-        <div class="col-md-6">
+-          <div class="form-group">
+-            <label for="temperature_location">Temperature Location</label>
+-            <select name="temperature_location" v-model="temperatureLocation" class="form-control">
+-              <option value="Oral">Oral</option>
+-              <option value="Tympanic Membrane">Tympanic Membrane</option>
+-              <option value="Axillary">Axillary</option>
+-              <option value="Temporal Artery">Temporal Artery</option>
+-              <option value="Rectal">Rectal</option>
+-            </select>
+-          </div>
++      <div class="col-md-6">
++        <div class="form-group">
++          <label for="temperature_location">Temperature Location</label>
++          <select name="temperature_location" v-model="vitalsObj.temperature_location" class="form-control">
++            <option value="Oral">Oral</option>
++            <option value="Tympanic Membrane">Tympanic Membrane</option>
++            <option value="Axillary">Axillary</option>
++            <option value="Temporal Artery">Temporal Artery</option>
++            <option value="Rectal">Rectal</option>
++          </select>
++        </div>
++      </div>
++
++      <div class="col-md-6">
++        <div class="form-group">
++          <label for="respiration">Temperature:[*c]</label>
++          <input type="text" name="temperature" v-model="vitalsObj.temperature" class="form-control" @change="validateTemperature">
++          <v-chip v-if="temperatureShowChip" :color="temperatureChipColor" text-color="black" style="margin-top: 5px;" small>{{ temperatureChipText }}</v-chip>
+         </div>
++      </div>
+ 
+-        <!-- Repeat the structure for other form fields -->
+-
+-        <div class="col-md-6">
+-          <div class="form-group">
+-            <label for="oxygen">Oxygen Saturation:[%]</label>
+-            <input type="number" name="oxygen" v-model="oxygen" class="form-control" required>
+-          </div>
+-        </div>
++      <div class="col-md-6">
++        <div class="form-group">
++          <label for="oxygen">Oxygen Saturation:[%]</label>
++          <input type="number" name="oxygen" v-model="vitalsObj.oxygen" class="form-control" required>
++        </div>
++      </div>
+ 
+-        <div class="col-md-6">
+-          <div class="form-group">
+-            <button type="submit" class="btn btn-primary col-md-4">Record Vitals</button>
+-          </div>
+-        </div>
++      <div class="col-md-6">
++        <div class="form-group">
++          <button type="submit" class="btn btn-primary col-md-4">Record Vitals</button>
++        </div>
++      </div>
+ 
+-      </form>
+-    </div>
++    </form>
++  </div>
+ </template>
+ 
+ <script>
++import VitalsForm from '@inpatient/libs/admissions/VitalsForm';
++import Admission from '@inpatient/libs/admissions/Admission';
++
++// Validate Diastolic Blood Pressure
++
+ export default {
+ 
+-    props: {
+-        visit: {
+-            default() {
+-                return {};
+-            },
+-        },
+-        admission: {
+-            default() {
+-                return {};
+-            },
+-        },
+-        user: {
+-            default() {
+-                return {};
+-            },
++  props: {
++    visit: {
++      default() {
++        return {};
++      },
++    },
++    admission: {
++      default() {
++        return {};
++      },
++    },
++    user: {
++      default() {
++        return {};
++      },
+ 
+-        },
++    },
++    age: {
++      default() {
++        return {};
++      },
+     },
+-    data() {
+-        return {
+-            currentUser: {},
+-            dateRecorded: '',
+-            timeRecorded: '',
+-            waist: null,
+-            temperature: '',
+-            temperatureLocation: 'Oral',
+-            oxygen: null,
+-        };
++  },
++  data() {
++    return {
++      vitalsObj: new VitalsForm(),
++      vitalCMMeasurement: null,
++      systolicError: null,
++      diastolicError: null,
++      isHighBP: false,
++      isLowBP: false,
++      bpShowChip: false,
++      bpChipColor: '',
++      bpChipText: '',
++      respirationError: '',
++      respirationShowChip: false,
++      respirationChipColor: '',
++      respirationChipText: '',
++      temperatureError: false,
++      temperatureShowChip: false,
++      temperatureChipColor: '',
++      temperatureChipText: '',
++    };
++  },
++  created() {
++    const useCentimetres = this.msetting('evaluation.use_centimetres_instead_of_metres_under_vitals');
++    this.vitalCMMeasurement = useCentimetres ? 'cm' : 'm';
++  },
++  computed: {
++    bmi() {
++      if (!this.vitalsObj.weight || this.age <= 0 || this.vitalsObj.height <= 0) return null;
++
++      const weight = this.vitalsObj.weight;
++      let heightInMeter;
++
++      if (this.vitalCMMeasurement === 'cm') {
++        heightInMeter = this.vitalsObj.height / 100;
++      } else {
++        heightInMeter = this.vitalsObj.height;
++      }
++
++      return weight / (heightInMeter * heightInMeter);
++    },
++    bmiLabel() {
++      if (!this.bmi) return null;
++
++      if (this.age <= 5) {
++        if (this.bmi < 14) return 'Underweight';
++        else if (this.bmi >= 14 && this.bmi < 18) return null; // Normal weight for children
++        else return 'Overweight';
++      } else if (this.age >= 6 && this.age <= 18) {
++        if (this.bmi < 18.5) return 'Underweight';
++        else if (this.bmi >= 18.5 && this.bmi < 25) return null; // Normal weight for teenagers
++        else return 'Overweight';
++      } else {
++        if (this.bmi < 18.5) return 'Underweight';
++        else if (this.bmi >= 18.5 && this.bmi < 24) return null; // Normal weight for adults
++        else return 'Overweight';
++      }
++    },
++    bmiClass() {
++      return {
++        'text-danger': this.bmiLabel === 'Underweight',
++        'text-warning': this.bmiLabel === 'Overweight',
++      };
+     },
+-    methods: {
+-        submitForm() {
+-        },
++    showChip() {
++      return this.bmiLabel === 'Underweight' || this.bmiLabel === 'Overweight';
++    },
++    chipText() {
++      return this.bmiLabel === 'Underweight' ? 'Underweight' : 'Overweight';
++    },
++    chipColor() {
++      return this.bmiLabel === 'Underweight' ? 'yellow' : 'red';
++    },
++    minSystolicValue() {
++      // Logic to calculate min systolic value based on age
++      if (this.age >= 1 && this.age < 3) {
++        return 86;
++      } else if (this.age >= 3 && this.age < 6) {
++        return 90;
++      } else if (this.age >= 6 && this.age < 12) {
++        return 90;
++      } else if (this.age >= 13) {
++        return 102;
++      } else {
++        return 65;
++      }
++    },
++    maxSystolicValue() {
++      // Logic to calculate max systolic value based on age
++      if (this.age >= 1 && this.age < 3) {
++        return 107;
++      } else if (this.age >= 3 && this.age < 6) {
++        return 110;
++      } else if (this.age >= 6 && this.age < 12) {
++        return 121;
++      } else if (this.age >= 13) {
++        return 124;
++      } else {
++        return 105;
++      }
++    },
++    minDiastolicValue() {
++      // Logic to calculate min diastolic value based on age
++      if (this.age >= 1 && this.age < 3) {
++        return 41;
++      } else if (this.age >= 3 && this.age < 6) {
++        return 47;
++      } else if (this.age >= 6 && this.age < 12) {
++        return 59;
++      } else if (this.age >= 13) {
++        return 64;
++      } else {
++        return 37;
++      }
++    },
++    maxDiastolicValue() {
++      // Logic to calculate max diastolic value based on age
++      if (this.age >= 1 && this.age < 3) {
++        return 78;
++      } else if (this.age >= 3 && this.age < 6) {
++        return 75;
++      } else if (this.age >= 6 && this.age < 12) {
++        return 80;
++      } else if (this.age >= 13) {
++        return 80;
++      } else {
++        return 65;
++      }
++    },
++  },
++  methods: {
++    submitForm() {
++    },
++    validateRespiration() {
++      this.respirationError = this.validateRespirationValue(this.vitalsObj.respiratory_rate, this.age);
+     },
++
++    validateRespirationValue(value, age) {
++      if (!value) {
++        this.respirationShowChip = true;
++        this.respirationChipColor = 'red';
++        this.respirationChipText = 'Please enter Respiration Rate';
++      }
++      const respirationRate = parseInt(value);
++
++      // Define the normal range of respiration rates based on age
++      let minRate; let maxRate;
++      if (age >= 0 && age < 1) {
++        minRate = 25;
++        maxRate = 60;
++      } else if (age >= 1 && age < 3) {
++        minRate = 20;
++        maxRate = 40;
++      } else if (age >= 3 && age < 7) {
++        minRate = 20;
++        maxRate = 40;
++      } else if (age >= 6 && age < 13) {
++        minRate = 14;
++        maxRate = 30;
++      } else if (age >= 13 ) {
++        minRate = 12;
++        maxRate = 20;
++      } else {
++        minRate = 12;
++        maxRate = 20;
++      }
++      console.log('age');
++      console.log(age);
++      console.log(respirationRate);
++      console.log(minRate);
++      console.log(maxRate);
++
++      console.log(respirationRate);
++      if (respirationRate < minRate) {
++        this.respirationShowChip = true;
++        this.respirationChipColor = 'blue';
++        this.respirationChipText = 'Low Respiration Rate';
++      } else if (respirationRate > maxRate) {
++        this.respirationShowChip = true;
++        this.respirationChipColor = 'red';
++        this.respirationChipText = 'High Respiration Rate';
++      } else {
++        this.respirationShowChip = false;
++      }
++
++
++      return null; // Return null if validation passes
++    },
++
++
++    validateSystolic() {
++      this.systolicError = this.validateSystolicValue(this.vitalsObj.bp_systolic, this.age);
++      this.updateBPStatus();
++    },
++    validateDiastolic() {
++      this.diastolicError = this.validateDiastolicValue(this.vitalsObj.bp_diastolic, this.age);
++      this.updateBPStatus();
++    },
++    updateBPStatus() {
++      // Check if there is an error due to invalid values
++      const hasInvalidValues = this.systolicError !== null || this.diastolicError !== null;
++
++      // Check if systolic and diastolic values are higher than normal range
++      const isHighSystolic = this.vitalsObj.bp_systolic && parseInt(this.vitalsObj.bp_systolic) > this.maxSystolicValue;
++      const isHighDiastolic = this.vitalsObj.bp_diastolic && parseInt(this.vitalsObj.bp_diastolic) > this.maxDiastolicValue;
++
++      // Check if systolic and diastolic values are lower than normal range
++      const isLowSystolic = this.vitalsObj.bp_systolic && parseInt(this.vitalsObj.bp_systolic) < this.minSystolicValue;
++      const isLowDiastolic = this.vitalsObj.bp_diastolic && parseInt(this.vitalsObj.bp_diastolic) < this.minDiastolicValue;
++
++
++      // Set isHighBP based on the presence of invalid values and both systolic and diastolic values being higher than normal range
++      this.isHighBP = hasInvalidValues && isHighSystolic && isHighDiastolic;
++
++      // Set isLowBP based on the presence of invalid values (excluding empty field errors)
++      this.isLowBP = !this.isHighBP && hasInvalidValues && (isLowSystolic || isLowDiastolic);
++
++      // Set values for displaying blood pressure status chip
++      if (this.isHighBP) {
++        this.bpShowChip = true;
++        this.bpChipColor = 'red';
++        this.bpChipText = 'High Blood Pressure';
++      } else if (this.isLowBP) {
++        this.bpShowChip = true;
++        this.bpChipColor = 'blue';
++        this.bpChipText = 'Low Blood Pressure';
++      } else {
++        // Reset chip display
++        this.bpShowChip = false;
++        this.bpChipColor = ''; // Reset chip color
++        this.bpChipText = ''; // Reset chip text
++      }
++    },
++
++
++    validateSystolicValue(value, age) {
++      if (!value) {
++        return 'Please enter BP Systolic';
++      }
++
++      let minValue; let maxValue;
++      const fieldValue = parseInt(value);
++
++      if (age >= 1 && age < 3) {
++        minValue = 86;
++        maxValue = 107;
++      } else if (age >= 3 && age < 6) {
++        minValue = 90;
++        maxValue = 110;
++      } else if (age >= 6 && age < 12) {
++        minValue = 90;
++        maxValue = 121;
++      } else if (age >= 13) {
++        minValue = 102;
++        maxValue = 124;
++      } else {
++        minValue = 65;
++        maxValue = 105;
++      }
++
++      if (fieldValue < minValue || fieldValue > maxValue) {
++        return 'BP Systolic normal range is between ' + minValue + ' and ' + maxValue;
++      }
++
++      return null;
++    },
++    validateDiastolicValue(value, age) {
++      if (!value) {
++        return 'Please enter BP Diastolic';
++      }
++
++      let minValue; let maxValue;
++      const fieldValue = parseInt(value);
++
++      if (age >= 1 && age < 3) {
++        minValue = 41;
++        maxValue = 78;
++      } else if (age >= 3 && age < 6) {
++        minValue = 47;
++        maxValue = 75;
++      } else if (age >= 6 && age < 12) {
++        minValue = 59;
++        maxValue = 80;
++      } else if (age >= 13) {
++        minValue = 64;
++        maxValue = 80;
++      } else {
++        minValue = 37;
++        maxValue = 65;
++      }
++
++      if (fieldValue < minValue || fieldValue > maxValue) {
++        return 'BP Diastolic normal range is between ' + minValue + ' and ' + maxValue;
++      }
++
++      return null;
++    },
++    validateTemperature() {
++      this.temperatureError = this.validateTemperatureValue(this.vitalsObj.temperature);
++    },
++    validateTemperatureValue(value) {
++      // Define the normal range of respiration rates based on age
++      let minTemp; let maxTemp;
++      minTemp = 36.5;
++      maxTemp =37.3;
++    },
++  },
+ };
+ </script>

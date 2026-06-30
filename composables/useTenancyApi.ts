@@ -24,5 +24,14 @@ export function useTenancyApi() {
     return data.data.tenant_context
   }
 
-  return { issueToken, fetchTenantContext }
+  /**
+   * Switch the active facility in-session (no password). Returns the new
+   * access token to apply; the caller is responsible for swapping it in.
+   */
+  async function switchFacility(facilityId: string): Promise<{ access_token: string; facility: { id: string; name: string | null } }> {
+    const { data } = await $axios.post('/v1/platform/switch-facility', { facility_id: facilityId })
+    return data
+  }
+
+  return { issueToken, fetchTenantContext, switchFacility }
 }

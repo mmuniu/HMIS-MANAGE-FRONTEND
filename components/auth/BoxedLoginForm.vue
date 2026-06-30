@@ -1,114 +1,183 @@
 <template>
-  <Form @submit="onSubmit" class="mt-2">
-    <v-label class="font-weight-semibold pb-2">Email</v-label>
-    <Field name="email" :rules="emailRules" v-slot="{ field, errorMessage }">
-      <VTextField
-        v-bind="field"
-        v-model="formData.email"
-        label="you@example.com"
-        type="email"
-        required
-        :error-messages="errorMessage"
-        hide-details="auto"
-        class="mb-6"
-      />
-    </Field>
+  <!-- Step 2: Select Your Facility -->
+  <div v-if="auth.step === 'facility'" class="facility-selection-container">
+    <div class="text-center mb-6">
+      <Logo class="mb-4" />
+      <h2 class="text-h5 font-weight-medium mb-1">Select Your Facility</h2>
+      <p v-if="auth.organization" class="text-body-2 textSecondary">
+        {{ auth.organization.name }}
+      </p>
+    </div>
 
-    <v-label class="font-weight-semibold pb-2">Password</v-label>
-    <Field name="password" :rules="requiredRule" v-slot="{ field, errorMessage }">
-      <VTextField
-        v-bind="field"
-        v-model="formData.password"
-        label="Password"
-        type="password"
-        required
-        :error-messages="errorMessage"
-        hide-details="auto"
-        class="mb-6"
-      />
-    </Field>
+    <div class="facility-cards">
+      <v-card
+        v-for="facility in auth.facilities"
+        :key="facility.id"
+        hover
+        rounded="xl"
+        variant="outlined"
+        class="facility-card mb-3"
+        :disabled="!!loadingFacilityId && loadingFacilityId !== facility.id"
+        @click="selectFacility(facility.id)"
+      >
+        <v-card-text class="d-flex align-center pa-5">
+          <v-avatar color="primary" variant="tonal" size="48" class="mr-4">
+            <v-icon icon="mdi-hospital-building" />
+          </v-avatar>
+          <div class="flex-grow-1">
+            <p class="text-subtitle-1 font-weight-medium mb-0">{{ facility.name }}</p>
+            <p class="text-caption textSecondary mb-0">{{ facility.organization_name }}</p>
+          </div>
+          <v-progress-circular
+            v-if="loadingFacilityId === facility.id"
+            indeterminate
+            color="primary"
+            size="22"
+            width="2"
+          />
+          <v-icon v-else color="primary" size="24" icon="mdi-chevron-right" />
+        </v-card-text>
+      </v-card>
+    </div>
 
-    <v-label class="font-weight-semibold pb-2">Organization ID</v-label>
-    <Field name="organization_id" :rules="requiredRule" v-slot="{ field, errorMessage }">
-      <VTextField
-        v-bind="field"
-        v-model="formData.organization_id"
-        label="e.g. org_hmis_demo"
-        required
-        :error-messages="errorMessage"
-        hide-details="auto"
-        class="mb-6"
-      />
-    </Field>
+    <div class="text-center mt-6">
+      <v-btn
+        variant="text"
+        color="secondary"
+        prepend-icon="mdi-arrow-left"
+        :disabled="!!loadingFacilityId"
+        @click="backToLogin"
+      >
+        Back to Login
+      </v-btn>
+    </div>
 
-    <v-label class="font-weight-semibold pb-2">Active Facility ID</v-label>
-    <Field name="active_facility_id" :rules="requiredRule" v-slot="{ field, errorMessage }">
-      <VTextField
-        v-bind="field"
-        v-model="formData.active_facility_id"
-        label="e.g. fac_demo_main"
-        required
-        :error-messages="errorMessage"
-        hide-details="auto"
-        class="mb-2"
-      />
-    </Field>
-
-    <p class="text-caption textSecondary mb-4">
-      Your token is scoped to one organization and facility. You can switch
-      facilities after signing in.
-    </p>
-
-    <v-btn
-      size="large"
-      color="primary"
-      type="submit"
-      block
-      flat
-      :loading="auth.submitting"
+    <v-alert
+      v-if="auth.apiError"
+      type="error"
+      variant="tonal"
+      density="compact"
+      rounded="lg"
+      class="mt-4"
     >
-      Sign In
-    </v-btn>
-
-    <v-alert v-if="auth.apiError" type="error" variant="tonal" class="mt-4" density="compact">
       {{ auth.apiError }}
     </v-alert>
-  </Form>
+  </div>
+
+  <!-- Step 1: Login -->
+  <div v-else>
+    <div class="text-center mb-6">
+      <Logo class="mb-4" />
+      <h2 class="text-h5 font-weight-medium mb-1">Welcome Back</h2>
+      <p class="text-body-2 textSecondary">Sign in to continue to your dashboard</p>
+    </div>
+
+    <Form @submit="onSubmit" class="mt-2">
+      <Field name="username" :rules="requiredRule" v-slot="{ field, errorMessage }">
+        <VTextField
+          v-bind="field"
+          v-model="form.username"
+          label="Username"
+          prepend-inner-icon="mdi-account-outline"
+          variant="outlined"
+          :error-messages="errorMessage"
+          hide-details="auto"
+          class="mb-4"
+        />
+      </Field>
+
+      <Field name="password" :rules="requiredRule" v-slot="{ field, errorMessage }">
+        <VTextField
+          v-bind="field"
+          v-model="form.password"
+          label="Password"
+          :type="showPassword ? 'text' : 'password'"
+          prepend-inner-icon="mdi-lock-outline"
+          :append-inner-icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
+          @click:append-inner="showPassword = !showPassword"
+          variant="outlined"
+          :error-messages="errorMessage"
+          hide-details="auto"
+          class="mb-4"
+        />
+      </Field>
+
+      <v-btn
+        size="large"
+        color="primary"
+        type="submit"
+        block
+        flat
+        rounded="lg"
+        :loading="isLoading"
+        class="mb-4"
+      >
+        Sign In
+      </v-btn>
+
+      <v-alert
+        v-if="auth.apiError"
+        type="error"
+        variant="tonal"
+        density="compact"
+        rounded="lg"
+      >
+        {{ auth.apiError }}
+      </v-alert>
+    </Form>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, onMounted } from "vue";
+import { reactive, ref, watch } from "vue";
 import { Form, Field } from "vee-validate";
 import { useAuthStore } from "@/stores/auth";
-import { useTenantStore } from "@/stores/tenant";
+import Logo from "~/components/lc/Full/logo/Logo.vue";
 
 const auth = useAuthStore();
-const tenant = useTenantStore();
 
-const formData = reactive({
-  email: "",
-  password: "",
-  organization_id: "",
-  active_facility_id: "",
-});
-
-onMounted(() => {
-  // Pre-fill the email from a previous session if available.
-  if (tenant.lastEmail) formData.email = tenant.lastEmail as string;
-});
+const form = reactive({ username: "", password: "" });
+const showPassword = ref(false);
+const isLoading = ref(false);
+const loadingFacilityId = ref<string | null>(null);
 
 const requiredRule = (v: string) => (!!v ? true : "This field is required");
-const emailRules = (v: string) => {
-  if (!v) return "Email is required";
-  return /.+@.+\..+/.test(v) ? true : "Enter a valid email";
-};
 
 const onSubmit = async () => {
-  await auth.login({
-    email: formData.email,
-    password: formData.password,
-    organization_id: formData.organization_id,
-    active_facility_id: formData.active_facility_id,
-  });
+  isLoading.value = true;
+  await auth.login({ username: form.username, password: form.password });
+  isLoading.value = false;
 };
+
+const selectFacility = async (facilityId: string) => {
+  if (loadingFacilityId.value) return;
+  loadingFacilityId.value = facilityId;
+  await auth.selectFacilityAndLogin(facilityId);
+  loadingFacilityId.value = null;
+};
+
+const backToLogin = () => {
+  form.password = "";
+  auth.cancelFacilitySelection();
+};
+
+// Clear the per-card spinner if an error fires.
+watch(() => auth.apiError, (err) => {
+  if (err) loadingFacilityId.value = null;
+});
 </script>
+
+<style scoped>
+.facility-cards {
+  max-height: 340px;
+  overflow-y: auto;
+}
+.facility-card {
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.facility-card:hover {
+  background: rgba(var(--v-theme-primary), 0.04);
+  border-color: rgba(var(--v-theme-primary), 0.3);
+}
+</style>

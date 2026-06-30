@@ -2,174 +2,171 @@
 import { onMounted, computed } from 'vue'
 import { useTenantStore } from '@/stores/tenant'
 import { useAuthStore } from '@/stores/auth'
-import FacilitySwitcher from '@/components/hmis/FacilitySwitcher.vue'
 
 const tenant = useTenantStore()
 const auth = useAuthStore()
 
 onMounted(() => {
-  if (!tenant.hasContext) tenant.loadContext()
+  if (auth.isHospitalAdmin && !tenant.hasContext) tenant.loadContext()
 })
 
-const maskedToken = computed(() => {
-  const t = auth.token
-  if (!t) return '—'
-  return `${t.slice(0, 6)}…${t.slice(-4)}`
+const roleLabel = computed(() => {
+  if (auth.isDeveloper) return 'Developer'
+  if (auth.isTester) return 'Tester'
+  return 'Hospital Admin'
+})
+
+const roleColor = computed(() => {
+  if (auth.isDeveloper) return 'primary'
+  if (auth.isTester) return 'warning'
+  return 'success'
+})
+
+const roleIcon = computed(() => {
+  if (auth.isDeveloper) return 'mdi-code-braces'
+  if (auth.isTester) return 'mdi-clipboard-check-outline'
+  return 'mdi-hospital-building'
+})
+
+const greetingName = computed(() => auth.user?.name || auth.user?.email || 'there')
+
+// Quick-action cards per account type — only links to things that exist / are planned.
+const actions = computed(() => {
+  if (auth.isDeveloper) {
+    return [
+      { title: 'Hospitals', subtitle: 'Every tenant on the platform', icon: 'mdi-hospital-building', to: '/hospitals', color: 'primary' },
+      { title: 'Test Cases', subtitle: 'Oversee QA test runs', icon: 'mdi-clipboard-check-outline', to: '/test-cases', color: 'warning' },
+      { title: 'Bugs & Features', subtitle: 'Work assigned to you', icon: 'mdi-bug-outline', to: '/work', color: 'error' },
+    ]
+  }
+  if (auth.isTester) {
+    return [
+      { title: 'Test Cases', subtitle: 'Run and mark pass / fail', icon: 'mdi-clipboard-check-outline', to: '/test-cases', color: 'warning' },
+    ]
+  }
+  // hospital admin
+  return [
+    { title: 'My Hospital', subtitle: 'Manage your facility', icon: 'mdi-hospital-building', to: '/hospitals', color: 'success' },
+  ]
 })
 </script>
 
 <template>
   <div>
+    <!-- Header -->
     <div class="d-flex flex-wrap align-center justify-space-between mb-6 gap-3">
-      <div>
-        <h2 class="text-h4 font-weight-semibold">Tenant Dashboard</h2>
-        <p class="textSecondary">Live tenant context for your current session.</p>
-      </div>
-      <div class="d-flex align-center gap-2">
-        <FacilitySwitcher />
-        <v-btn color="error" variant="tonal" prepend-icon="mdi-logout" @click="auth.logout">
-          Logout
-        </v-btn>
+      <div class="d-flex align-center gap-3">
+        <v-avatar :color="roleColor" variant="tonal" size="52">
+          <v-icon :icon="roleIcon" size="28" />
+        </v-avatar>
+        <div>
+          <h2 class="text-h4 font-weight-semibold mb-0">Welcome back, {{ greetingName }}</h2>
+          <div class="d-flex align-center gap-2 mt-1">
+            <v-chip :color="roleColor" size="small" variant="tonal" label>{{ roleLabel }}</v-chip>
+            <span class="textSecondary text-body-2">{{ auth.user?.email }}</span>
+          </div>
+        </div>
       </div>
     </div>
 
-    <v-alert
-      v-if="tenant.lastError"
-      type="warning"
-      variant="tonal"
-      class="mb-6"
-      title="Could not load tenant context"
-      :text="`Backend returned: ${tenant.lastError}. Your session may have expired.`"
-    />
-
-    <v-row>
-      <!-- Organization -->
-      <v-col cols="12" md="4">
-        <v-card rounded="lg" elevation="10" class="h-100">
-          <v-card-text>
-            <div class="d-flex align-center mb-3">
-              <v-avatar color="primary" variant="tonal" class="mr-3">
-                <v-icon icon="mdi-domain" />
-              </v-avatar>
-              <div>
-                <p class="text-overline textSecondary">Organization</p>
-                <h4 class="text-h6">{{ tenant.organizationId || '—' }}</h4>
-              </div>
+    <!-- Quick actions -->
+    <v-row class="mb-2">
+      <v-col v-for="a in actions" :key="a.to" cols="12" sm="6" md="4">
+        <v-card rounded="lg" elevation="10" class="h-100 action-card" :to="a.to" hover>
+          <v-card-text class="d-flex align-center">
+            <v-avatar :color="a.color" variant="tonal" size="48" class="mr-4">
+              <v-icon :icon="a.icon" />
+            </v-avatar>
+            <div class="flex-grow-1">
+              <p class="text-subtitle-1 font-weight-medium mb-0">{{ a.title }}</p>
+              <p class="text-caption textSecondary mb-0">{{ a.subtitle }}</p>
             </div>
-            <p class="text-body-2 textSecondary">
-              The tenant boundary your token is scoped to.
-            </p>
-          </v-card-text>
-        </v-card>
-      </v-col>
-
-      <!-- Active Facility -->
-      <v-col cols="12" md="4">
-        <v-card rounded="lg" elevation="10" class="h-100">
-          <v-card-text>
-            <div class="d-flex align-center mb-3">
-              <v-avatar color="success" variant="tonal" class="mr-3">
-                <v-icon icon="mdi-hospital-building" />
-              </v-avatar>
-              <div>
-                <p class="text-overline textSecondary">Active Facility</p>
-                <h4 class="text-h6">{{ tenant.activeFacilityId || '—' }}</h4>
-              </div>
-            </div>
-            <FacilitySwitcher />
-          </v-card-text>
-        </v-card>
-      </v-col>
-
-      <!-- Session -->
-      <v-col cols="12" md="4">
-        <v-card rounded="lg" elevation="10" class="h-100">
-          <v-card-text>
-            <div class="d-flex align-center mb-3">
-              <v-avatar color="info" variant="tonal" class="mr-3">
-                <v-icon icon="mdi-shield-key" />
-              </v-avatar>
-              <div>
-                <p class="text-overline textSecondary">Session</p>
-                <h4 class="text-h6">{{ maskedToken }}</h4>
-              </div>
-            </div>
-            <p class="text-body-2 textSecondary">
-              Request ID: <code>{{ tenant.requestId || '—' }}</code>
-            </p>
-          </v-card-text>
-        </v-card>
-      </v-col>
-
-      <!-- Allowed facilities -->
-      <v-col cols="12" md="6">
-        <v-card rounded="lg" elevation="10">
-          <v-card-item>
-            <v-card-title>Allowed Facilities</v-card-title>
-            <v-card-subtitle>Facilities your account may access in this organization.</v-card-subtitle>
-          </v-card-item>
-          <v-card-text>
-            <v-progress-linear v-if="tenant.loading" indeterminate color="primary" class="mb-3" />
-            <v-list v-if="tenant.allowedFacilityIds.length" density="comfortable" lines="one">
-              <v-list-item
-                v-for="fid in tenant.allowedFacilityIds"
-                :key="fid"
-                :title="fid"
-                :active="fid === tenant.activeFacilityId"
-              >
-                <template #prepend>
-                  <v-icon
-                    :icon="fid === tenant.activeFacilityId ? 'mdi-check-circle' : 'mdi-hospital-building-outline'"
-                    :color="fid === tenant.activeFacilityId ? 'success' : undefined"
-                  />
-                </template>
-                <template #append>
-                  <v-chip v-if="fid === tenant.activeFacilityId" color="success" size="small" variant="tonal">
-                    Active
-                  </v-chip>
-                </template>
-              </v-list-item>
-            </v-list>
-            <p v-else-if="!tenant.loading" class="textSecondary">No facilities found in token claims.</p>
-          </v-card-text>
-        </v-card>
-      </v-col>
-
-      <!-- Raw context -->
-      <v-col cols="12" md="6">
-        <v-card rounded="lg" elevation="10">
-          <v-card-item>
-            <v-card-title>Raw Tenant Context</v-card-title>
-            <v-card-subtitle>Decoded from <code>GET /v1/platform/tenant-context</code></v-card-subtitle>
-          </v-card-item>
-          <v-card-text>
-            <v-btn
-              size="small"
-              variant="tonal"
-              color="primary"
-              prepend-icon="mdi-refresh"
-              :loading="tenant.loading"
-              class="mb-3"
-              @click="tenant.loadContext"
-            >
-              Refresh
-            </v-btn>
-            <pre class="context-json pa-3 rounded-lg">{{ JSON.stringify(tenant.context, null, 2) }}</pre>
+            <v-icon icon="mdi-chevron-right" color="medium-emphasis" />
           </v-card-text>
         </v-card>
       </v-col>
     </v-row>
+
+    <!-- Platform user note -->
+    <v-alert
+      v-if="auth.isPlatformUser"
+      type="info"
+      variant="tonal"
+      rounded="lg"
+      class="mt-4"
+      :title="auth.isDeveloper ? 'Developer access' : 'Tester access'"
+      :text="auth.isDeveloper
+        ? 'You have cross-tenant visibility across every hospital on the platform.'
+        : 'You can review and update test cases. Test cases will appear here once published.'"
+    />
+
+    <!-- Hospital-admin tenant context -->
+    <template v-if="auth.isHospitalAdmin">
+      <v-alert
+        v-if="tenant.lastError"
+        type="warning"
+        variant="tonal"
+        class="mt-4"
+        title="Could not load tenant context"
+        :text="`Backend returned: ${tenant.lastError}. Your session may have expired.`"
+      />
+
+      <v-row class="mt-2">
+        <v-col cols="12" md="6">
+          <v-card rounded="lg" elevation="10" class="h-100">
+            <v-card-item>
+              <v-card-title>Your Organization</v-card-title>
+            </v-card-item>
+            <v-card-text>
+              <div class="d-flex align-center mb-2">
+                <v-icon icon="mdi-domain" class="mr-2" color="primary" />
+                <span class="text-h6">{{ tenant.context?.organization_name || tenant.organizationId || '—' }}</span>
+              </div>
+              <p class="text-body-2 textSecondary">The hospital your account is scoped to.</p>
+            </v-card-text>
+          </v-card>
+        </v-col>
+
+        <v-col cols="12" md="6">
+          <v-card rounded="lg" elevation="10" class="h-100">
+            <v-card-item>
+              <v-card-title>Facilities</v-card-title>
+              <v-card-subtitle>Locations you can access this session.</v-card-subtitle>
+            </v-card-item>
+            <v-card-text>
+              <v-progress-linear v-if="tenant.loading" indeterminate color="primary" class="mb-3" />
+              <v-list v-if="(tenant.context?.facilities?.length ?? 0) > 0" density="comfortable" lines="one">
+                <v-list-item
+                  v-for="f in tenant.context?.facilities"
+                  :key="f.id"
+                  :title="f.name"
+                  :active="f.id === tenant.activeFacilityId"
+                >
+                  <template #prepend>
+                    <v-icon
+                      :icon="f.id === tenant.activeFacilityId ? 'mdi-check-circle' : 'mdi-hospital-building-outline'"
+                      :color="f.id === tenant.activeFacilityId ? 'success' : undefined"
+                    />
+                  </template>
+                  <template #append>
+                    <v-chip v-if="f.id === tenant.activeFacilityId" color="success" size="small" variant="tonal">
+                      Active
+                    </v-chip>
+                  </template>
+                </v-list-item>
+              </v-list>
+              <p v-else-if="!tenant.loading" class="textSecondary">No facilities found.</p>
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+    </template>
   </div>
 </template>
 
 <style scoped>
-.context-json {
-  background: rgba(0, 0, 0, 0.04);
-  font-size: 13px;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
+.action-card { transition: transform 0.15s ease; }
+.action-card:hover { transform: translateY(-2px); }
 .gap-2 { gap: 8px; }
 .gap-3 { gap: 12px; }
 </style>

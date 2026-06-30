@@ -6,8 +6,18 @@ import HorizontalHeader from "@/components/lc/Full/horizontal-header/index.vue";
 import HorizontalSidebar from "@/components/lc/Full/horizontal-sidebar/index.vue";
 import Customizer from "@/components/lc/Full/customizer/Customizer.vue";
 
+import { onMounted } from "vue";
 import { useCustomizerStore } from "@/stores/customizer";
+import { useAuthStore } from "@/stores/auth";
+
 const customizer = useCustomizerStore();
+const auth = useAuthStore();
+
+// The token persists in a cookie but the user object does not survive a reload.
+// Re-hydrate it so role-based UI (sidebar, dashboard) renders correctly.
+onMounted(() => {
+  if (auth.isAuthenticated && !auth.user) auth.fetchCurrentUser();
+});
 </script>
 
 <template>

@@ -2,6 +2,7 @@
 import { ref } from "vue";
 import { useCustomizerStore } from "@/stores/customizer";
 import { useTenantStore } from "@/stores/tenant";
+import { useAuthStore } from "@/stores/auth";
 import { Icon } from "@iconify/vue";
 // Icon Imports
 import { Menu2Icon } from "vue-tabler-icons";
@@ -12,6 +13,7 @@ import FacilitySwitcher from "@/components/hmis/FacilitySwitcher.vue";
 
 const customizer = useCustomizerStore();
 const tenant = useTenantStore();
+const auth = useAuthStore();
 const priority = ref(customizer.setHorizontalLayout ? 0 : 0);
 </script>
 
@@ -55,7 +57,7 @@ const priority = ref(customizer.setHorizontalLayout ? 0 : 0);
 
     <!-- Active facility switcher -->
     <div class="hidden-sm-and-down mr-2">
-      <FacilitySwitcher />
+      <FacilitySwitcher v-if="auth.isHospitalAdmin" />
     </div>
 
     <LcFullVerticalHeaderThemeToggler />

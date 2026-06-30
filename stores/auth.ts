@@ -2,132 +2,241 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNuxtApp, useCookie } from '#app'
-import { useTenancyApi } from '~/composables/useTenancyApi'
 import { useTenantStore } from '~/stores/tenant'
 import { tenancyErrorMessage } from '~/types/tenancy'
 
+export interface LoginFacility {
+  id: string
+  name: string
+  organization_id: string
+  organization_name: string
+}
+
+export interface AuthUser {
+  id: number
+  name: string
+  email: string
+  platform_role: string | null
+  roles: string[]
+  permissions: string[]
+}
+
 /**
- * Auth against the HMIS tenant-management backend.
+ * Two-step authentication against the HMIS backend:
+ *   Step 1: POST /login {email, password, step:1}  -> facilities to choose from
+ *   Step 2: POST /login {email, password, step:2, facility_id} -> token + session
  *
- * Unlike a classic email/password login, the backend issues a token that is
- * SCOPED to one organization + one active facility, so those are required at
- * sign-in time. The token is a Sanctum Bearer token carried in the
- * `auth_token` cookie (read by plugins/axios.ts).
- *
- * The backend has no register / logout / refresh endpoints, so:
- *  - there is no register()
- *  - logout() is client-side only (clears the cookie; the token is not revoked server-side)
+ * Backend has /logout (revokes token) and /user (current user).
  */
 export const useAuthStore = defineStore('auth', () => {
   const router = useRouter()
   const { $axios, $showToast } = useNuxtApp()
-  const { issueToken } = useTenancyApi()
 
-  const token = useCookie<string | null>('auth_token', { sameSite: 'lax', path: '/', httpOnly: false })
+  const cookieOpts = { sameSite: 'lax' as const, path: '/', httpOnly: false }
+
+  const token = useCookie<string | null>('auth_token', cookieOpts)
+  const user = ref<AuthUser | null>(null)
   const apiError = ref('')
-  const submitting = ref(false)
+
+  // Step-1 -> Step-2 transient state.
+  const step = ref<'idle' | 'facility'>('idle')
+  const facilities = ref<LoginFacility[]>([])
+  const organization = ref<{ id: string | null; name: string; logo: string | null } | null>(null)
+  const pendingCredentials = ref<{ username: string; password: string } | null>(null)
+  const isSelectingFacility = ref(false)
 
   const isAuthenticated = computed(() => !!token.value)
+  const roles = computed(() => user.value?.roles ?? [])
+
+  // Platform account type (developer/tester) or null for hospital tenant users.
+  const platformRole = computed(() => user.value?.platform_role ?? null)
+  const isDeveloper = computed(() => platformRole.value === 'developer')
+  const isTester = computed(() => platformRole.value === 'tester')
+  const isPlatformUser = computed(() => isDeveloper.value || isTester.value)
+  const isHospitalAdmin = computed(() => !isPlatformUser.value)
 
   const applyToken = (t: string | null) => {
     if (t) $axios.defaults.headers.common['Authorization'] = `Bearer ${t}`
     else delete $axios.defaults.headers.common['Authorization']
   }
-
   applyToken(token.value)
   watch(token, (val) => applyToken(val), { immediate: true })
 
-  /**
-   * Sign in to a specific organization + facility scope.
-   */
-  const login = async (values: {
-    email: string
-    password: string
-    organization_id: string
-    active_facility_id: string
-    token_name?: string
-  }) => {
+  const resetLoginState = () => {
+    step.value = 'idle'
+    facilities.value = []
+    organization.value = null
+    pendingCredentials.value = null
+    isSelectingFacility.value = false
+  }
+
+  // ── Step 1: credentials -> facility list ──────────────────────────────
+  const login = async (values: { username: string; password: string }) => {
     apiError.value = ''
-    submitting.value = true
     try {
-      const data = await issueToken({
-        email: values.email,
+      const { data } = await $axios.post('/v1/platform/login', {
+        username: values.username,
         password: values.password,
-        organization_id: values.organization_id,
-        active_facility_id: values.active_facility_id,
-        token_name: values.token_name || 'hmis-web',
+        step: 1,
       })
 
-      token.value = data.access_token
-      applyToken(data.access_token)
+      // Platform users (developer/tester) sign in directly — the backend skips
+      // facility selection and returns a token immediately.
+      if (data.access_token) {
+        token.value = data.access_token
+        applyToken(data.access_token)
+        user.value = data.user
+        resetLoginState()
+        $showToast('Signed in successfully!')
+        await router.push('/dashboard')
+        return { success: true, platformRole: data.platform_role ?? null }
+      }
 
-      const tenant = useTenantStore()
-      tenant.lastEmail = values.email
-      await tenant.loadContext()
+      if (data.step === 2) {
+        step.value = 'facility'
+        facilities.value = data.facilities || []
+        organization.value = data.organization || null
+        pendingCredentials.value = values
+        return { requiresFacilitySelection: true }
+      }
 
-      $showToast('Signed in successfully!')
-      await router.push('/dashboard')
-      return true
+      // (Backend returns either a token or step 2; this branch is a safety net.)
+      return { success: true }
     } catch (err: any) {
-      const code = err?.response?.data?.code
       apiError.value = tenancyErrorMessage(
-        code,
-        err?.response?.data?.message || 'Sign in failed. Please try again.',
+        err?.response?.data?.code,
+        err?.response?.data?.message || 'Login failed.',
       )
       $showToast(apiError.value)
-      return false
-    } finally {
-      submitting.value = false
+      return { error: apiError.value }
     }
   }
 
-  /**
-   * Re-issue a token for the same organization but a different active facility.
-   * Requires the password again because the backend has no "set active facility" endpoint.
-   */
-  const switchFacility = async (facilityId: string, password: string) => {
-    const tenant = useTenantStore()
-    if (!tenant.organizationId) return false
+  // ── Step 2: choose facility -> issue token ────────────────────────────
+  const selectFacilityAndLogin = async (facilityId: string) => {
     apiError.value = ''
-    submitting.value = true
+    if (!pendingCredentials.value) {
+      apiError.value = 'Session expired. Please login again.'
+      $showToast(apiError.value)
+      resetLoginState()
+      return { error: apiError.value }
+    }
+
+    isSelectingFacility.value = true
     try {
-      const data = await issueToken({
-        email: (tenant.lastEmail as string) || '',
-        password,
-        organization_id: tenant.organizationId,
-        active_facility_id: facilityId,
-        token_name: 'hmis-web',
+      const { data } = await $axios.post('/v1/platform/login', {
+        username: pendingCredentials.value.username,
+        password: pendingCredentials.value.password,
+        step: 2,
+        facility_id: facilityId,
       })
+
       token.value = data.access_token
       applyToken(data.access_token)
+      user.value = data.user
+
+      // Hydrate the tenant store for the rest of the app.
+      const tenant = useTenantStore()
+      tenant.lastEmail = data.user?.email ?? pendingCredentials.value.username
       await tenant.loadContext()
-      $showToast(`Switched to facility ${facilityId}.`)
-      return true
+
+      resetLoginState()
+      $showToast('Signed in successfully!')
+      await router.push('/dashboard')
+      return { success: true }
     } catch (err: any) {
-      const code = err?.response?.data?.code
-      apiError.value = tenancyErrorMessage(code, 'Could not switch facility.')
+      isSelectingFacility.value = false
+      apiError.value = tenancyErrorMessage(
+        err?.response?.data?.code,
+        err?.response?.data?.message || 'Facility selection failed.',
+      )
       $showToast(apiError.value)
-      return false
+      return { error: apiError.value }
+    }
+  }
+
+  const cancelFacilitySelection = () => resetLoginState()
+
+  // ── In-session facility switch (no password) ──────────────────────────
+  const isSwitchingFacility = ref(false)
+  const switchFacility = async (facilityId: string) => {
+    apiError.value = ''
+    isSwitchingFacility.value = true
+    try {
+      const { data } = await $axios.post('/v1/platform/switch-facility', {
+        facility_id: facilityId,
+      })
+
+      token.value = data.access_token
+      applyToken(data.access_token)
+
+      // Refresh the tenant context so names/active facility reflect the switch.
+      await useTenantStore().loadContext()
+
+      $showToast(`Switched to ${data.facility?.name ?? 'facility'}.`)
+      return { success: true }
+    } catch (err: any) {
+      apiError.value = tenancyErrorMessage(
+        err?.response?.data?.code,
+        err?.response?.data?.message || 'Could not switch facility.',
+      )
+      $showToast(apiError.value)
+      return { error: apiError.value }
     } finally {
-      submitting.value = false
+      isSwitchingFacility.value = false
     }
   }
 
   const logout = async () => {
-    token.value = null
-    applyToken(null)
-    useTenantStore().clear()
-    $showToast('Logged out.')
-    await router.push('/auth/login')
+    try {
+      await $axios.post('/v1/platform/logout')
+    } catch {
+      // proceed regardless — token may already be invalid
+    } finally {
+      token.value = null
+      applyToken(null)
+      user.value = null
+      resetLoginState()
+      useTenantStore().clear()
+      $showToast('Logged out.')
+      await router.push('/auth/login')
+    }
   }
+
+  const fetchCurrentUser = async () => {
+    try {
+      const { data } = await $axios.get('/v1/platform/user')
+      user.value = data.data
+      return user.value
+    } catch {
+      return null
+    }
+  }
+
+  const hasRole = (r: string) => roles.value.includes(r)
 
   return {
     token,
+    user,
     apiError,
-    submitting,
+    step,
+    facilities,
+    organization,
+    isSelectingFacility,
+    isSwitchingFacility,
     isAuthenticated,
+    roles,
+    platformRole,
+    isDeveloper,
+    isTester,
+    isPlatformUser,
+    isHospitalAdmin,
     login,
+    selectFacilityAndLogin,
+    cancelFacilitySelection,
     switchFacility,
     logout,
+    fetchCurrentUser,
+    hasRole,
   }
 })

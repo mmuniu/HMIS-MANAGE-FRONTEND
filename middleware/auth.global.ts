@@ -1,6 +1,16 @@
 // Route guard: every page requires a session except the auth pages.
-// Unauthenticated users are redirected to the login page.
-export default defineNuxtRouteMiddleware((to) => {
+// Unauthenticated users are redirected to the login page. Authenticated users
+// are also kept out of pages their account type isn't allowed to see, so
+// typing a URL directly can't bypass the role-filtered sidebar.
+
+// Which account types may access a given path prefix. Omitted = everyone.
+const ROLE_ROUTES: { prefix: string; roles: string[] }[] = [
+  { prefix: '/hospitals', roles: ['developer', 'hospital_admin'] },
+  { prefix: '/test-cases', roles: ['developer', 'tester'] },
+  { prefix: '/work', roles: ['developer'] },
+]
+
+export default defineNuxtRouteMiddleware(async (to) => {
   const auth = useAuthStore()
 
   const isAuthRoute = to.path.startsWith('/auth')
@@ -18,5 +28,20 @@ export default defineNuxtRouteMiddleware((to) => {
   // Send the bare root to the dashboard for signed-in users.
   if (auth.isAuthenticated && to.path === '/') {
     return navigateTo('/dashboard')
+  }
+
+  // Role-gating for known feature areas.
+  if (auth.isAuthenticated) {
+    // After a hard reload the token cookie persists but the user object does
+    // not — hydrate it before deciding the role, or we'd misroute (client only).
+    if (import.meta.client && !auth.user) {
+      await auth.fetchCurrentUser()
+    }
+
+    const role = auth.platformRole ?? 'hospital_admin'
+    const rule = ROLE_ROUTES.find((r) => to.path.startsWith(r.prefix))
+    if (rule && !rule.roles.includes(role)) {
+      return navigateTo('/dashboard')
+    }
   }
 })

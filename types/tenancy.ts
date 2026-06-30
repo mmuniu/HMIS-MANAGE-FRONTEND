@@ -20,11 +20,19 @@ export interface IssueTokenResponse {
   }
 }
 
+export interface TenantFacilityRef {
+  id: string
+  name: string
+}
+
 export interface TenantContext {
   organization_id: string
+  organization_name?: string
   allowed_facility_ids: string[]
   active_facility_id: string
   request_id: string
+  // Human-readable names for the facilities in this session (id -> name).
+  facilities?: TenantFacilityRef[]
 }
 
 export interface TenantContextResponse {

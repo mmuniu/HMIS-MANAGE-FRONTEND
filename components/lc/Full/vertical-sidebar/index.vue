@@ -1,14 +1,31 @@
 <script setup lang="ts">
-import { shallowRef } from 'vue';
+import { computed } from 'vue';
 import { useCustomizerStore } from '@/stores/customizer';
+import { useAuthStore } from '@/stores/auth';
 import sidebarItems from './sidebarItem';
+import type { menu } from './sidebarItem';
 import NavGroup from './NavGroup/index.vue';
 import NavItem from './NavItem/index.vue';
 import NavCollapse from './NavCollapse/index.vue';
 import Logo from '../logo/Logo.vue';
 
 const customizer = useCustomizerStore();
-const sidebarMenu = shallowRef(sidebarItems);
+const auth = useAuthStore();
+
+// The current account's role key for menu gating.
+const currentRole = computed<string>(() => auth.platformRole ?? 'hospital_admin');
+
+const canSee = (item: menu): boolean => !item.roles || item.roles.includes(currentRole.value);
+
+// Filter children by role, then drop any group/header left with no children.
+const sidebarMenu = computed<menu[]>(() =>
+  sidebarItems
+    .map((group) => ({
+      ...group,
+      children: (group.children ?? []).filter(canSee),
+    }))
+    .filter((group) => !group.header || group.children.length > 0),
+);
 </script>
 
 <template>

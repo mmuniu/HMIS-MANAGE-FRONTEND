@@ -1,11 +1,20 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHospitalsStore } from '@/stores/hospitals'
+import { useAuthStore } from '@/stores/auth'
 import { STATUS_COLOR, TIER_COLOR, BILLING_COLOR } from '@/types/hospital'
 
 const router = useRouter()
 const store = useHospitalsStore()
+const auth = useAuthStore()
+
+// Platform staff manage every tenant; hospital admins only see their own.
+const isPlatform = computed(() => auth.isPlatformUser)
+const heading = computed(() => (isPlatform.value ? 'Hospitals' : 'My Hospital'))
+const subtitle = computed(() =>
+  isPlatform.value ? 'Platform tenants registered on HMIS.' : 'The hospital your account manages.',
+)
 
 const page = ref(1)
 const perPage = ref(25)
@@ -41,10 +50,10 @@ onMounted(load)
   <div>
     <div class="d-flex flex-wrap align-center justify-space-between mb-6 ga-3">
       <div>
-        <h2 class="text-h4 font-weight-semibold">Hospitals</h2>
-        <p class="textSecondary">Platform tenants registered on HMIS.</p>
+        <h2 class="text-h4 font-weight-semibold">{{ heading }}</h2>
+        <p class="textSecondary">{{ subtitle }}</p>
       </div>
-      <v-btn color="primary" prepend-icon="mdi-plus" to="/hospitals/new">
+      <v-btn v-if="isPlatform" color="primary" prepend-icon="mdi-plus" to="/hospitals/new">
         New Hospital
       </v-btn>
     </div>

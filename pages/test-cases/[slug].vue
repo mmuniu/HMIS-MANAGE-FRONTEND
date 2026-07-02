@@ -3,11 +3,13 @@ import { computed, ref, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useTestCasesStore, type TestCase, type Verdict } from '@/stores/testCases'
 import { useTestCasesApi } from '@/composables/useTestCasesApi'
+import { useAuthStore } from '@/stores/auth'
 import { useNuxtApp } from '#app'
 import TestCaseForm from '@/components/hmis/TestCaseForm.vue'
 
 const route = useRoute()
 const store = useTestCasesStore()
+const auth = useAuthStore()
 const api = useTestCasesApi()
 const { $showToast } = useNuxtApp()
 const slug = computed(() => String(route.params.slug))
@@ -102,7 +104,7 @@ function mark(c: TestCase, v: Verdict) {
           <v-chip color="success" variant="tonal">{{ suite.stats.pass }} passed</v-chip>
           <v-chip color="error" variant="tonal">{{ suite.stats.fail }} failed</v-chip>
           <v-chip variant="tonal">{{ suite.stats.untested }} untested</v-chip>
-          <v-btn color="primary" size="small" prepend-icon="mdi-plus" to="/test-cases/new" class="ml-2">New Case</v-btn>
+          <v-btn v-if="auth.canAuthorTests" color="primary" size="small" prepend-icon="mdi-plus" to="/test-cases/new" class="ml-2">New Case</v-btn>
         </div>
       </div>
 
@@ -177,8 +179,8 @@ function mark(c: TestCase, v: Verdict) {
                 <v-btn :variant="c.verdict === 'fail' ? 'flat' : 'tonal'" color="error" size="small"
                   prepend-icon="mdi-close" @click="mark(c, 'fail')">Fail</v-btn>
                 <v-spacer />
-                <v-btn variant="text" size="small" prepend-icon="mdi-pencil" @click="openEdit(c, m.name, m.code)">Edit</v-btn>
-                <v-btn variant="text" size="small" color="error" prepend-icon="mdi-delete" @click="onDelete(c)">Delete</v-btn>
+                <v-btn v-if="auth.canAuthorTests" variant="text" size="small" prepend-icon="mdi-pencil" @click="openEdit(c, m.name, m.code)">Edit</v-btn>
+                <v-btn v-if="auth.canAuthorTests" variant="text" size="small" color="error" prepend-icon="mdi-delete" @click="onDelete(c)">Delete</v-btn>
               </div>
 
               <v-textarea :model-value="c.note ?? ''" @change="(e: any) => store.setNote(c, e.target.value)"

@@ -5,9 +5,15 @@
 
 // Which account types may access a given path prefix. Omitted = everyone.
 const ROLE_ROUTES: { prefix: string; roles: string[] }[] = [
+  // More specific prefixes first (first match wins).
+  { prefix: '/hospitals/new', roles: ['developer'] },      // only platform staff create hospitals
   { prefix: '/hospitals', roles: ['developer', 'hospital_admin'] },
-  { prefix: '/test-cases', roles: ['developer', 'tester'] },
+  { prefix: '/test-cases/new', roles: ['developer', 'tester'] }, // authoring only
+  { prefix: '/test-cases', roles: ['developer', 'tester', 'qa'] },
+  { prefix: '/tester-activity', roles: ['developer'] },
+  { prefix: '/feedback-admin', roles: ['developer'] },
   { prefix: '/work', roles: ['developer'] },
+  // /feedback (submit + my reports) is open to everyone — no rule.
 ]
 
 export default defineNuxtRouteMiddleware(async (to) => {
@@ -38,10 +44,13 @@ export default defineNuxtRouteMiddleware(async (to) => {
       await auth.fetchCurrentUser()
     }
 
-    const role = auth.platformRole ?? 'hospital_admin'
-    const rule = ROLE_ROUTES.find((r) => to.path.startsWith(r.prefix))
-    if (rule && !rule.roles.includes(role)) {
-      return navigateTo('/dashboard')
+    // System admin is a superuser — every route is allowed.
+    if (!auth.isSystemAdmin) {
+      const role = auth.platformRole ?? 'hospital_admin'
+      const rule = ROLE_ROUTES.find((r) => to.path.startsWith(r.prefix))
+      if (rule && !rule.roles.includes(role)) {
+        return navigateTo('/dashboard')
+      }
     }
   }
 })

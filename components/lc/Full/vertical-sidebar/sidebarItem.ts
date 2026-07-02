@@ -43,8 +43,28 @@ const sidebarItem: menu[] = [
                 title: 'Test Cases',
                 icon: 'clipboard-check-line-duotone',
                 to: '/test-cases',
-                // Testers run test cases; developers oversee them.
-                roles: ['tester', 'developer'],
+                // Testers + QA run test cases; developers oversee them.
+                roles: ['tester', 'developer', 'qa'],
+            },
+            {
+                title: 'Tester Activity',
+                icon: 'chart-2-line-duotone',
+                to: '/tester-activity',
+                // Developers track testers' create/pass/fail journey.
+                roles: ['developer'],
+            },
+            {
+                title: 'Send Feedback',
+                icon: 'chat-round-like-line-duotone',
+                to: '/feedback',
+                // Everyone can report bugs / suggest features.
+            },
+            {
+                title: 'Feedback Admin',
+                icon: 'inbox-line-line-duotone',
+                to: '/feedback-admin',
+                // Developers triage all reports.
+                roles: ['developer'],
             },
             {
                 title: 'Bugs & Features',

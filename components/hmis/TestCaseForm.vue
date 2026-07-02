@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { reactive, ref, computed } from 'vue'
+import { reactive, ref, computed, watch, onMounted } from 'vue'
+import { useTestCasesApi } from '@/composables/useTestCasesApi'
 
 interface SuiteOption { title: string; value: string }
+interface ModuleOption { name: string; code: string }
 
 const props = defineProps<{
   // Existing suites to choose from (slug + role label).
@@ -17,9 +19,54 @@ const emit = defineEmits<{
   (e: 'cancel'): void
 }>()
 
+const api = useTestCasesApi()
+
 const suiteOptions = computed<SuiteOption[]>(() =>
   props.suites.map((s) => ({ title: s.role, value: s.slug })),
 )
+
+// Existing modules for the chosen suite (populates the module dropdown).
+const moduleOptions = ref<ModuleOption[]>([])
+const loadingModules = ref(false)
+// Set true while we programmatically set module_code (so the watcher doesn't
+// clear it), and to lock the code field when a known module is selected.
+const codeLocked = ref(false)
+
+async function loadModulesForSuite(slug: string) {
+  moduleOptions.value = []
+  if (!slug) return
+  // Only existing suites have modules; a freshly typed role has none yet.
+  if (!props.suites.some((s) => s.slug === slug)) return
+  loadingModules.value = true
+  try {
+    const suite = await api.getSuite(slug)
+    const seen = new Set<string>()
+    moduleOptions.value = (suite.modules ?? [])
+      .map((m: any) => ({ name: m.name, code: m.code ?? '' }))
+      .filter((m: ModuleOption) => {
+        if (seen.has(m.name)) return false
+        seen.add(m.name)
+        return true
+      })
+  } catch {
+    moduleOptions.value = []
+  } finally {
+    loadingModules.value = false
+  }
+}
+
+// When a module name is chosen from the list, auto-fill (and lock) its code.
+function onModuleNameChange(val: any) {
+  const name = typeof val === 'object' && val ? val.name : val
+  form.module_name = name ?? ''
+  const match = moduleOptions.value.find((m) => m.name === name)
+  if (match) {
+    form.module_code = match.code
+    codeLocked.value = true
+  } else {
+    codeLocked.value = false // new module typed -> code is free to edit
+  }
+}
 
 const form = reactive({
   // suite: either an existing slug or a freshly typed role name.
@@ -35,6 +82,18 @@ const form = reactive({
 })
 
 const errors = ref<string[]>([])
+
+// Reload the module dropdown whenever the selected suite changes.
+watch(() => form.suite, (slug) => {
+  loadModulesForSuite(String(slug || ''))
+})
+
+onMounted(() => {
+  // Editing: modules come from the case's own suite.
+  const editSlug = props.initial?.suite_slug
+  if (editSlug) loadModulesForSuite(String(editSlug))
+  else if (form.suite) loadModulesForSuite(String(form.suite))
+})
 
 const addLine = (arr: string[]) => arr.push('')
 const removeLine = (arr: string[], i: number) => arr.splice(i, 1)
@@ -115,12 +174,27 @@ function onSubmit() {
       </v-col>
 
       <v-col cols="12" md="8">
-        <v-text-field v-model="form.module_name" label="Module name" placeholder="Authentication"
-          variant="outlined" density="comfortable" hide-details />
+        <v-combobox
+          :model-value="form.module_name"
+          :items="moduleOptions"
+          item-title="name"
+          item-value="name"
+          :return-object="false"
+          :loading="loadingModules"
+          label="Module name (pick existing or type a new one)"
+          placeholder="Authentication"
+          variant="outlined"
+          density="comfortable"
+          hide-details
+          @update:model-value="onModuleNameChange"
+        />
       </v-col>
       <v-col cols="12" md="4">
         <v-text-field v-model="form.module_code" label="Module code" placeholder="AUTH"
-          variant="outlined" density="comfortable" hide-details />
+          variant="outlined" density="comfortable" hide-details
+          :readonly="codeLocked"
+          :hint="codeLocked ? 'Auto-filled from the selected module' : 'Code for the new module'"
+          persistent-hint />
       </v-col>
 
       <v-col cols="12">

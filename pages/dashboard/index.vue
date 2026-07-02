@@ -7,24 +7,29 @@ const tenant = useTenantStore()
 const auth = useAuthStore()
 
 onMounted(() => {
+  // Only hospital admins have a tenant context to load.
   if (auth.isHospitalAdmin && !tenant.hasContext) tenant.loadContext()
 })
 
 const roleLabel = computed(() => {
+  if (auth.isSystemAdmin) return 'System Admin'
   if (auth.isDeveloper) return 'Developer'
   if (auth.isTester) return 'Tester'
+  if (auth.isQa) return 'QA'
   return 'Hospital Admin'
 })
 
 const roleColor = computed(() => {
+  if (auth.isSystemAdmin) return 'error'
   if (auth.isDeveloper) return 'primary'
-  if (auth.isTester) return 'warning'
+  if (auth.isTester || auth.isQa) return 'warning'
   return 'success'
 })
 
 const roleIcon = computed(() => {
+  if (auth.isSystemAdmin) return 'mdi-shield-crown'
   if (auth.isDeveloper) return 'mdi-code-braces'
-  if (auth.isTester) return 'mdi-clipboard-check-outline'
+  if (auth.isTester || auth.isQa) return 'mdi-clipboard-check-outline'
   return 'mdi-hospital-building'
 })
 
@@ -32,16 +37,22 @@ const greetingName = computed(() => auth.user?.name || auth.user?.email || 'ther
 
 // Quick-action cards per account type — only links to things that exist / are planned.
 const actions = computed(() => {
-  if (auth.isDeveloper) {
+  if (auth.isSystemAdmin || auth.isDeveloper) {
     return [
       { title: 'Hospitals', subtitle: 'Every tenant on the platform', icon: 'mdi-hospital-building', to: '/hospitals', color: 'primary' },
       { title: 'Test Cases', subtitle: 'Oversee QA test runs', icon: 'mdi-clipboard-check-outline', to: '/test-cases', color: 'warning' },
-      { title: 'Bugs & Features', subtitle: 'Work assigned to you', icon: 'mdi-bug-outline', to: '/work', color: 'error' },
+      { title: 'Tester Activity', subtitle: 'Track testers & QA', icon: 'mdi-chart-box-outline', to: '/tester-activity', color: 'info' },
+      { title: 'Feedback Admin', subtitle: 'Triage bug reports', icon: 'mdi-message-alert-outline', to: '/feedback-admin', color: 'error' },
     ]
   }
   if (auth.isTester) {
     return [
-      { title: 'Test Cases', subtitle: 'Run and mark pass / fail', icon: 'mdi-clipboard-check-outline', to: '/test-cases', color: 'warning' },
+      { title: 'Test Cases', subtitle: 'Create and run test cases', icon: 'mdi-clipboard-check-outline', to: '/test-cases', color: 'warning' },
+    ]
+  }
+  if (auth.isQa) {
+    return [
+      { title: 'Test Cases', subtitle: 'Run existing tests, mark pass / fail', icon: 'mdi-clipboard-check-outline', to: '/test-cases', color: 'warning' },
     ]
   }
   // hospital admin

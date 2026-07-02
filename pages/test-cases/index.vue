@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useTestCasesStore } from '@/stores/testCases'
+import { useAuthStore } from '@/stores/auth'
 import { useNuxtApp } from '#app'
 
 const store = useTestCasesStore()
+const auth = useAuthStore()
 const { $showToast } = useNuxtApp()
 
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -55,7 +57,7 @@ async function onFile(e: Event) {
         <h2 class="text-h4 font-weight-semibold">Test Cases</h2>
         <p class="textSecondary">Upload a role document, then run its cases and mark each pass or fail.</p>
       </div>
-      <div class="d-flex gap-2">
+      <div v-if="auth.canAuthorTests" class="d-flex gap-2">
         <input ref="fileInput" type="file" accept=".md,.markdown,text/markdown,text/plain" hidden @change="onFile" />
         <v-btn color="primary" prepend-icon="mdi-plus" to="/test-cases/new">New Test Case</v-btn>
         <v-btn variant="tonal" color="primary" prepend-icon="mdi-upload" :loading="store.uploading" @click="pickFile">
@@ -91,8 +93,10 @@ async function onFile(e: Event) {
           <v-icon icon="mdi-clipboard-text-outline" size="36" />
         </v-avatar>
         <h3 class="text-h6 mb-2">No test cases yet</h3>
-        <p class="textSecondary mb-4">Create a test case with the form, or upload a role document (.md).</p>
-        <div class="d-flex justify-center gap-2">
+        <p class="textSecondary mb-4">
+          {{ auth.canAuthorTests ? 'Create a test case with the form, or upload a role document (.md).' : 'No test cases have been published yet.' }}
+        </p>
+        <div v-if="auth.canAuthorTests" class="d-flex justify-center gap-2">
           <v-btn color="primary" prepend-icon="mdi-plus" to="/test-cases/new">New Test Case</v-btn>
           <v-btn variant="tonal" color="primary" prepend-icon="mdi-upload" :loading="store.uploading" @click="pickFile">Upload Doc</v-btn>
         </div>

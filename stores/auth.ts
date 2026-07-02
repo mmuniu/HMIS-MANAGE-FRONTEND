@@ -48,12 +48,25 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => !!token.value)
   const roles = computed(() => user.value?.roles ?? [])
 
-  // Platform account type (developer/tester) or null for hospital tenant users.
+  // Platform account type (system_admin/developer/tester/qa) or null for tenant users.
   const platformRole = computed(() => user.value?.platform_role ?? null)
+  // System admin = top-level superuser with access to everything.
+  const isSystemAdmin = computed(() => platformRole.value === 'system_admin')
   const isDeveloper = computed(() => platformRole.value === 'developer')
   const isTester = computed(() => platformRole.value === 'tester')
-  const isPlatformUser = computed(() => isDeveloper.value || isTester.value)
-  const isHospitalAdmin = computed(() => !isPlatformUser.value)
+  // QA = run-only tester: works with existing tests but cannot author them.
+  const isQa = computed(() => platformRole.value === 'qa')
+  const isPlatformUser = computed(
+    () => isSystemAdmin.value || isDeveloper.value || isTester.value || isQa.value,
+  )
+  // Hospital admin: driven by the real tenant role_key returned in user.roles.
+  const isHospitalAdmin = computed(
+    () => !isPlatformUser.value && roles.value.includes('hospital_admin'),
+  )
+  // Anyone with cross-tenant "sees everything" access.
+  const isSuperAccess = computed(() => isSystemAdmin.value || isDeveloper.value)
+  // Who may create/edit/delete/upload test cases (QA excluded; system admin allowed).
+  const canAuthorTests = computed(() => isSystemAdmin.value || isDeveloper.value || isTester.value)
 
   const applyToken = (t: string | null) => {
     if (t) $axios.defaults.headers.common['Authorization'] = `Bearer ${t}`
@@ -227,10 +240,14 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     roles,
     platformRole,
+    isSystemAdmin,
     isDeveloper,
     isTester,
+    isQa,
     isPlatformUser,
     isHospitalAdmin,
+    isSuperAccess,
+    canAuthorTests,
     login,
     selectFacilityAndLogin,
     cancelFacilitySelection,

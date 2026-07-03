@@ -80,12 +80,20 @@ export interface ReportSummary {
   updated_at: string | null
 }
 
+export interface LinkedTestCase {
+  id: number
+  case_id: string
+  title: string
+  suite_slug: string | null
+}
+
 export interface ReportDetail extends ReportSummary {
   description: string
   browser: string | null
   os: string | null
   page_url: string | null
   duplicate_of: number | null
+  test_case: LinkedTestCase | null
   closed_at: string | null
   attachments: ReportAttachment[]
   comments: ReportComment[]
@@ -101,5 +109,6 @@ export interface CreateReportInput {
   browser?: string
   os?: string
   page_url?: string
+  test_case_id?: number | null // auto-set when logging from a failed test case
   files: File[]
 }

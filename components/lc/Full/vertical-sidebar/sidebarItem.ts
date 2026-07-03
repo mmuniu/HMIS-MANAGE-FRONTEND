@@ -47,6 +47,13 @@ const sidebarItem: menu[] = [
                 roles: ['tester', 'developer', 'qa'],
             },
             {
+                title: 'Test Approvals',
+                icon: 'shield-check-line-duotone',
+                to: '/test-approvals',
+                // System admin approves new test cases before they go live.
+                roles: ['system_admin'],
+            },
+            {
                 title: 'Tester Activity',
                 icon: 'chart-2-line-duotone',
                 to: '/tester-activity',

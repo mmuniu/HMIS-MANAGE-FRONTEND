@@ -50,5 +50,24 @@ export function useTestCasesApi() {
     return data
   }
 
-  return { listSuites, getSuite, uploadSuite, recordResult, createCase, updateCase, deleteCase }
+  // --- System-admin approval workflow ---
+  async function pendingCases() {
+    const { data } = await $axios.get(`${base}/pending-test-cases`)
+    return data.data
+  }
+
+  async function approveCase(caseId: number, note?: string) {
+    const { data } = await $axios.patch(`${base}/test-cases/${caseId}/approve`, { note })
+    return data.data
+  }
+
+  async function rejectCase(caseId: number, note?: string) {
+    const { data } = await $axios.patch(`${base}/test-cases/${caseId}/reject`, { note })
+    return data.data
+  }
+
+  return {
+    listSuites, getSuite, uploadSuite, recordResult, createCase, updateCase, deleteCase,
+    pendingCases, approveCase, rejectCase,
+  }
 }

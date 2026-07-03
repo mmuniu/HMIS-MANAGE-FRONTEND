@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { reactive, ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useReportsApi } from '@/composables/useReportsApi'
 import { MODULES, SEVERITIES, type ReportType, type Severity } from '@/types/report'
 import { useNuxtApp } from '#app'
 
 const router = useRouter()
+const route = useRoute()
 const api = useReportsApi()
 const { $showToast } = useNuxtApp()
+
+// Auto (hidden) link to the test case a bug was raised from. Set only via the
+// "Log a bug" action on a failed test case; never entered by the user.
+const linkedTestCaseId = ref<number | null>(null)
+const linkedCaseLabel = ref<string>('')
 
 const MAX_FILES = 5
 const MAX_SIZE = 50 * 1024 * 1024
@@ -40,6 +46,17 @@ onMounted(() => {
   env.browser = /Edg/.test(ua) ? 'Edge' : /Chrome/.test(ua) ? 'Chrome' : /Firefox/.test(ua) ? 'Firefox' : /Safari/.test(ua) ? 'Safari' : 'Unknown'
   env.os = /Windows/.test(ua) ? 'Windows' : /Mac/.test(ua) ? 'macOS' : /Android/.test(ua) ? 'Android' : /Linux/.test(ua) ? 'Linux' : 'Unknown'
   env.url = window.location.href
+
+  // Prefill when opened via "Log a bug" from a failed test case.
+  const q = route.query
+  if (q.test_case_id) {
+    linkedTestCaseId.value = Number(q.test_case_id)
+    linkedCaseLabel.value = String(q.case_id ?? `#${q.test_case_id}`)
+    form.type = 'bug'
+    if (q.title) form.title = String(q.title)
+    if (q.module && MODULES.includes(String(q.module))) form.module = String(q.module)
+    if (q.description) form.description = String(q.description)
+  }
 })
 
 onBeforeUnmount(() => attachments.value.forEach((a) => URL.revokeObjectURL(a.url)))
@@ -101,6 +118,7 @@ async function submit() {
       browser: env.browser,
       os: env.os,
       page_url: env.url,
+      test_case_id: linkedTestCaseId.value,
       files: attachments.value.map((a) => a.file),
     }, (pct) => (progress.value = pct))
     createdTicket.value = detail.ticket_id
@@ -148,6 +166,15 @@ async function submit() {
             <v-btn value="bug" class="flex-grow-1"><v-icon start icon="mdi-bug" /> Report a Bug</v-btn>
             <v-btn value="feature" class="flex-grow-1"><v-icon start icon="mdi-lightbulb-on" /> Suggest a Feature</v-btn>
           </v-btn-toggle>
+
+          <!-- Linked test case (auto — shown, never editable) -->
+          <v-alert
+            v-if="linkedTestCaseId"
+            type="info" variant="tonal" density="compact" rounded="lg" class="mb-4"
+            icon="mdi-link-variant"
+          >
+            This bug will be linked to failed test case <strong>{{ linkedCaseLabel }}</strong>.
+          </v-alert>
 
           <!-- Title -->
           <v-text-field

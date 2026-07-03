@@ -10,6 +10,7 @@ const ROLE_ROUTES: { prefix: string; roles: string[] }[] = [
   { prefix: '/hospitals', roles: ['developer', 'hospital_admin'] },
   { prefix: '/test-cases/new', roles: ['developer', 'tester'] }, // authoring only
   { prefix: '/test-cases', roles: ['developer', 'tester', 'qa'] },
+  { prefix: '/test-approvals', roles: ['system_admin'] },
   { prefix: '/tester-activity', roles: ['developer'] },
   { prefix: '/feedback-admin', roles: ['developer'] },
   { prefix: '/work', roles: ['developer'] },

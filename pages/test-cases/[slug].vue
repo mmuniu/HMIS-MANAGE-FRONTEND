@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useTestCasesStore, type TestCase, type Verdict } from '@/stores/testCases'
 import { useTestCasesApi } from '@/composables/useTestCasesApi'
 import { useAuthStore } from '@/stores/auth'
@@ -8,6 +8,7 @@ import { useNuxtApp } from '#app'
 import TestCaseForm from '@/components/hmis/TestCaseForm.vue'
 
 const route = useRoute()
+const router = useRouter()
 const store = useTestCasesStore()
 const auth = useAuthStore()
 const api = useTestCasesApi()
@@ -85,6 +86,44 @@ const verdictColor = (v: Verdict) => (v === 'pass' ? 'success' : v === 'fail' ? 
 function mark(c: TestCase, v: Verdict) {
   store.setVerdict(c, c.verdict === v ? 'untested' : v)
 }
+
+// Open the feedback form pre-filled and auto-linked to this failed case.
+// The test_case_id travels as a query param; the form sends it as the hidden link.
+function logBug(c: TestCase, moduleName: string) {
+  router.push({
+    path: '/feedback/new',
+    query: {
+      test_case_id: c.id,
+      case_id: c.case_id,
+      title: `[${c.case_id}] ${c.title}`,
+      description:
+        `Test case ${c.case_id} — "${c.title}" failed.\n\n` +
+        `Steps:\n${(c.steps || []).map((s, i) => `${i + 1}. ${s}`).join('\n')}\n\n` +
+        `Expected:\n${c.expected || '-'}\n\n` +
+        `What actually happened:\n${c.note || '(describe here)'}`,
+    },
+  })
+}
+
+// System-admin: approve or reject a pending test case.
+async function approve(c: TestCase) {
+  try {
+    await api.approveCase(c.id)
+    c.approval_status = 'approved'
+    $showToast(`Approved ${c.case_id}.`)
+  } catch (e: any) {
+    $showToast(e?.response?.data?.message || 'Failed to approve.')
+  }
+}
+async function reject(c: TestCase) {
+  try {
+    await api.rejectCase(c.id)
+    c.approval_status = 'rejected'
+    $showToast(`Rejected ${c.case_id}.`)
+  } catch (e: any) {
+    $showToast(e?.response?.data?.message || 'Failed to reject.')
+  }
+}
 </script>
 
 <template>
@@ -150,6 +189,13 @@ function mark(c: TestCase, v: Verdict) {
                 <span class="font-weight-medium">{{ c.case_id }}</span>
                 <span class="textSecondary">— {{ c.title }}</span>
                 <v-spacer />
+                <v-chip
+                  v-if="c.approval_status && c.approval_status !== 'approved'"
+                  :color="c.approval_status === 'rejected' ? 'error' : 'warning'"
+                  size="x-small" variant="flat" label class="mr-2"
+                >
+                  {{ c.approval_status === 'rejected' ? 'Rejected' : 'Pending approval' }}
+                </v-chip>
                 <v-chip :color="statusColor(c.documented_status)" size="x-small" variant="tonal" label class="mr-2">
                   doc: {{ c.documented_status }}
                 </v-chip>
@@ -172,12 +218,25 @@ function mark(c: TestCase, v: Verdict) {
 
               <v-divider class="mb-3" />
 
+              <!-- System-admin approval controls -->
+              <div v-if="auth.isSystemAdmin && c.approval_status !== 'approved'"
+                class="d-flex flex-wrap align-center gap-2 mb-3 pa-2 rounded-lg" style="background: rgba(var(--v-theme-warning), 0.08)">
+                <v-icon icon="mdi-shield-check" color="warning" size="small" />
+                <span class="text-body-2 font-weight-medium mr-2">Approval:</span>
+                <v-btn color="success" size="small" prepend-icon="mdi-check-bold" @click="approve(c)">Approve</v-btn>
+                <v-btn color="error" variant="tonal" size="small" prepend-icon="mdi-close-thick" @click="reject(c)">Reject</v-btn>
+                <span class="text-caption textSecondary ml-2">Only approved cases are shown to testers.</span>
+              </div>
+
               <div class="d-flex flex-wrap align-center gap-2">
                 <span class="text-body-2 font-weight-medium mr-2">Your result:</span>
                 <v-btn :variant="c.verdict === 'pass' ? 'flat' : 'tonal'" color="success" size="small"
                   prepend-icon="mdi-check" @click="mark(c, 'pass')">Pass</v-btn>
                 <v-btn :variant="c.verdict === 'fail' ? 'flat' : 'tonal'" color="error" size="small"
                   prepend-icon="mdi-close" @click="mark(c, 'fail')">Fail</v-btn>
+                <!-- Log a bug from a FAILED case; the link is set automatically. -->
+                <v-btn v-if="c.verdict === 'fail'" variant="tonal" color="warning" size="small"
+                  prepend-icon="mdi-bug" @click="logBug(c, m.name)">Log a bug</v-btn>
                 <v-spacer />
                 <v-btn v-if="auth.canAuthorTests" variant="text" size="small" prepend-icon="mdi-pencil" @click="openEdit(c, m.name, m.code)">Edit</v-btn>
                 <v-btn v-if="auth.canAuthorTests" variant="text" size="small" color="error" prepend-icon="mdi-delete" @click="onDelete(c)">Delete</v-btn>
@@ -186,6 +245,17 @@ function mark(c: TestCase, v: Verdict) {
               <v-textarea :model-value="c.note ?? ''" @change="(e: any) => store.setNote(c, e.target.value)"
                 label="Notes (what you observed)" variant="outlined" density="comfortable" rows="2"
                 auto-grow hide-details class="mt-3" />
+
+              <!-- Bugs raised from this case -->
+              <div v-if="c.bugs && c.bugs.length" class="mt-3">
+                <p class="text-overline textSecondary mb-1"><v-icon icon="mdi-bug" size="14" class="mr-1" />Linked bugs</p>
+                <div class="d-flex flex-wrap gap-2">
+                  <v-chip v-for="b in c.bugs" :key="b.ticket_id" size="small" variant="tonal" color="warning" label
+                    :to="`/feedback/${b.ticket_id}`">
+                    {{ b.ticket_id.slice(0, 8) }} · {{ b.status }}
+                  </v-chip>
+                </div>
+              </div>
             </v-expansion-panel-text>
           </v-expansion-panel>
         </v-expansion-panels>

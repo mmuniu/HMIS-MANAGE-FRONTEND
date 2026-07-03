@@ -30,6 +30,7 @@ export function useReportsApi() {
     if (input.browser) form.append('browser', input.browser)
     if (input.os) form.append('os', input.os)
     if (input.page_url) form.append('page_url', input.page_url)
+    if (input.test_case_id) form.append('test_case_id', String(input.test_case_id))
     input.files.forEach((f) => form.append('attachments[]', f))
 
     const { data } = await $axios.post('/v1/platform/reports', form, {

@@ -119,6 +119,17 @@ onMounted(load)
             <p class="text-caption textSecondary mb-4">
               {{ report.module }} · by {{ report.reporter }} · {{ fmt(report.created_at) }}
             </p>
+            <v-alert
+              v-if="report.test_case" type="info" variant="tonal" density="compact" class="mb-3"
+              icon="mdi-link-variant"
+            >
+              Raised from failed test case <strong>{{ report.test_case.case_id }}</strong> — {{ report.test_case.title }}
+              <v-btn
+                v-if="report.test_case.suite_slug" variant="text" size="small" color="primary" class="ml-1"
+                :to="`/test-cases/${report.test_case.suite_slug}`"
+              >View test</v-btn>
+            </v-alert>
+
             <p class="text-body-1" style="white-space: pre-wrap">{{ report.description }}</p>
             <div v-if="report.browser || report.os || report.page_url" class="mt-4 text-caption textSecondary">
               <v-divider class="mb-2" />

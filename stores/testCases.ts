@@ -14,16 +14,24 @@ export interface SuiteSummary {
   stats: Stats
 }
 
+export interface LinkedBug {
+  ticket_id: string
+  title: string
+  status: string
+}
+
 export interface TestCase {
   id: number
   case_id: string
   title: string
   documented_status: string
+  approval_status?: 'pending' | 'approved' | 'rejected'
   preconditions: string[]
   steps: string[]
   expected: string
   verdict: Verdict
   note: string | null
+  bugs?: LinkedBug[]
 }
 export interface TestModule { name: string; code: string; cases: TestCase[] }
 export interface SuiteDetail {

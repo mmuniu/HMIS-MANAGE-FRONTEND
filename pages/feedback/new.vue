@@ -45,7 +45,10 @@ onMounted(() => {
   const ua = navigator.userAgent
   env.browser = /Edg/.test(ua) ? 'Edge' : /Chrome/.test(ua) ? 'Chrome' : /Firefox/.test(ua) ? 'Firefox' : /Safari/.test(ua) ? 'Safari' : 'Unknown'
   env.os = /Windows/.test(ua) ? 'Windows' : /Mac/.test(ua) ? 'macOS' : /Android/.test(ua) ? 'Android' : /Linux/.test(ua) ? 'Linux' : 'Unknown'
-  env.url = window.location.href
+  // Store only the clean page (origin + path), not the query string — when
+  // opened via "Log a bug" the query carries the whole prefilled description,
+  // which would blow past the page_url column limit. Cap defensively too.
+  env.url = (window.location.origin + window.location.pathname).slice(0, 2000)
 
   // Prefill when opened via "Log a bug" from a failed test case.
   const q = route.query

@@ -36,8 +36,8 @@ const sidebarItem: menu[] = [
                 title: 'Hospitals',
                 icon: 'hospital-line-duotone',
                 to: '/hospitals',
-                // Developers see every tenant; hospital admins manage their own.
-                roles: ['developer', 'hospital_admin'],
+                // System admin sees every tenant; hospital admins manage their own.
+                roles: ['system_admin', 'hospital_admin'],
             },
             {
                 title: 'Test Cases',
@@ -50,35 +50,49 @@ const sidebarItem: menu[] = [
                 title: 'Test Approvals',
                 icon: 'shield-check-line-duotone',
                 to: '/test-approvals',
-                // System admin approves new test cases before they go live.
+                // Developers + system admin approve new test cases before they go live.
+                roles: ['developer', 'system_admin'],
+            },
+            {
+                title: 'Systems',
+                icon: 'layers-minimalistic-line-duotone',
+                to: '/systems',
+                // System admin registers/configures data partitions.
                 roles: ['system_admin'],
             },
             {
                 title: 'Tester Activity',
                 icon: 'chart-2-line-duotone',
                 to: '/tester-activity',
-                // Developers track testers' create/pass/fail journey.
-                roles: ['developer'],
+                // System admin tracks testers' create/pass/fail journey.
+                roles: ['system_admin'],
             },
             {
-                title: 'Send Feedback',
-                icon: 'chat-round-like-line-duotone',
+                title: 'Run History',
+                icon: 'history-line-duotone',
+                to: '/run-history',
+                // Everyone sees their own run history; admin sees all.
+                roles: ['tester', 'qa', 'developer', 'system_admin'],
+            },
+            {
+                title: 'Report a Bug',
+                icon: 'danger-triangle-line-duotone',
                 to: '/feedback',
-                // Everyone can report bugs / suggest features.
+                // Everyone can report a bug / suggest a feature.
             },
             {
                 title: 'Feedback Admin',
                 icon: 'inbox-line-line-duotone',
                 to: '/feedback-admin',
-                // Developers triage all reports.
-                roles: ['developer'],
+                // System admin triages all reports.
+                roles: ['system_admin'],
             },
             {
                 title: 'Bugs & Features',
                 icon: 'bug-line-duotone',
                 to: '/work',
-                // Developers get assigned bugs/features.
-                roles: ['developer'],
+                // Developers see their own assigned work; system admin sees all.
+                roles: ['developer', 'system_admin'],
             },
         ],
     },

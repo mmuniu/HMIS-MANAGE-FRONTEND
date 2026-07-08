@@ -14,6 +14,16 @@ function fmtDate(iso: string | null): string {
   return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 }
 
+// Anyone can run test cases, so any role may appear here.
+const ROLE_LABELS: Record<string, string> = {
+  tester: 'Tester', qa: 'QA', developer: 'Developer', system_admin: 'System Admin',
+}
+const ROLE_COLORS: Record<string, string> = {
+  tester: 'primary', qa: 'warning', developer: 'info', system_admin: 'success',
+}
+function roleLabel(r: string) { return ROLE_LABELS[r] ?? r }
+function roleColor(r: string) { return ROLE_COLORS[r] ?? 'secondary' }
+
 const headers = [
   { title: 'Tester', key: 'name', sortable: true },
   { title: 'Role', key: 'role', sortable: true },
@@ -42,7 +52,7 @@ const verdictColor = (v: string) => (v === 'pass' ? 'success' : v === 'fail' ? '
   <div>
     <div class="mb-6">
       <h2 class="text-h4 font-weight-semibold">Tester Activity</h2>
-      <p class="textSecondary">Track how testers and QA are creating, running, and passing/failing tests.</p>
+      <p class="textSecondary">Track everyone who runs test cases — testers, QA, developers and admins — and what they've passed/failed.</p>
     </div>
 
     <v-alert v-if="store.error" type="error" variant="tonal" class="mb-4" :text="store.error" />
@@ -88,8 +98,8 @@ const verdictColor = (v: string) => (v === 'pass' ? 'success' : v === 'fail' ? '
             </div>
           </template>
           <template #item.role="{ item }">
-            <v-chip :color="item.role === 'tester' ? 'primary' : 'warning'" size="small" variant="tonal" label>
-              {{ item.role === 'tester' ? 'Tester' : 'QA' }}
+            <v-chip :color="roleColor(item.role)" size="small" variant="tonal" label>
+              {{ roleLabel(item.role) }}
             </v-chip>
           </template>
           <template #item.pass="{ item }"><span class="text-success font-weight-medium">{{ item.pass }}</span></template>

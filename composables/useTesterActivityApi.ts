@@ -13,7 +13,8 @@ export interface TesterActivityRow {
   name: string
   username: string
   email: string
-  role: 'tester' | 'qa'
+  // Anyone who runs test cases can appear here, so role is any platform role.
+  role: 'tester' | 'qa' | 'developer' | 'system_admin'
   can_author: boolean
   verdicts: TesterVerdicts
   pass_rate: number
@@ -35,7 +36,7 @@ export interface RecentVerdict {
 }
 
 export interface TesterActivity {
-  totals: { testers: number; qa: number; pass: number; fail: number; executed: number }
+  totals: { testers: number; qa: number; contributors?: number; pass: number; fail: number; executed: number }
   testers: TesterActivityRow[]
   recent: RecentVerdict[]
 }

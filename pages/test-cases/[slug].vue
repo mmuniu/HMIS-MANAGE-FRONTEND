@@ -196,6 +196,14 @@ async function reject(c: TestCase) {
                 >
                   {{ c.approval_status === 'rejected' ? 'Rejected' : 'Pending approval' }}
                 </v-chip>
+                <v-chip
+                  v-if="c.run_counts && (c.run_counts.pass || c.run_counts.fail)"
+                  size="x-small" variant="tonal" color="secondary" label class="mr-2"
+                  :title="`Passed ${c.run_counts.pass} time(s), failed ${c.run_counts.fail} time(s)`"
+                >
+                  <v-icon start icon="mdi-check" size="12" />{{ c.run_counts.pass }}
+                  &nbsp;<v-icon start icon="mdi-close" size="12" />{{ c.run_counts.fail }}
+                </v-chip>
                 <v-chip :color="statusColor(c.documented_status)" size="x-small" variant="tonal" label class="mr-2">
                   doc: {{ c.documented_status }}
                 </v-chip>
@@ -219,7 +227,7 @@ async function reject(c: TestCase) {
               <v-divider class="mb-3" />
 
               <!-- System-admin approval controls -->
-              <div v-if="auth.isSystemAdmin && c.approval_status !== 'approved'"
+              <div v-if="auth.canApproveTests && c.approval_status !== 'approved'"
                 class="d-flex flex-wrap align-center gap-2 mb-3 pa-2 rounded-lg" style="background: rgba(var(--v-theme-warning), 0.08)">
                 <v-icon icon="mdi-shield-check" color="warning" size="small" />
                 <span class="text-body-2 font-weight-medium mr-2">Approval:</span>

@@ -6,14 +6,18 @@
 // Which account types may access a given path prefix. Omitted = everyone.
 const ROLE_ROUTES: { prefix: string; roles: string[] }[] = [
   // More specific prefixes first (first match wins).
-  { prefix: '/hospitals/new', roles: ['developer'] },      // only platform staff create hospitals
-  { prefix: '/hospitals', roles: ['developer', 'hospital_admin'] },
+  // NOTE: system_admin bypasses ALL of these (see below) — so these lists only
+  // gate the NON-system-admin roles.
+  { prefix: '/hospitals/new', roles: ['system_admin'] },   // only system admin creates hospitals
+  { prefix: '/hospitals', roles: ['system_admin', 'hospital_admin'] },
   { prefix: '/test-cases/new', roles: ['developer', 'tester'] }, // authoring only
   { prefix: '/test-cases', roles: ['developer', 'tester', 'qa'] },
-  { prefix: '/test-approvals', roles: ['system_admin'] },
-  { prefix: '/tester-activity', roles: ['developer'] },
-  { prefix: '/feedback-admin', roles: ['developer'] },
-  { prefix: '/work', roles: ['developer'] },
+  { prefix: '/test-approvals', roles: ['developer', 'system_admin'] }, // devs approve too
+  { prefix: '/systems', roles: ['system_admin'] },
+  { prefix: '/tester-activity', roles: ['system_admin'] },
+  // /run-history is open to all platform users — no rule needed.
+  { prefix: '/feedback-admin', roles: ['system_admin'] },
+  { prefix: '/work', roles: ['developer'] }, // system_admin bypasses this check
   // /feedback (submit + my reports) is open to everyone — no rule.
 ]
 

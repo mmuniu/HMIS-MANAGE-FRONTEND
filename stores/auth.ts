@@ -12,6 +12,12 @@ export interface LoginFacility {
   organization_name: string
 }
 
+export interface LoginSystem {
+  id: string
+  name: string
+  is_default: boolean
+}
+
 export interface AuthUser {
   id: number
   name: string
@@ -39,11 +45,17 @@ export const useAuthStore = defineStore('auth', () => {
   const apiError = ref('')
 
   // Step-1 -> Step-2 transient state.
-  const step = ref<'idle' | 'facility'>('idle')
+  const step = ref<'idle' | 'system' | 'facility'>('idle')
   const facilities = ref<LoginFacility[]>([])
+  const systems = ref<LoginSystem[]>([])
+  const activeSystem = ref<LoginSystem | null>(null)
   const organization = ref<{ id: string | null; name: string; logo: string | null } | null>(null)
   const pendingCredentials = ref<{ username: string; password: string } | null>(null)
   const isSelectingFacility = ref(false)
+  const isSelectingSystem = ref(false)
+
+  // Persist the chosen system for display / auto-context after reload.
+  const systemId = useCookie<string | null>('hmis_system_id', cookieOpts)
 
   const isAuthenticated = computed(() => !!token.value)
   const roles = computed(() => user.value?.roles ?? [])
@@ -67,6 +79,8 @@ export const useAuthStore = defineStore('auth', () => {
   const isSuperAccess = computed(() => isSystemAdmin.value || isDeveloper.value)
   // Who may create/edit/delete/upload test cases (QA excluded; system admin allowed).
   const canAuthorTests = computed(() => isSystemAdmin.value || isDeveloper.value || isTester.value)
+  // Who may approve/reject pending test cases (developers + system admin).
+  const canApproveTests = computed(() => isSystemAdmin.value || isDeveloper.value)
 
   const applyToken = (t: string | null) => {
     if (t) $axios.defaults.headers.common['Authorization'] = `Bearer ${t}`
@@ -78,9 +92,25 @@ export const useAuthStore = defineStore('auth', () => {
   const resetLoginState = () => {
     step.value = 'idle'
     facilities.value = []
+    systems.value = []
     organization.value = null
     pendingCredentials.value = null
     isSelectingFacility.value = false
+    isSelectingSystem.value = false
+  }
+
+  // Store the token + user from a completed login response and finish up.
+  const finishLogin = async (data: any) => {
+    token.value = data.access_token
+    applyToken(data.access_token)
+    user.value = data.user
+    if (data.system) {
+      activeSystem.value = data.system
+      systemId.value = data.system.id
+    }
+    resetLoginState()
+    $showToast('Signed in successfully!')
+    await router.push('/dashboard')
   }
 
   // ── Step 1: credentials -> facility list ──────────────────────────────
@@ -93,16 +123,19 @@ export const useAuthStore = defineStore('auth', () => {
         step: 1,
       })
 
-      // Platform users (developer/tester) sign in directly — the backend skips
-      // facility selection and returns a token immediately.
+      // Platform users with a single system sign in directly — the backend
+      // returns a token immediately.
       if (data.access_token) {
-        token.value = data.access_token
-        applyToken(data.access_token)
-        user.value = data.user
-        resetLoginState()
-        $showToast('Signed in successfully!')
-        await router.push('/dashboard')
+        await finishLogin(data)
         return { success: true, platformRole: data.platform_role ?? null }
+      }
+
+      // Platform user with more than one system -> choose a system first.
+      if (data.step === 'system') {
+        step.value = 'system'
+        systems.value = data.systems || []
+        pendingCredentials.value = values
+        return { requiresSystemSelection: true }
       }
 
       if (data.step === 2) {
@@ -124,6 +157,46 @@ export const useAuthStore = defineStore('auth', () => {
       return { error: apiError.value }
     }
   }
+
+  // ── Choose system -> issue token (platform users) ─────────────────────
+  const selectSystemAndLogin = async (chosenSystemId: string) => {
+    apiError.value = ''
+    if (!pendingCredentials.value) {
+      apiError.value = 'Session expired. Please login again.'
+      $showToast(apiError.value)
+      resetLoginState()
+      return { error: apiError.value }
+    }
+
+    isSelectingSystem.value = true
+    try {
+      const { data } = await $axios.post('/v1/platform/login', {
+        username: pendingCredentials.value.username,
+        password: pendingCredentials.value.password,
+        step: 1,
+        system_id: chosenSystemId,
+      })
+
+      if (data.access_token) {
+        await finishLogin(data)
+        return { success: true, platformRole: data.platform_role ?? null }
+      }
+
+      // Safety net: unexpected shape.
+      return { error: 'Could not complete system selection.' }
+    } catch (err: any) {
+      apiError.value = tenancyErrorMessage(
+        err?.response?.data?.code,
+        err?.response?.data?.message || 'System selection failed.',
+      )
+      $showToast(apiError.value)
+      return { error: apiError.value }
+    } finally {
+      isSelectingSystem.value = false
+    }
+  }
+
+  const cancelSystemSelection = () => resetLoginState()
 
   // ── Step 2: choose facility -> issue token ────────────────────────────
   const selectFacilityAndLogin = async (facilityId: string) => {
@@ -200,6 +273,37 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // ── In-session system switch (no password) ────────────────────────────
+  const isSwitchingSystem = ref(false)
+  const switchSystem = async (targetSystemId: string) => {
+    apiError.value = ''
+    isSwitchingSystem.value = true
+    try {
+      const { data } = await $axios.post('/v1/platform/select-system', {
+        system_id: targetSystemId,
+      })
+
+      token.value = data.access_token
+      applyToken(data.access_token)
+      if (data.system) {
+        activeSystem.value = data.system
+        systemId.value = data.system.id
+      }
+
+      $showToast(`Switched to ${data.system?.name ?? 'system'}.`)
+      return { success: true }
+    } catch (err: any) {
+      apiError.value = tenancyErrorMessage(
+        err?.response?.data?.code,
+        err?.response?.data?.message || 'Could not switch system.',
+      )
+      $showToast(apiError.value)
+      return { error: apiError.value }
+    } finally {
+      isSwitchingSystem.value = false
+    }
+  }
+
   const logout = async () => {
     try {
       await $axios.post('/v1/platform/logout')
@@ -209,6 +313,8 @@ export const useAuthStore = defineStore('auth', () => {
       token.value = null
       applyToken(null)
       user.value = null
+      systemId.value = null
+      activeSystem.value = null
       resetLoginState()
       useTenantStore().clear()
       $showToast('Logged out.')
@@ -234,9 +340,14 @@ export const useAuthStore = defineStore('auth', () => {
     apiError,
     step,
     facilities,
+    systems,
+    activeSystem,
+    systemId,
     organization,
     isSelectingFacility,
+    isSelectingSystem,
     isSwitchingFacility,
+    isSwitchingSystem,
     isAuthenticated,
     roles,
     platformRole,
@@ -248,10 +359,14 @@ export const useAuthStore = defineStore('auth', () => {
     isHospitalAdmin,
     isSuperAccess,
     canAuthorTests,
+    canApproveTests,
     login,
+    selectSystemAndLogin,
+    cancelSystemSelection,
     selectFacilityAndLogin,
     cancelFacilitySelection,
     switchFacility,
+    switchSystem,
     logout,
     fetchCurrentUser,
     hasRole,

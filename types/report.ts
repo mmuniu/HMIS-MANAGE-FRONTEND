@@ -69,6 +69,7 @@ export interface StatusHistoryEntry {
 export interface ReportSummary {
   id: number
   ticket_id: string
+  reference: string | null
   type: ReportType
   title: string
   module: string

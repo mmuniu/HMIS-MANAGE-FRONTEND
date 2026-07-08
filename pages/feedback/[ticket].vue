@@ -76,7 +76,7 @@ onMounted(load)
               {{ STATUS_LABELS[report.status as ReportStatus] }}
             </v-chip>
             <v-spacer />
-            <span class="text-caption textSecondary font-mono">{{ report.ticket_id.slice(0, 8) }}</span>
+            <span class="text-caption textSecondary font-weight-medium">{{ report.reference || report.ticket_id.slice(0, 8) }}</span>
           </div>
           <h2 class="text-h5 font-weight-semibold mb-1">{{ report.title }}</h2>
           <p class="text-caption textSecondary mb-3">

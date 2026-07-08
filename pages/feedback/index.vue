@@ -12,7 +12,7 @@ const loading = ref(false)
 const error = ref('')
 
 const headers = [
-  { title: 'Ticket', key: 'ticket_id', sortable: false },
+  { title: 'Ref', key: 'reference', sortable: false },
   { title: 'Type', key: 'type', sortable: false },
   { title: 'Title', key: 'title', sortable: false },
   { title: 'Module', key: 'module', sortable: false },
@@ -55,8 +55,8 @@ onMounted(load)
     <v-card rounded="lg" elevation="10">
       <v-data-table :headers="headers" :items="items" :loading="loading" density="comfortable" hover
         @click:row="(_e: any, { item }: any) => router.push(`/feedback/${item.ticket_id}`)">
-        <template #item.ticket_id="{ item }">
-          <span class="font-mono text-caption">{{ item.ticket_id.slice(0, 8) }}</span>
+        <template #item.reference="{ item }">
+          <span class="font-weight-medium">{{ item.reference || '—' }}</span>
         </template>
         <template #item.type="{ item }">
           <v-chip :color="item.type === 'bug' ? 'error' : 'primary'" size="small" variant="tonal" label>

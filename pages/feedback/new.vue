@@ -50,15 +50,14 @@ onMounted(() => {
   // which would blow past the page_url column limit. Cap defensively too.
   env.url = (window.location.origin + window.location.pathname).slice(0, 2000)
 
-  // Prefill when opened via "Log a bug" from a failed test case.
+  // When opened via "Log a bug" from a failed test case we ONLY keep the
+  // hidden link to that case (test_case_id). The form fields stay EMPTY so the
+  // reporter writes their own title/description — nothing is prefilled.
   const q = route.query
   if (q.test_case_id) {
     linkedTestCaseId.value = Number(q.test_case_id)
     linkedCaseLabel.value = String(q.case_id ?? `#${q.test_case_id}`)
     form.type = 'bug'
-    if (q.title) form.title = String(q.title)
-    if (q.module && MODULES.includes(String(q.module))) form.module = String(q.module)
-    if (q.description) form.description = String(q.description)
   }
 })
 
@@ -158,7 +157,7 @@ async function submit() {
     <!-- Form -->
     <template v-else>
       <div class="mb-6">
-        <h2 class="text-h4 font-weight-semibold">Send Feedback</h2>
+        <h2 class="text-h4 font-weight-semibold">Report a Bug</h2>
         <p class="textSecondary">Report a bug or suggest a feature. The more detail, the faster we can help.</p>
       </div>
 

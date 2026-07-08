@@ -31,6 +31,7 @@ export interface TestCase {
   expected: string
   verdict: Verdict
   note: string | null
+  run_counts?: { pass: number; fail: number }
   bugs?: LinkedBug[]
 }
 export interface TestModule { name: string; code: string; cases: TestCase[] }

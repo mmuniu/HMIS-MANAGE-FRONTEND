@@ -66,8 +66,21 @@ export function useTestCasesApi() {
     return data.data
   }
 
+  // --- Run history (every pass/fail over time) ---
+  async function runHistory(params: Record<string, any> = {}) {
+    const { data } = await $axios.get(`${base}/run-history`, { params })
+    return data as {
+      data: Array<{
+        id: number; verdict: 'pass' | 'fail'; note: string | null; ran_at: string | null
+        tester: string | null; case_id: string | null; case_title: string | null
+        suite_slug: string | null; suite_role: string | null
+      }>
+      meta: { current_page: number; last_page: number; total: number; totals: { pass: number; fail: number } }
+    }
+  }
+
   return {
     listSuites, getSuite, uploadSuite, recordResult, createCase, updateCase, deleteCase,
-    pendingCases, approveCase, rejectCase,
+    pendingCases, approveCase, rejectCase, runHistory,
   }
 }

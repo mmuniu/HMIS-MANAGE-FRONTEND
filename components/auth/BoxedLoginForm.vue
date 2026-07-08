@@ -1,6 +1,71 @@
 <template>
+  <!-- Select Your System (platform users with more than one) -->
+  <div v-if="auth.step === 'system'" class="facility-selection-container">
+    <div class="text-center mb-6">
+      <Logo class="mb-4" />
+      <h2 class="text-h5 font-weight-medium mb-1">Select a System</h2>
+      <p class="text-body-2 textSecondary">Choose the system you want to work in</p>
+    </div>
+
+    <div class="facility-cards">
+      <v-card
+        v-for="sys in auth.systems"
+        :key="sys.id"
+        hover
+        rounded="xl"
+        variant="outlined"
+        class="facility-card mb-3"
+        :disabled="!!loadingSystemId && loadingSystemId !== sys.id"
+        @click="selectSystem(sys.id)"
+      >
+        <v-card-text class="d-flex align-center pa-5">
+          <v-avatar color="primary" variant="tonal" size="48" class="mr-4">
+            <v-icon icon="mdi-layers-triple-outline" />
+          </v-avatar>
+          <div class="flex-grow-1">
+            <p class="text-subtitle-1 font-weight-medium mb-0">{{ sys.name }}</p>
+            <p class="text-caption textSecondary mb-0">
+              {{ sys.is_default ? 'Default system' : 'System' }}
+            </p>
+          </div>
+          <v-progress-circular
+            v-if="loadingSystemId === sys.id"
+            indeterminate
+            color="primary"
+            size="22"
+            width="2"
+          />
+          <v-icon v-else color="primary" size="24" icon="mdi-chevron-right" />
+        </v-card-text>
+      </v-card>
+    </div>
+
+    <div class="text-center mt-6">
+      <v-btn
+        variant="text"
+        color="secondary"
+        prepend-icon="mdi-arrow-left"
+        :disabled="!!loadingSystemId"
+        @click="backToLoginFromSystem"
+      >
+        Back to Login
+      </v-btn>
+    </div>
+
+    <v-alert
+      v-if="auth.apiError"
+      type="error"
+      variant="tonal"
+      density="compact"
+      rounded="lg"
+      class="mt-4"
+    >
+      {{ auth.apiError }}
+    </v-alert>
+  </div>
+
   <!-- Step 2: Select Your Facility -->
-  <div v-if="auth.step === 'facility'" class="facility-selection-container">
+  <div v-else-if="auth.step === 'facility'" class="facility-selection-container">
     <div class="text-center mb-6">
       <Logo class="mb-4" />
       <h2 class="text-h5 font-weight-medium mb-1">Select Your Facility</h2>
@@ -140,6 +205,7 @@ const form = reactive({ username: "", password: "" });
 const showPassword = ref(false);
 const isLoading = ref(false);
 const loadingFacilityId = ref<string | null>(null);
+const loadingSystemId = ref<string | null>(null);
 
 const requiredRule = (v: string) => (!!v ? true : "This field is required");
 
@@ -156,14 +222,29 @@ const selectFacility = async (facilityId: string) => {
   loadingFacilityId.value = null;
 };
 
+const selectSystem = async (systemId: string) => {
+  if (loadingSystemId.value) return;
+  loadingSystemId.value = systemId;
+  await auth.selectSystemAndLogin(systemId);
+  loadingSystemId.value = null;
+};
+
 const backToLogin = () => {
   form.password = "";
   auth.cancelFacilitySelection();
 };
 
+const backToLoginFromSystem = () => {
+  form.password = "";
+  auth.cancelSystemSelection();
+};
+
 // Clear the per-card spinner if an error fires.
 watch(() => auth.apiError, (err) => {
-  if (err) loadingFacilityId.value = null;
+  if (err) {
+    loadingFacilityId.value = null;
+    loadingSystemId.value = null;
+  }
 });
 </script>
 

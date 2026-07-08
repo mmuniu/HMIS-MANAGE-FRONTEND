@@ -17,7 +17,12 @@ const report = ref<ReportDetail | null>(null)
 const loading = ref(false)
 const error = ref('')
 
-const statusItems = (Object.keys(STATUS_LABELS) as ReportStatus[]).map((v) => ({ title: STATUS_LABELS[v], value: v }))
+// "assigned" and "under_review" are set automatically (assigning a dev sets
+// "assigned"), never chosen by hand — so they're excluded from the dropdown.
+const AUTO_STATUSES: ReportStatus[] = ['assigned', 'under_review']
+const statusItems = (Object.keys(STATUS_LABELS) as ReportStatus[])
+  .filter((v) => !AUTO_STATUSES.includes(v))
+  .map((v) => ({ title: STATUS_LABELS[v], value: v }))
 const newStatus = ref<ReportStatus>('new')
 const savingStatus = ref(false)
 

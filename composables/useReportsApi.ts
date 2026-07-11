@@ -80,6 +80,10 @@ export function useReportsApi() {
     return data.data
   }
 
+  async function adminDelete(ticket: string) {
+    await $axios.delete(`/v1/platform/admin/reports/${ticket}`)
+  }
+
   // ---- Work queue (Bugs & Features): dev sees own, system_admin sees all ----
   async function work(params: Record<string, any> = {}) {
     const { data } = await $axios.get('/v1/platform/work', { params })
@@ -89,6 +93,6 @@ export function useReportsApi() {
   return {
     listMine, get, create, comment,
     adminList, adminGet, adminSetStatus, adminComment,
-    adminAssignableDevs, adminAssign, work,
+    adminAssignableDevs, adminAssign, adminDelete, work,
   }
 }

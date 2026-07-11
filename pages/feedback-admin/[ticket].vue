@@ -30,6 +30,23 @@ const reply = ref('')
 const internal = ref(false)
 const sending = ref(false)
 
+const confirmDelete = ref(false)
+const deleting = ref(false)
+
+async function deleteReport() {
+  deleting.value = true
+  try {
+    await api.adminDelete(ticket.value)
+    $showToast('Report deleted.')
+    navigateTo('/feedback-admin')
+  } catch (e: any) {
+    $showToast(e?.response?.data?.message || 'Failed to delete.')
+  } finally {
+    deleting.value = false
+    confirmDelete.value = false
+  }
+}
+
 // Assign-to-developer.
 const devs = ref<{ id: number; name: string }[]>([])
 const assignee = ref<number | null>(null)
@@ -214,6 +231,12 @@ onMounted(load)
             </v-btn>
 
             <v-divider class="my-4" />
+
+            <v-btn block color="error" variant="tonal" prepend-icon="mdi-delete" @click="confirmDelete = true">
+              Delete report
+            </v-btn>
+
+            <v-divider class="my-4" />
             <div class="d-flex align-center justify-space-between">
               <span class="text-body-2">Current</span>
               <v-chip :color="STATUS_COLORS[report.status as ReportStatus]" size="small" variant="flat" label>{{ STATUS_LABELS[report.status as ReportStatus] }}</v-chip>
@@ -240,6 +263,21 @@ onMounted(load)
       </v-col>
     </v-row>
   </div>
+
+  <!-- Delete confirm dialog -->
+  <v-dialog v-model="confirmDelete" max-width="420">
+    <v-card rounded="xl">
+      <v-card-title class="text-h6 pa-6 pb-2">Delete this report?</v-card-title>
+      <v-card-text class="px-6 pb-2 textSecondary">
+        This will permanently remove the report, all comments, and attachments. This cannot be undone.
+      </v-card-text>
+      <v-card-actions class="pa-6 pt-2 ga-2">
+        <v-spacer />
+        <v-btn variant="text" @click="confirmDelete = false">Cancel</v-btn>
+        <v-btn color="error" variant="flat" :loading="deleting" @click="deleteReport">Delete</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <style scoped>

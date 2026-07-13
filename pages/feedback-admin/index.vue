@@ -13,6 +13,8 @@ const api = useReportsApi()
 const items = ref<ReportSummary[]>([])
 const loading = ref(false)
 const error = ref('')
+const confirmDelete = ref<ReportSummary | null>(null)
+const deleting = ref(false)
 
 const filters = reactive({
   search: '', status: null as string | null, type: null as string | null,
@@ -31,7 +33,22 @@ const headers = [
   { title: 'Reporter', key: 'reporter', sortable: false },
   { title: 'Status', key: 'status', sortable: false },
   { title: 'Submitted', key: 'created_at', sortable: false },
+  { title: '', key: 'actions', sortable: false, width: '48px' },
 ]
+
+async function deleteReport() {
+  if (!confirmDelete.value) return
+  deleting.value = true
+  try {
+    await api.adminDelete(confirmDelete.value.ticket_id)
+    items.value = items.value.filter(i => i.ticket_id !== confirmDelete.value!.ticket_id)
+    confirmDelete.value = null
+  } catch (e: any) {
+    error.value = e?.response?.data?.message || 'Failed to delete report.'
+  } finally {
+    deleting.value = false
+  }
+}
 
 function fmt(iso: string | null) {
   return iso ? new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—'
@@ -125,9 +142,28 @@ onMounted(load)
           </v-chip>
         </template>
         <template #item.created_at="{ item }">{{ fmt(item.created_at) }}</template>
+        <template #item.actions="{ item }">
+          <v-btn icon="mdi-delete-outline" color="error" variant="text" size="small" density="comfortable"
+            @click.stop="confirmDelete = item" />
+        </template>
         <template #no-data><div class="pa-8 text-center textSecondary">No reports match your filters.</div></template>
       </v-data-table>
     </v-card>
+
+    <!-- Delete confirmation dialog -->
+    <v-dialog v-model="confirmDelete" max-width="400">
+      <v-card rounded="lg">
+        <v-card-title class="text-h6">Delete report?</v-card-title>
+        <v-card-text>
+          This will permanently delete <strong>{{ confirmDelete?.ticket_id?.slice(0, 8) }} — {{ confirmDelete?.title }}</strong>. This cannot be undone.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="confirmDelete = null">Cancel</v-btn>
+          <v-btn color="error" variant="flat" :loading="deleting" @click="deleteReport">Delete</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 

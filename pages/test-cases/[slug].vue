@@ -184,8 +184,8 @@ async function reject(c: TestCase) {
             <v-expansion-panel-title>
               <div class="d-flex align-center flex-grow-1 gap-2">
                 <v-icon
-                  :icon="c.verdict === 'pass' ? 'mdi-check-circle' : c.verdict === 'fail' ? 'mdi-close-circle' : 'mdi-circle-outline'"
-                  :color="verdictColor(c.verdict) === 'default' ? undefined : verdictColor(c.verdict)" />
+                  :icon="c.global_verdict === 'pass' ? 'mdi-check-circle' : c.global_verdict === 'fail' ? 'mdi-close-circle' : 'mdi-circle-outline'"
+                  :color="verdictColor(c.global_verdict) === 'default' ? undefined : verdictColor(c.global_verdict)" />
                 <span class="font-weight-medium">{{ c.case_id }}</span>
                 <span class="textSecondary">— {{ c.title }}</span>
                 <v-spacer />
@@ -250,9 +250,6 @@ async function reject(c: TestCase) {
                 <v-btn v-if="auth.canAuthorTests" variant="text" size="small" color="error" prepend-icon="mdi-delete" @click="onDelete(c)">Delete</v-btn>
               </div>
 
-              <v-textarea :model-value="c.note ?? ''" @change="(e: any) => store.setNote(c, e.target.value)"
-                label="Notes (what you observed)" variant="outlined" density="comfortable" rows="2"
-                auto-grow hide-details class="mt-3" />
 
               <!-- Bugs raised from this case -->
               <div v-if="c.bugs && c.bugs.length" class="mt-3">

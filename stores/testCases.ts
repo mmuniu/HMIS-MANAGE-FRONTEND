@@ -30,6 +30,7 @@ export interface TestCase {
   steps: string[]
   expected: string
   verdict: Verdict
+  global_verdict: Verdict
   note: string | null
   run_counts?: { pass: number; fail: number }
   bugs?: LinkedBug[]
@@ -98,6 +99,8 @@ export const useTestCasesStore = defineStore('testCases', () => {
     const result = await api.recordResult(c.id, verdict, note ?? c.note ?? undefined)
     c.verdict = result.verdict
     c.note = result.note
+    // Update the global indicator: if a real run was just recorded, it becomes the latest.
+    if (result.verdict !== 'untested') c.global_verdict = result.verdict
     recomputeStats(prev, c.verdict)
     return result
   }

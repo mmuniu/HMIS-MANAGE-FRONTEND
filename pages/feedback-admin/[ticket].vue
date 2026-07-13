@@ -221,13 +221,13 @@ onMounted(load)
 
             <v-divider class="my-4" />
 
-            <p class="text-overline textSecondary mb-1">Assign to developer</p>
+            <p class="text-overline textSecondary mb-1">Assign to</p>
             <v-select
               v-model="assignee" :items="devs" item-title="name" item-value="id"
               placeholder="Unassigned" variant="outlined" density="comfortable" hide-details clearable class="mb-2"
             />
             <v-btn block variant="tonal" color="primary" :loading="assigning" prepend-icon="mdi-account-arrow-right" @click="saveAssignee">
-              {{ assignee ? 'Assign developer' : 'Unassign' }}
+              {{ assignee ? 'Assign' : 'Unassign' }}
             </v-btn>
 
             <v-divider class="my-4" />

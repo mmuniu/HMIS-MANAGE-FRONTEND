@@ -99,7 +99,7 @@ onMounted(load)
             <v-select v-model="filters.status" :items="statusItems" label="Status" variant="outlined" density="comfortable" hide-details clearable />
           </v-col>
           <v-col cols="6" md="2">
-            <v-select v-model="filters.type" :items="[{title:'Bug',value:'bug'},{title:'Feature',value:'feature'}]" label="Type" variant="outlined" density="comfortable" hide-details clearable />
+            <v-select v-model="filters.type" :items="[{title:'Bug',value:'bug'},{title:'Feature',value:'feature'},{title:'Observation',value:'observation'}]" label="Type" variant="outlined" density="comfortable" hide-details clearable />
           </v-col>
           <v-col cols="6" md="2">
             <v-select v-model="filters.module" :items="MODULES" label="Module" variant="outlined" density="comfortable" hide-details clearable />
@@ -127,11 +127,17 @@ onMounted(load)
         @click:row="(_e: any, { item }: any) => router.push(`/feedback-admin/${item.ticket_id}`)">
         <template #item.ticket_id="{ item }"><span class="font-mono text-caption">{{ item.ticket_id.slice(0, 8) }}</span></template>
         <template #item.type="{ item }">
-          <v-chip :color="item.type === 'bug' ? 'error' : 'primary'" size="small" variant="tonal" label>
-            {{ item.type === 'bug' ? 'Bug' : 'Feature' }}
+          <v-chip :color="item.type === 'bug' ? 'error' : item.type === 'observation' ? 'teal' : 'primary'" size="small" variant="tonal" label>
+            <v-icon start :icon="item.type === 'bug' ? 'mdi-bug' : item.type === 'observation' ? 'mdi-eye' : 'mdi-lightbulb-on'" size="14" />
+            {{ item.type === 'bug' ? 'Bug' : item.type === 'observation' ? 'Observation' : 'Feature' }}
           </v-chip>
         </template>
-        <template #item.title="{ item }"><span class="font-weight-medium">{{ item.title }}</span></template>
+        <template #item.title="{ item }">
+          <span class="font-weight-medium">{{ item.title }}</span>
+          <v-chip v-if="item.duplicate_count" size="x-small" color="warning" variant="tonal" label class="ml-2">
+            <v-icon start icon="mdi-account-multiple" size="11" />{{ item.duplicate_count + 1 }} reports
+          </v-chip>
+        </template>
         <template #item.severity="{ item }">
           <span v-if="item.severity" class="text-capitalize">{{ item.severity }}</span>
           <span v-else class="textSecondary">—</span>

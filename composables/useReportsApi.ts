@@ -63,6 +63,11 @@ export function useReportsApi() {
     return data.data
   }
 
+  async function adminSetSeverity(ticket: string, severity: string) {
+    const { data } = await $axios.patch(`/v1/platform/admin/reports/${ticket}/severity`, { severity })
+    return data.data
+  }
+
   async function adminAssignableDevs(): Promise<{ id: number; name: string }[]> {
     const { data } = await $axios.get('/v1/platform/admin/report-assignees')
     return data.data
@@ -92,7 +97,7 @@ export function useReportsApi() {
 
   return {
     listMine, get, create, comment,
-    adminList, adminGet, adminSetStatus, adminComment,
+    adminList, adminGet, adminSetStatus, adminSetSeverity, adminComment,
     adminAssignableDevs, adminAssign, adminDelete, work,
   }
 }

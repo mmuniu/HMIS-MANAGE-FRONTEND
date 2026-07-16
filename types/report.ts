@@ -1,4 +1,4 @@
-export type ReportType = 'bug' | 'feature'
+export type ReportType = 'bug' | 'feature' | 'observation'
 export type Severity = 'low' | 'medium' | 'high' | 'critical'
 export type ReportStatus =
   | 'new' | 'under_review' | 'assigned' | 'in_progress' | 'resolved' | 'delivered' | 'closed'
@@ -66,6 +66,19 @@ export interface StatusHistoryEntry {
   at: string | null
 }
 
+export interface GroupedReport {
+  id: number
+  ticket_id: string
+  reference: string | null
+  reporter: string | null
+  description: string
+  severity: Severity | null
+  browser: string | null
+  os: string | null
+  created_at: string | null
+  attachments: { id: number; kind: string; original_name: string; url: string }[]
+}
+
 export interface ReportSummary {
   id: number
   ticket_id: string
@@ -79,6 +92,7 @@ export interface ReportSummary {
   assignee: string | null
   created_at: string | null
   updated_at: string | null
+  duplicate_count?: number
 }
 
 export interface LinkedTestCase {
@@ -99,6 +113,7 @@ export interface ReportDetail extends ReportSummary {
   attachments: ReportAttachment[]
   comments: ReportComment[]
   status_history: StatusHistoryEntry[]
+  grouped_reports?: GroupedReport[]
 }
 
 export interface CreateReportInput {

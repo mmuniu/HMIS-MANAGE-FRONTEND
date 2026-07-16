@@ -3,6 +3,7 @@ import { computed, ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTestCasesStore, type TestCase, type Verdict } from '@/stores/testCases'
 import { useTestCasesApi } from '@/composables/useTestCasesApi'
+import { useReportsApi } from '@/composables/useReportsApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNuxtApp } from '#app'
 import TestCaseForm from '@/components/hmis/TestCaseForm.vue'
@@ -12,7 +13,34 @@ const router = useRouter()
 const store = useTestCasesStore()
 const auth = useAuthStore()
 const api = useTestCasesApi()
+const reportsApi = useReportsApi()
 const { $showToast } = useNuxtApp()
+
+// Per-case observation text and submitting state (keyed by case id).
+const observationText = ref<Record<number, string>>({})
+const submittingObs = ref<Record<number, boolean>>({})
+
+async function submitObservation(c: TestCase) {
+  const text = (observationText.value[c.id] ?? '').trim()
+  if (!text) return
+  submittingObs.value[c.id] = true
+  try {
+    await reportsApi.create({
+      type: 'observation',
+      title: `[${c.case_id}] ${c.title}`,
+      description: text,
+      module: 'Other',
+      test_case_id: c.id,
+      files: [],
+    })
+    observationText.value[c.id] = ''
+    $showToast('Observation submitted.')
+  } catch (e: any) {
+    $showToast(e?.response?.data?.message || 'Failed to submit observation.')
+  } finally {
+    submittingObs.value[c.id] = false
+  }
+}
 const slug = computed(() => String(route.params.slug))
 
 // Edit dialog state.
@@ -250,6 +278,24 @@ async function reject(c: TestCase) {
                 <v-btn v-if="auth.canAuthorTests" variant="text" size="small" color="error" prepend-icon="mdi-delete" @click="onDelete(c)">Delete</v-btn>
               </div>
 
+
+              <!-- Observation box: shown when test case is passed -->
+              <div v-if="c.verdict === 'pass'" class="mt-3 pa-3 rounded-lg" style="background: rgba(var(--v-theme-success), 0.06); border: 1px solid rgba(var(--v-theme-success), 0.2)">
+                <p class="text-body-2 font-weight-medium mb-2">
+                  <v-icon icon="mdi-eye" size="16" color="success" class="mr-1" />What did you observe?
+                </p>
+                <v-textarea
+                  v-model="observationText[c.id]"
+                  placeholder="Describe what you saw when running this test case..."
+                  variant="outlined" density="comfortable" rows="2" auto-grow hide-details class="mb-2"
+                />
+                <v-btn
+                  color="success" size="small" variant="tonal" prepend-icon="mdi-send"
+                  :loading="submittingObs[c.id]"
+                  :disabled="!(observationText[c.id] ?? '').trim()"
+                  @click="submitObservation(c)"
+                >Submit observation</v-btn>
+              </div>
 
               <!-- Bugs raised from this case -->
               <div v-if="c.bugs && c.bugs.length" class="mt-3">

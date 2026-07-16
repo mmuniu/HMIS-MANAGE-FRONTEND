@@ -59,9 +59,11 @@ onMounted(load)
           <span class="font-weight-medium">{{ item.reference || '—' }}</span>
         </template>
         <template #item.type="{ item }">
-          <v-chip :color="item.type === 'bug' ? 'error' : 'primary'" size="small" variant="tonal" label>
-            <v-icon start :icon="item.type === 'bug' ? 'mdi-bug' : 'mdi-lightbulb-on'" size="14" />
-            {{ item.type === 'bug' ? 'Bug' : 'Feature' }}
+          <v-chip
+            :color="item.type === 'bug' ? 'error' : item.type === 'observation' ? 'teal' : 'primary'"
+            size="small" variant="tonal" label>
+            <v-icon start :icon="item.type === 'bug' ? 'mdi-bug' : item.type === 'observation' ? 'mdi-eye' : 'mdi-lightbulb-on'" size="14" />
+            {{ item.type === 'bug' ? 'Bug' : item.type === 'observation' ? 'Observation' : 'Feature' }}
           </v-chip>
         </template>
         <template #item.title="{ item }"><span class="font-weight-medium">{{ item.title }}</span></template>

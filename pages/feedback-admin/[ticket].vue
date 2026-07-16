@@ -4,8 +4,8 @@ import { useRoute } from 'vue-router'
 import { useReportsApi } from '@/composables/useReportsApi'
 import { useNuxtApp } from '#app'
 import {
-  STATUS_LABELS, STATUS_COLORS, SEVERITY_COLORS,
-  type ReportDetail, type ReportStatus, type Severity,
+  STATUS_LABELS, STATUS_COLORS, SEVERITY_COLORS, SEVERITIES,
+  type ReportDetail, type ReportStatus, type Severity, type GroupedReport,
 } from '@/types/report'
 
 const route = useRoute()
@@ -47,6 +47,24 @@ async function deleteReport() {
   }
 }
 
+// Severity override.
+const newSeverity = ref<Severity | null>(null)
+const savingSeverity = ref(false)
+
+async function saveSeverity() {
+  if (!newSeverity.value || !report.value) return
+  savingSeverity.value = true
+  try {
+    await api.adminSetSeverity(ticket.value, newSeverity.value)
+    report.value.severity = newSeverity.value
+    $showToast('Severity updated.')
+  } catch (e: any) {
+    $showToast(e?.response?.data?.message || 'Failed to update severity.')
+  } finally {
+    savingSeverity.value = false
+  }
+}
+
 // Assign-to-developer.
 const devs = ref<{ id: number; name: string }[]>([])
 const assignee = ref<number | null>(null)
@@ -62,6 +80,7 @@ async function load() {
   try {
     report.value = await api.adminGet(ticket.value)
     newStatus.value = report.value.status
+    newSeverity.value = (report.value.severity as Severity) ?? null
     if (!devs.value.length) devs.value = await api.adminAssignableDevs()
     // Pre-select the current assignee by matching name (detail exposes name).
     assignee.value = devs.value.find((d) => d.name === report.value?.assignee)?.id ?? null
@@ -162,6 +181,49 @@ onMounted(load)
           </v-card-text>
         </v-card>
 
+        <!-- Grouped duplicate reports from other testers -->
+        <v-card v-if="report.grouped_reports && report.grouped_reports.length" rounded="xl" elevation="10" class="mb-4">
+          <v-card-item>
+            <v-card-title class="text-subtitle-1 d-flex align-center ga-2">
+              <v-icon icon="mdi-account-multiple" size="18" color="warning" />
+              Also reported by {{ report.grouped_reports.length }} other tester{{ report.grouped_reports.length > 1 ? 's' : '' }}
+            </v-card-title>
+          </v-card-item>
+          <v-card-text class="pa-0">
+            <v-expansion-panels variant="accordion">
+              <v-expansion-panel v-for="g in report.grouped_reports" :key="g.id">
+                <v-expansion-panel-title>
+                  <div class="d-flex align-center ga-2 flex-grow-1">
+                    <v-avatar color="warning" variant="tonal" size="28">
+                      <v-icon icon="mdi-account" size="16" />
+                    </v-avatar>
+                    <span class="font-weight-medium">{{ g.reporter }}</span>
+                    <span class="text-caption textSecondary ml-1">· {{ fmt(g.created_at) }}</span>
+                    <v-chip v-if="g.severity" :color="SEVERITY_COLORS[g.severity as Severity]" size="x-small" variant="tonal" label class="ml-auto text-capitalize mr-2">{{ g.severity }}</v-chip>
+                  </div>
+                </v-expansion-panel-title>
+                <v-expansion-panel-text>
+                  <p class="text-body-2 mb-2" style="white-space: pre-wrap">{{ g.description }}</p>
+                  <div v-if="g.browser || g.os" class="text-caption textSecondary mb-2">
+                    <span v-if="g.browser">Browser: {{ g.browser }}</span>
+                    <span v-if="g.browser && g.os"> · </span>
+                    <span v-if="g.os">OS: {{ g.os }}</span>
+                  </div>
+                  <div v-if="g.attachments.length" class="d-flex flex-wrap ga-2 mt-2">
+                    <a v-for="a in g.attachments" :key="a.id" :href="a.url" target="_blank" rel="noopener" class="att">
+                      <img v-if="a.kind === 'image'" :src="a.url" class="att-media" alt="" />
+                      <div v-else class="att-media d-flex align-center justify-center bg-grey-darken-3">
+                        <v-icon icon="mdi-play-circle" size="36" color="white" />
+                      </div>
+                    </a>
+                  </div>
+                  <div class="text-caption textSecondary mt-2 font-mono">{{ g.reference }}</div>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
+          </v-card-text>
+        </v-card>
+
         <v-card v-if="report.attachments.length" rounded="xl" elevation="10" class="mb-4">
           <v-card-item><v-card-title class="text-subtitle-1">Attachments</v-card-title></v-card-item>
           <v-card-text>
@@ -217,6 +279,20 @@ onMounted(load)
             <v-select v-model="newStatus" :items="statusItems" variant="outlined" density="comfortable" hide-details class="mb-2" />
             <v-btn block color="primary" :loading="savingStatus" :disabled="newStatus === report.status" @click="changeStatus">
               Update status
+            </v-btn>
+
+            <v-divider class="my-4" />
+
+            <p class="text-overline textSecondary mb-1">Severity</p>
+            <v-select
+              v-model="newSeverity"
+              :items="SEVERITIES.map(s => ({ title: s.charAt(0).toUpperCase() + s.slice(1), value: s }))"
+              variant="outlined" density="comfortable" hide-details class="mb-2 text-capitalize"
+            />
+            <v-btn block color="warning" variant="tonal" :loading="savingSeverity"
+              :disabled="newSeverity === report.severity"
+              prepend-icon="mdi-alert-circle-outline" @click="saveSeverity">
+              Update severity
             </v-btn>
 
             <v-divider class="my-4" />

@@ -89,6 +89,16 @@ export function useReportsApi() {
     await $axios.delete(`/v1/platform/admin/reports/${ticket}`)
   }
 
+  async function adminSearchDuplicate(q: string) {
+    const { data } = await $axios.get('/v1/platform/admin/reports/search-duplicate', { params: { q } })
+    return data.data as { ticket_id: string; reference: string; title: string; status: string }[]
+  }
+
+  async function adminMarkDuplicate(ticket: string, primaryTicket: string) {
+    const { data } = await $axios.patch(`/v1/platform/admin/reports/${ticket}/duplicate`, { primary_ticket: primaryTicket })
+    return data.data as { duplicate_of: number; primary_reference: string; primary_title: string }
+  }
+
   // ---- Work queue (Bugs & Features): dev sees own, system_admin sees all ----
   async function work(params: Record<string, any> = {}) {
     const { data } = await $axios.get('/v1/platform/work', { params })
@@ -98,6 +108,7 @@ export function useReportsApi() {
   return {
     listMine, get, create, comment,
     adminList, adminGet, adminSetStatus, adminSetSeverity, adminComment,
-    adminAssignableDevs, adminAssign, adminDelete, work,
+    adminAssignableDevs, adminAssign, adminDelete,
+    adminSearchDuplicate, adminMarkDuplicate, work,
   }
 }

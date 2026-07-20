@@ -65,6 +65,40 @@ async function saveSeverity() {
   }
 }
 
+// Mark as duplicate.
+const dupSearch = ref('')
+const dupResults = ref<{ ticket_id: string; reference: string; title: string; status: string }[]>([])
+const dupSearching = ref(false)
+const dupSelected = ref<string | null>(null)
+const markingDup = ref(false)
+
+let dupDebounce: ReturnType<typeof setTimeout>
+function onDupSearch(v: string) {
+  dupSearch.value = v
+  dupSelected.value = null
+  clearTimeout(dupDebounce)
+  if (v.length < 3) { dupResults.value = []; return }
+  dupDebounce = setTimeout(async () => {
+    dupSearching.value = true
+    try { dupResults.value = await api.adminSearchDuplicate(v) }
+    finally { dupSearching.value = false }
+  }, 350)
+}
+
+async function saveDuplicate() {
+  if (!dupSelected.value) return
+  markingDup.value = true
+  try {
+    await api.adminMarkDuplicate(ticket.value, dupSelected.value)
+    $showToast('Marked as duplicate.')
+    await load()
+  } catch (e: any) {
+    $showToast(e?.response?.data?.message || 'Failed to mark duplicate.')
+  } finally {
+    markingDup.value = false
+  }
+}
+
 // Assign-to-developer.
 const devs = ref<{ id: number; name: string }[]>([])
 const assignee = ref<number | null>(null)
@@ -310,6 +344,36 @@ onMounted(load)
 
             <v-btn block color="error" variant="tonal" prepend-icon="mdi-delete" @click="confirmDelete = true">
               Delete report
+            </v-btn>
+
+            <v-divider class="my-4" />
+
+            <p class="text-overline textSecondary mb-1">Mark as duplicate of</p>
+            <v-autocomplete
+              :model-value="dupSelected"
+              :items="dupResults"
+              item-title="title"
+              item-value="ticket_id"
+              :loading="dupSearching"
+              placeholder="Search by reference or title..."
+              variant="outlined" density="comfortable" hide-details clearable
+              no-filter
+              class="mb-2"
+              @update:search="onDupSearch"
+              @update:model-value="dupSelected = $event"
+            >
+              <template #item="{ item, props }">
+                <v-list-item v-bind="props" :subtitle="item.raw.reference + ' · ' + item.raw.status" />
+              </template>
+              <template #no-data>
+                <div class="pa-3 text-caption textSecondary">
+                  {{ dupSearch.length < 3 ? 'Type at least 3 characters...' : 'No matching reports found.' }}
+                </div>
+              </template>
+            </v-autocomplete>
+            <v-btn block color="deep-orange" variant="tonal" :loading="markingDup"
+              :disabled="!dupSelected" prepend-icon="mdi-content-duplicate" @click="saveDuplicate">
+              Mark as duplicate
             </v-btn>
 
             <v-divider class="my-4" />

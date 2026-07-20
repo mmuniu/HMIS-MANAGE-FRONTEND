@@ -352,10 +352,10 @@ onMounted(load)
             <v-autocomplete
               :model-value="dupSelected"
               :items="dupResults"
-              item-title="title"
+              item-title="ticket_id"
               item-value="ticket_id"
               :loading="dupSearching"
-              placeholder="Search by reference or title..."
+              placeholder="Paste or type ticket ID..."
               variant="outlined" density="comfortable" hide-details clearable
               no-filter
               class="mb-2"
@@ -363,11 +363,17 @@ onMounted(load)
               @update:model-value="dupSelected = $event"
             >
               <template #item="{ item, props }">
-                <v-list-item v-bind="props" :subtitle="item.raw.reference + ' · ' + item.raw.status" />
+                <v-list-item v-bind="props">
+                  <template #title>
+                    <span class="font-mono text-caption">{{ item.raw.ticket_id.slice(0, 8) }}</span>
+                    <span class="text-caption textSecondary ml-2">{{ item.raw.reference }}</span>
+                  </template>
+                  <template #subtitle>{{ item.raw.title }}</template>
+                </v-list-item>
               </template>
               <template #no-data>
                 <div class="pa-3 text-caption textSecondary">
-                  {{ dupSearch.length < 3 ? 'Type at least 3 characters...' : 'No matching reports found.' }}
+                  {{ dupSearch.length < 3 ? 'Type at least 3 characters of the ticket ID...' : 'No matching reports found.' }}
                 </div>
               </template>
             </v-autocomplete>

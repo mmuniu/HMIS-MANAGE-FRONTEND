@@ -75,7 +75,10 @@ const markingDup = ref(false)
 let dupDebounce: ReturnType<typeof setTimeout>
 function onDupSearch(v: string) {
   dupSearch.value = v
-  dupSelected.value = null
+  // Only clear selection when the field is emptied, not on every keystroke —
+  // Vuetify fires @update:search after @update:model-value when selecting an item,
+  // so clearing here unconditionally would wipe the selection immediately.
+  if (!v) dupSelected.value = null
   clearTimeout(dupDebounce)
   if (v.length < 3) { dupResults.value = []; return }
   dupDebounce = setTimeout(async () => {

@@ -36,8 +36,13 @@ const sidebarItem: menu[] = [
                 title: 'Hospitals',
                 icon: 'hospital-line-duotone',
                 to: '/hospitals',
-                // System admin sees every tenant; hospital admins manage their own.
                 roles: ['system_admin', 'hospital_admin'],
+            },
+            {
+                title: 'Integrations',
+                icon: 'plug-circle-line-duotone',
+                to: '/integrations',
+                roles: ['system_admin'],
             },
             {
                 title: 'Test Cases',

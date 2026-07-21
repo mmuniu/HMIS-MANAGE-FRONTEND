@@ -89,6 +89,7 @@ export interface ReportSummary {
   severity: Severity | null
   status: ReportStatus
   reporter: string | null
+  assigned_to: number | null
   assignee: string | null
   created_at: string | null
   updated_at: string | null

@@ -46,13 +46,54 @@ const rows = computed(() =>
 )
 
 const verdictColor = (v: string) => (v === 'pass' ? 'success' : v === 'fail' ? 'error' : 'grey')
+
+function downloadExcel() {
+  const date = new Date().toISOString().slice(0, 10)
+  const data = rows.value
+
+  // Build CSV content (opens in Excel)
+  const headers = ['Name', 'Email', 'Role', 'Passed', 'Failed', 'Untested', 'Total Run', 'Pass Rate (%)', 'Last Active']
+  const escapeCell = (v: any) => {
+    const s = String(v ?? '')
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const lines = [
+    headers.join(','),
+    ...data.map(r => [
+      r.name,
+      r.email,
+      roleLabel(r.role),
+      r.pass,
+      r.fail,
+      r.untested,
+      r.pass + r.fail,
+      r.pass_rate,
+      r.last_active_at ? new Date(r.last_active_at).toLocaleString() : 'Never',
+    ].map(escapeCell).join(',')),
+  ]
+
+  const csv = '﻿' + lines.join('\r\n') // BOM for Excel UTF-8
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `tester-activity-${date}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 </script>
 
 <template>
   <div>
-    <div class="mb-6">
-      <h2 class="text-h4 font-weight-semibold">Tester Activity</h2>
-      <p class="textSecondary">Track everyone who runs test cases — testers, QA, developers and admins — and what they've passed/failed.</p>
+    <div class="d-flex flex-wrap align-center justify-space-between mb-6 ga-3">
+      <div>
+        <h2 class="text-h4 font-weight-semibold">Tester Activity</h2>
+        <p class="textSecondary mb-0">Track everyone who runs test cases — testers, QA, developers and admins — and what they've passed/failed.</p>
+      </div>
+      <v-btn color="success" variant="tonal" prepend-icon="mdi-microsoft-excel"
+        :disabled="!rows.length" @click="downloadExcel">
+        Download Excel
+      </v-btn>
     </div>
 
     <v-alert v-if="store.error" type="error" variant="tonal" class="mb-4" :text="store.error" />

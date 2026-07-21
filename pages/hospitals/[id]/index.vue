@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { onMounted, computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useHospitalsStore } from '@/stores/hospitals'
 import { STATUS_COLOR, TIER_COLOR, BILLING_COLOR } from '@/types/hospital'
 
 const route = useRoute()
-const router = useRouter()
 const store = useHospitalsStore()
 
 const id = computed(() => String(route.params.id))
@@ -129,6 +128,19 @@ onMounted(() => store.fetchOne(id.value))
           </v-card>
         </v-col>
       </v-row>
+
+      <!-- Integrations shortcut -->
+      <v-card rounded="lg" elevation="10" class="mt-6">
+        <v-card-text class="d-flex align-center justify-space-between pa-5">
+          <div>
+            <p class="text-subtitle-1 font-weight-semibold mb-1">Integrations</p>
+            <p class="text-body-2 textSecondary mb-0">Connect this hospital to external systems like QuickBooks, Dynamics 365 and more.</p>
+          </div>
+          <v-btn color="primary" variant="tonal" prepend-icon="mdi-plug" :to="`/hospitals/${id}/integrations`">
+            Manage integrations
+          </v-btn>
+        </v-card-text>
+      </v-card>
     </template>
   </div>
 </template>

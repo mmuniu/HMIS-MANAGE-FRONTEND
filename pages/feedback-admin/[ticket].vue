@@ -119,8 +119,7 @@ async function load() {
     newStatus.value = report.value.status
     newSeverity.value = (report.value.severity as Severity) ?? null
     if (!devs.value.length) devs.value = await api.adminAssignableDevs()
-    // Pre-select the current assignee by matching name (detail exposes name).
-    assignee.value = devs.value.find((d) => d.name === report.value?.assignee)?.id ?? null
+    assignee.value = report.value.assigned_to ?? null
   } catch (e: any) {
     error.value = e?.response?.status === 404 ? 'Report not found.' : (e?.response?.data?.message || 'Failed to load.')
   } finally {
@@ -175,7 +174,7 @@ onMounted(load)
 
 <template>
   <div class="mx-auto" style="max-width: 960px">
-    <v-btn variant="text" prepend-icon="mdi-arrow-left" class="mb-4" to="/feedback-admin">Back to all reports</v-btn>
+    <v-btn variant="text" prepend-icon="mdi-arrow-left" class="mb-4" to="/work">Back to Bugs & Features</v-btn>
 
     <v-alert v-if="error" type="error" variant="tonal" class="mb-4" :text="error" />
     <v-progress-linear v-if="loading" indeterminate color="primary" class="mb-4" />

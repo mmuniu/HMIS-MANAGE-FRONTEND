@@ -144,9 +144,13 @@ async function loadTenant() {
   finally { loading.value = false }
 }
 
-onMounted(() => {
-  if (auth.isSystemAdmin) loadCatalog()
-  else loadTenant()
+onMounted(async () => {
+  if (auth.isSystemAdmin) {
+    loadCatalog()
+  } else {
+    if (!tenant.organizationId) await tenant.loadContext()
+    loadTenant()
+  }
 })
 </script>
 

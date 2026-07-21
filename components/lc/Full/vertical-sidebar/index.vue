@@ -2,7 +2,6 @@
 import { computed } from 'vue';
 import { useCustomizerStore } from '@/stores/customizer';
 import { useAuthStore } from '@/stores/auth';
-import { useTenantStore } from '@/stores/tenant';
 import sidebarItems from './sidebarItem';
 import type { menu } from './sidebarItem';
 import NavGroup from './NavGroup/index.vue';
@@ -12,7 +11,6 @@ import Logo from '../logo/Logo.vue';
 
 const customizer = useCustomizerStore();
 const auth = useAuthStore();
-const tenant = useTenantStore();
 
 // The current account's role key for menu gating.
 const currentRole = computed<string>(() => auth.platformRole ?? 'hospital_admin');
@@ -21,30 +19,13 @@ const currentRole = computed<string>(() => auth.platformRole ?? 'hospital_admin'
 const canSee = (item: menu): boolean =>
   auth.isSystemAdmin || !item.roles || item.roles.includes(currentRole.value);
 
-// For hospital admins inject a dynamic Integrations link using their org ID.
-const hospitalIntegrationsItem = computed<menu | null>(() => {
-  if (!auth.isHospitalAdmin) return null;
-  const orgId = tenant.organizationId;
-  if (!orgId) return null;
-  return {
-    title: 'Integrations',
-    icon: 'plug-circle-line-duotone',
-    to: `/hospitals/${orgId}/integrations`,
-  };
-});
-
 // Filter children by role, then drop any group/header left with no children.
-// Inject the hospital integrations item after Dashboard for hospital admins.
 const sidebarMenu = computed<menu[]>(() =>
   sidebarItems
-    .map((group) => {
-      const filtered = (group.children ?? []).filter(canSee);
-      if (hospitalIntegrationsItem.value && group.header) {
-        const dashIdx = filtered.findIndex(c => c.to === '/dashboard');
-        filtered.splice(dashIdx + 1, 0, hospitalIntegrationsItem.value);
-      }
-      return { ...group, children: filtered };
-    })
+    .map((group) => ({
+      ...group,
+      children: (group.children ?? []).filter(canSee),
+    }))
     .filter((group) => !group.header || group.children.length > 0),
 );
 </script>

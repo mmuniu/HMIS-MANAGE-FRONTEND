@@ -42,7 +42,7 @@ const sidebarItem: menu[] = [
                 title: 'Integrations',
                 icon: 'plug-circle-line-duotone',
                 to: '/integrations',
-                roles: ['system_admin'],
+                roles: ['system_admin', 'hospital_admin'],
             },
             {
                 title: 'Test Cases',

@@ -2,11 +2,13 @@
 import { onMounted, computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useHospitalsStore } from '@/stores/hospitals'
-import { useIntegrationsApi, type TenantIntegration } from '@/composables/useIntegrationsApi'
+import { useAuthStore } from '@/stores/auth'
+import { useIntegrationsApi, type TenantIntegration, type RequiredField } from '@/composables/useIntegrationsApi'
 import { useNuxtApp } from '#app'
 
 const route = useRoute()
 const store = useHospitalsStore()
+const auth = useAuthStore()
 const intApi = useIntegrationsApi()
 const { $showToast } = useNuxtApp()
 
@@ -93,6 +95,9 @@ onMounted(() => {
         </h2>
         <p class="textSecondary mb-0">Connect this hospital to external systems and services.</p>
       </div>
+      <v-btn v-if="auth.isSystemAdmin" color="primary" prepend-icon="mdi-plus" to="/integrations">
+        Add integration type
+      </v-btn>
     </div>
 
     <v-progress-linear v-if="loading" indeterminate color="primary" class="mb-4" />
@@ -138,40 +143,45 @@ onMounted(() => {
     </template>
 
     <!-- Available -->
-    <h3 class="text-subtitle-1 font-weight-semibold mb-3">
-      <v-icon icon="mdi-power-plug-outline" class="mr-1" size="18" />
-      Available integrations
-      <span class="text-body-2 font-weight-regular textSecondary ml-1">({{ available.length }})</span>
-    </h3>
-
-    <v-row v-if="available.length">
-      <v-col v-for="i in available" :key="i.id" cols="12" md="6" lg="4">
-        <v-card rounded="lg" elevation="10">
-          <v-card-text>
-            <v-chip :color="CATEGORY_COLORS[i.category] || 'grey'" size="x-small" variant="tonal" label class="text-capitalize mb-2">
-              {{ i.category }}
-            </v-chip>
-            <h3 class="text-subtitle-1 font-weight-semibold mb-1">{{ i.name }}</h3>
-            <p class="text-body-2 textSecondary mb-3">{{ i.description || '—' }}</p>
-            <div v-if="i.required_fields.length" class="mb-3">
-              <p class="text-caption textSecondary mb-1">Required fields:</p>
-              <div class="d-flex flex-wrap ga-1">
-                <v-chip v-for="f in i.required_fields" :key="f.key" size="x-small" variant="outlined" label>
-                  {{ f.label }}
-                  <v-icon v-if="f.type === 'secret'" end icon="mdi-eye-off" size="10" />
-                </v-chip>
+    <template v-if="available.length">
+      <h3 class="text-subtitle-1 font-weight-semibold mb-3">
+        <v-icon icon="mdi-power-plug-outline" class="mr-1" size="18" />
+        Available integrations
+        <span class="text-body-2 font-weight-regular textSecondary ml-1">({{ available.length }})</span>
+      </h3>
+      <v-row>
+        <v-col v-for="i in available" :key="i.id" cols="12" md="6" lg="4">
+          <v-card rounded="lg" elevation="10">
+            <v-card-text>
+              <v-chip :color="CATEGORY_COLORS[i.category] || 'grey'" size="x-small" variant="tonal" label class="text-capitalize mb-2">
+                {{ i.category }}
+              </v-chip>
+              <h3 class="text-subtitle-1 font-weight-semibold mb-1">{{ i.name }}</h3>
+              <p class="text-body-2 textSecondary mb-3">{{ i.description || '—' }}</p>
+              <div v-if="i.required_fields.length" class="mb-3">
+                <p class="text-caption textSecondary mb-1">Required fields:</p>
+                <div class="d-flex flex-wrap ga-1">
+                  <v-chip v-for="f in i.required_fields" :key="f.key" size="x-small" variant="outlined" label>
+                    {{ f.label }}
+                    <v-icon v-if="f.type === 'secret'" end icon="mdi-eye-off" size="10" />
+                  </v-chip>
+                </div>
               </div>
-            </div>
-            <v-btn size="small" color="primary" variant="flat" prepend-icon="mdi-link" @click="openConnect(i)">
-              Connect
-            </v-btn>
-          </v-card-text>
-        </v-card>
-      </v-col>
-    </v-row>
+              <v-btn size="small" color="primary" variant="flat" prepend-icon="mdi-link" @click="openConnect(i)">
+                Connect
+              </v-btn>
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+    </template>
 
     <v-alert v-if="!loading && !integrations.length" type="info" variant="tonal">
-      No integration types available yet. Ask your platform admin to add integrations first.
+      No integration types available yet.
+      <template v-if="auth.isSystemAdmin">
+        Go to <v-btn variant="text" size="small" to="/integrations" class="px-1">Integrations</v-btn> to add some.
+      </template>
+      <template v-else>Ask your platform admin to add integrations first.</template>
     </v-alert>
 
     <!-- Connect / Update dialog -->

@@ -203,7 +203,7 @@ onMounted(load)
               Raised from failed test case <strong>{{ report.test_case.case_id }}</strong> — {{ report.test_case.title }}
               <v-btn
                 v-if="report.test_case.suite_slug" variant="text" size="small" color="primary" class="ml-1"
-                :to="`/test-cases/${report.test_case.suite_slug}`"
+                :to="`/test-cases/${report.test_case.suite_slug}?case=${report.test_case.case_id}`"
               >View test</v-btn>
             </v-alert>
 

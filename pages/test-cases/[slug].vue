@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from 'vue'
+import { computed, ref, watch, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTestCasesStore, type TestCase, type Verdict } from '@/stores/testCases'
 import { useTestCasesApi } from '@/composables/useTestCasesApi'
@@ -83,8 +83,28 @@ const search = ref('')
 const moduleFilter = ref<string | null>(null)
 const verdictFilter = ref<Verdict | 'all'>('all')
 
+// Track which expansion panels are open (by case_id value).
+const expandedCases = ref<string[]>([])
+
+// If ?case=CASE-001 is in the URL, open and scroll to that case after load.
+const targetCase = computed(() => String(route.query.case ?? ''))
+
+function scrollToCase(caseId: string) {
+  if (!caseId) return
+  expandedCases.value = [caseId]
+  nextTick(() => {
+    const el = document.getElementById(`case-${caseId}`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
+}
+
 onMounted(() => store.loadSuite(slug.value))
 watch(slug, (s) => store.loadSuite(s))
+
+// Once the suite loads, open the target case if specified.
+watch(() => store.current, (s) => {
+  if (s && targetCase.value) scrollToCase(targetCase.value)
+}, { once: true })
 
 const suite = computed(() => store.current)
 
@@ -207,8 +227,8 @@ async function reject(c: TestCase) {
           <span class="textSecondary text-caption ml-2">{{ m.cases.length }} cases</span>
         </div>
 
-        <v-expansion-panels variant="accordion" multiple>
-          <v-expansion-panel v-for="c in m.cases" :key="c.id" rounded="lg" elevation="2">
+        <v-expansion-panels v-model="expandedCases" variant="accordion" multiple>
+          <v-expansion-panel v-for="c in m.cases" :key="c.id" :value="c.case_id" :id="`case-${c.case_id}`" rounded="lg" elevation="2">
             <v-expansion-panel-title>
               <div class="d-flex align-center flex-grow-1 gap-2">
                 <v-icon

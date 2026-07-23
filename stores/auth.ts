@@ -41,6 +41,21 @@ export const useAuthStore = defineStore('auth', () => {
   const cookieOpts = { sameSite: 'lax' as const, path: '/', httpOnly: false }
 
   const token = useCookie<string | null>('auth_token', cookieOpts)
+
+  // In Nuxt 3 SPA mode, useCookie inside a Pinia store can lose its reactive
+  // value during router navigations. Keep localStorage as a fallback so the
+  // token survives page navigations and dev-mode HMR reloads.
+  if (import.meta.client) {
+    if (!token.value) {
+      const stored = localStorage.getItem('_auth_token')
+      if (stored) token.value = stored
+    }
+    watch(token, (val) => {
+      if (val) localStorage.setItem('_auth_token', val)
+      else localStorage.removeItem('_auth_token')
+    }, { immediate: true })
+  }
+
   const user = ref<AuthUser | null>(null)
   const apiError = ref('')
 
@@ -311,6 +326,7 @@ export const useAuthStore = defineStore('auth', () => {
       // proceed regardless — token may already be invalid
     } finally {
       token.value = null
+      if (import.meta.client) localStorage.removeItem('_auth_token')
       applyToken(null)
       user.value = null
       systemId.value = null

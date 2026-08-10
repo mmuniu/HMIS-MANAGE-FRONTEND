@@ -73,6 +73,14 @@ function cleaned<T extends Record<string, any>>(obj: T): Partial<T> {
 }
 
 const submitted = ref(false)
+const showPassword = ref(false)
+const copied = ref(false)
+
+async function copy(text: string) {
+  await navigator.clipboard.writeText(text)
+  copied.value = true
+  setTimeout(() => (copied.value = false), 1500)
+}
 
 const provisioningState = computed(() => {
   const res = store.lastCreateResult
@@ -149,6 +157,29 @@ function done() {
             </template>
           </v-list-item>
         </v-list>
+
+        <!-- Login credentials: the password only ever exists in this form's memory — -->
+        <!-- the backend stores a hash, never returns it, so this is the one chance to hand it off. -->
+        <v-card v-if="store.lastCreateResult.admin" variant="tonal" color="primary" rounded="lg" class="mb-4">
+          <v-card-text>
+            <p class="text-subtitle-2 font-weight-medium mb-3">Login credentials for {{ store.lastCreateResult.admin.username }}</p>
+            <div class="d-flex align-center ga-2 mb-1">
+              <span class="text-body-2">Username:</span>
+              <span class="font-mono font-weight-medium">{{ store.lastCreateResult.admin.username }}</span>
+              <v-btn icon="mdi-content-copy" size="x-small" variant="text" @click="copy(store.lastCreateResult.admin.username)" />
+            </div>
+            <div class="d-flex align-center ga-2">
+              <span class="text-body-2">Password:</span>
+              <span class="font-mono font-weight-medium">{{ showPassword ? admin.password : '••••••••' }}</span>
+              <v-btn :icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'" size="x-small" variant="text" @click="showPassword = !showPassword" />
+              <v-btn icon="mdi-content-copy" size="x-small" variant="text" @click="copy(admin.password)" />
+              <v-chip v-if="copied" size="x-small" color="success" variant="flat">Copied</v-chip>
+            </div>
+            <p class="text-caption textSecondary mt-2 mb-0">
+              This password won't be shown again once you leave this page — share it with the admin now.
+            </p>
+          </v-card-text>
+        </v-card>
 
         <v-alert v-if="provisioningState === 'success'" type="success" variant="tonal" class="mb-2">
           Synced to core-service.
@@ -276,4 +307,6 @@ function done() {
 
 <style scoped>
 .ga-3 { gap: 12px; }
+.ga-2 { gap: 8px; }
+.font-mono { font-family: monospace; }
 </style>

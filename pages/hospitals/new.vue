@@ -53,6 +53,23 @@ const facility = reactive<HospitalFacilityPayload>({
 
 const addAdmin = ref(true)
 const admin = reactive({ name: '', username: '', email: '', password: '' })
+// True once the temporary password was auto-generated from the HIE facility
+// administrator's name — locks the field so it can't be hand-edited into
+// something weaker; use regeneratePassword() to get a different one.
+const adminPasswordLocked = ref(false)
+
+const PASSWORD_SYMBOLS = ['!', '@', '#', '$', '%', '^', '&', '*']
+
+function generateTempPassword(fullName: string): string {
+  const firstName = fullName.trim().split(/\s+/)[0] || 'User'
+  const digits = Math.floor(100000 + Math.random() * 900000)
+  const symbol = PASSWORD_SYMBOLS[Math.floor(Math.random() * PASSWORD_SYMBOLS.length)]
+  return `${firstName}${digits}${symbol}`
+}
+
+function regeneratePassword() {
+  admin.password = generateTempPassword(admin.name || 'User')
+}
 
 // DHA SHA HIE facility registry lookup — see ShaHieClient / HospitalController::searchFacility.
 // Never blocks: an unconfigured/unreachable registry just falls back to manual entry below.
@@ -82,6 +99,7 @@ function restoreDraft() {
     Object.assign(facility, draft.facility)
     addAdmin.value = !!draft.addAdmin
     Object.assign(admin, draft.admin, { password: '' })
+    adminPasswordLocked.value = !!draft.adminPasswordLocked
     dhaIdentifier.value = draft.dhaIdentifier || ''
     dhaMatched.value = !!draft.dhaMatched
     dhaShaStatus.value = draft.dhaShaStatus ?? null
@@ -99,7 +117,7 @@ function clearDraft() {
 restoreDraft()
 
 watch(
-  [step, form, addFacility, facility, addAdmin, admin, dhaIdentifier, dhaMatched, dhaShaStatus, dhaStatus, dhaStatusType],
+  [step, form, addFacility, facility, addAdmin, admin, adminPasswordLocked, dhaIdentifier, dhaMatched, dhaShaStatus, dhaStatus, dhaStatusType],
   () => {
     if (typeof window === 'undefined' || submitted.value) return
     sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
@@ -109,6 +127,7 @@ watch(
       facility,
       addAdmin: addAdmin.value,
       admin: { name: admin.name, username: admin.username, email: admin.email },
+      adminPasswordLocked: adminPasswordLocked.value,
       dhaIdentifier: dhaIdentifier.value,
       dhaMatched: dhaMatched.value,
       dhaShaStatus: dhaShaStatus.value,
@@ -144,6 +163,15 @@ function applyFacility(f: FacilityRegistryResult) {
   if (f.facilityAdministratorEmail) facility.facility_administrator_email = f.facilityAdministratorEmail
   if (f.facilityAdministratorPhone) facility.facility_administrator_phone = f.facilityAdministratorPhone
   if (f.facilityAdministratorIdentifier) facility.facility_administrator_identifier = f.facilityAdministratorIdentifier
+
+  // Prefill the hospital admin (Step 4) from the same registry record —
+  // the temp password is generated, not typed, so it's locked from editing.
+  if (f.facilityAdministratorName) {
+    admin.name = f.facilityAdministratorName
+    admin.password = generateTempPassword(f.facilityAdministratorName)
+    adminPasswordLocked.value = true
+  }
+  if (f.facilityAdministratorEmail) admin.email = f.facilityAdministratorEmail
 
   dhaMatched.value = true
   dhaShaStatus.value = f.SHAOperationStatus?.operationalStatus || null
@@ -475,8 +503,15 @@ function done() {
               :error-messages="fieldError('admin.username')" class="mb-3" hide-details="auto" />
             <v-text-field v-model="admin.email" :disabled="!addAdmin" label="Email" type="email" variant="outlined" density="comfortable"
               :error-messages="fieldError('admin.email')" class="mb-3" hide-details="auto" />
-            <v-text-field v-model="admin.password" :disabled="!addAdmin" label="Temporary password" type="password" variant="outlined" density="comfortable"
-              :error-messages="fieldError('admin.password')" hint="Min 8 characters. An invite email is sent to this admin." persistent-hint hide-details="auto" />
+            <v-text-field v-model="admin.password" :disabled="!addAdmin" :readonly="adminPasswordLocked"
+              :type="adminPasswordLocked ? 'text' : 'password'" label="Temporary password" variant="outlined" density="comfortable"
+              :error-messages="fieldError('admin.password')"
+              :hint="adminPasswordLocked ? 'Auto-generated from the HIE facility administrator\'s name. An invite email is sent to this admin.' : 'Min 8 characters. An invite email is sent to this admin.'"
+              persistent-hint hide-details="auto">
+              <template v-if="adminPasswordLocked" #append-inner>
+                <v-btn icon="mdi-refresh" size="small" variant="text" :disabled="!addAdmin" @click="regeneratePassword" />
+              </template>
+            </v-text-field>
           </div>
         </template>
       </v-stepper>

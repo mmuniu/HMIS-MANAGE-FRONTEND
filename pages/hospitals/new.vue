@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, computed } from 'vue'
+import { reactive, ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHospitalsStore } from '@/stores/hospitals'
 import { useHospitalsApi } from '@/composables/useHospitalsApi'
@@ -62,6 +62,62 @@ const dhaStatus = ref('')
 const dhaStatusType = ref<'success' | 'error' | 'info'>('info')
 const dhaMatched = ref(false)
 const dhaShaStatus = ref<string | null>(null)
+
+// Resume-on-refresh: the wizard's in-progress draft, kept in sessionStorage so
+// an accidental reload lands back on the same step with the same fields.
+// The temporary admin password is deliberately excluded — re-typing it is a
+// small cost worth not leaving a plaintext password sitting in browser storage.
+const DRAFT_KEY = 'hospitals:new:draft'
+
+function restoreDraft() {
+  if (typeof window === 'undefined') return
+  const raw = sessionStorage.getItem(DRAFT_KEY)
+  if (!raw) return
+  try {
+    const draft = JSON.parse(raw)
+    step.value = Math.min(Math.max(1, Number(draft.step) || 1), LAST_STEP)
+    Object.assign(form, draft.form)
+    if (draft.form?.address) Object.assign(form.address!, draft.form.address)
+    addFacility.value = !!draft.addFacility
+    Object.assign(facility, draft.facility)
+    addAdmin.value = !!draft.addAdmin
+    Object.assign(admin, draft.admin, { password: '' })
+    dhaIdentifier.value = draft.dhaIdentifier || ''
+    dhaMatched.value = !!draft.dhaMatched
+    dhaShaStatus.value = draft.dhaShaStatus ?? null
+    dhaStatus.value = draft.dhaStatus || ''
+    dhaStatusType.value = draft.dhaStatusType || 'info'
+  } catch {
+    sessionStorage.removeItem(DRAFT_KEY)
+  }
+}
+
+function clearDraft() {
+  if (typeof window !== 'undefined') sessionStorage.removeItem(DRAFT_KEY)
+}
+
+restoreDraft()
+
+watch(
+  [step, form, addFacility, facility, addAdmin, admin, dhaIdentifier, dhaMatched, dhaShaStatus, dhaStatus, dhaStatusType],
+  () => {
+    if (typeof window === 'undefined' || submitted.value) return
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
+      step: step.value,
+      form,
+      addFacility: addFacility.value,
+      facility,
+      addAdmin: addAdmin.value,
+      admin: { name: admin.name, username: admin.username, email: admin.email },
+      dhaIdentifier: dhaIdentifier.value,
+      dhaMatched: dhaMatched.value,
+      dhaShaStatus: dhaShaStatus.value,
+      dhaStatus: dhaStatus.value,
+      dhaStatusType: dhaStatusType.value,
+    }))
+  },
+  { deep: true },
+)
 
 // Gate submission ONLY when a real search came back with a definitive
 // non-ACTIVE status — never when unsearched or when the registry isn't
@@ -196,6 +252,7 @@ async function submit() {
   const res = await store.create(payload)
   if (res.success) {
     submitted.value = true
+    clearDraft()
   } else {
     // Jump back to the step that has the first error.
     const errs = Object.keys(store.fieldErrors)

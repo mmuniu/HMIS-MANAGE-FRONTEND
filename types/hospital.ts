@@ -49,6 +49,72 @@ export interface HospitalShowResponse {
   data: Hospital
 }
 
+// First facility, matching the extra registry fields on the `facilities` table
+// (mirrors collabmed2.0's settings/clinics facility form, minus the live
+// DHA/SHA registry search — these are plain editable inputs here).
+export interface HospitalFacilityPayload {
+  name: string
+  facility_code?: string
+  keph_level?: string
+  total_beds?: number
+  normal_beds?: number
+  icu_beds?: number
+  hdu_beds?: number
+  dialysis_beds?: number
+  number_of_cots?: number
+  facility_administrator_name?: string
+  facility_administrator_email?: string
+  facility_administrator_phone?: string
+  facility_administrator_identifier?: string
+}
+
+// Raw shape returned by the DHA SHA HIE facility registry
+// (GET /v1/platform/hospitals/facility-search), confirmed against a real
+// DHA UAT response — field names mirror collabmed2.0's applyFacility().
+export interface FacilityRegistryResult {
+  officialName?: string
+  frCode?: string
+  kephLevel?: string
+  address?: {
+    town?: string
+    postalAddress?: string
+    physicalLocation?: string
+    latitude?: number | string
+    longitude?: number | string
+  }
+  facilityPhoneNumber?: string
+  facilityEmail?: string
+  regulatoryOperationalStatus?: { operationalStatus?: string }
+  SHAOperationStatus?: {
+    operationalStatus?: string
+    operationalStatusReason?: string
+    suspensionReason?: string
+    reinstatementRecommendations?: string
+    earliestReinstatementDate?: string
+  }
+  bedOccupancy?: {
+    totalBeds?: number
+    normalBeds?: number
+    icuBeds?: number
+    hduBeds?: number
+    dialysisBeds?: number
+    numberOfCots?: number
+  }
+  facilityAdministratorName?: string
+  facilityAdministratorEmail?: string
+  facilityAdministratorPhone?: string
+  facilityAdministratorIdentifier?: string
+}
+
+// Envelope shape every ShaHieClient call returns, passed straight through
+// by HospitalController::searchFacility().
+export interface FacilityRegistrySearchResponse {
+  ok: boolean
+  status: number | null
+  data: FacilityRegistryResult | FacilityRegistryResult[] | null
+  error: string | null
+}
+
 // Payload for POST /v1/platform/hospitals (matches StoreHospitalRequest).
 export interface CreateHospitalPayload {
   // identity & localization
@@ -71,7 +137,7 @@ export interface CreateHospitalPayload {
   status?: HospitalStatus
   is_sandbox?: boolean
   // optional first facility + admin
-  facility?: { name: string }
+  facility?: HospitalFacilityPayload
   admin?: { name: string; username: string; email: string; password: string }
 }
 

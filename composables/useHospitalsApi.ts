@@ -2,6 +2,7 @@ import { useNuxtApp } from '#app'
 import type {
   CreateHospitalPayload,
   CreateHospitalResponse,
+  FacilityRegistrySearchResponse,
   Hospital,
   HospitalListResponse,
   HospitalShowResponse,
@@ -13,6 +14,7 @@ import type {
  * Backend:
  *   GET  /v1/platform/hospitals       (paginated)
  *   GET  /v1/platform/hospitals/{id}
+ *   GET  /v1/platform/hospitals/facility-search (DHA SHA HIE lookup)
  *   POST /v1/platform/hospitals/{id}/provision (retry core-service sync)
  */
 export function useHospitalsApi() {
@@ -38,5 +40,20 @@ export function useHospitalsApi() {
     return data
   }
 
-  return { list, show, create, retryProvisioning }
+  // Backend always answers with the {ok, status, data, error} envelope, even
+  // for "not configured" / auth failures — those come back as non-2xx, so
+  // pull the envelope out of the error response instead of throwing.
+  async function searchFacility(identifier: string, identifierType?: string): Promise<FacilityRegistrySearchResponse> {
+    try {
+      const { data } = await $axios.get<FacilityRegistrySearchResponse>('/v1/platform/hospitals/facility-search', {
+        params: { identifier, 'identifier-type': identifierType },
+      })
+      return data
+    } catch (err: any) {
+      if (err?.response?.data) return err.response.data
+      throw err
+    }
+  }
+
+  return { list, show, create, retryProvisioning, searchFacility }
 }

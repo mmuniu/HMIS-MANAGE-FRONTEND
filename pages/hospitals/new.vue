@@ -2,10 +2,12 @@
 import { reactive, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHospitalsStore } from '@/stores/hospitals'
-import type { CreateHospitalPayload } from '@/types/hospital'
+import { useHospitalsApi } from '@/composables/useHospitalsApi'
+import type { CreateHospitalPayload, FacilityRegistryResult, HospitalFacilityPayload } from '@/types/hospital'
 
 const router = useRouter()
 const store = useHospitalsStore()
+const hospitalsApi = useHospitalsApi()
 
 const TIERS = ['BASIC', 'PREMIUM', 'ENTERPRISE']
 const BILLING = ['ACTIVE', 'PAST_DUE', 'SUSPENDED']
@@ -33,10 +35,103 @@ const form = reactive<CreateHospitalPayload>({
 })
 
 const addFacility = ref(true)
-const facility = reactive({ name: '' })
+const facility = reactive<HospitalFacilityPayload>({
+  name: '',
+  facility_code: '',
+  keph_level: '',
+  total_beds: undefined,
+  normal_beds: undefined,
+  icu_beds: undefined,
+  hdu_beds: undefined,
+  dialysis_beds: undefined,
+  number_of_cots: undefined,
+  facility_administrator_name: '',
+  facility_administrator_email: '',
+  facility_administrator_phone: '',
+  facility_administrator_identifier: '',
+})
 
 const addAdmin = ref(true)
 const admin = reactive({ name: '', username: '', email: '', password: '' })
+
+// DHA SHA HIE facility registry lookup — see ShaHieClient / HospitalController::searchFacility.
+// Never blocks: an unconfigured/unreachable registry just falls back to manual entry below.
+const dhaIdentifier = ref('')
+const dhaSearching = ref(false)
+const dhaStatus = ref('')
+const dhaStatusType = ref<'success' | 'error' | 'info'>('info')
+const dhaMatched = ref(false)
+const dhaShaStatus = ref<string | null>(null)
+
+// Gate submission ONLY when a real search came back with a definitive
+// non-ACTIVE status — never when unsearched or when the registry isn't
+// configured (dhaShaStatus stays null in both those cases).
+const facilityGateOk = computed(() => {
+  if (!addFacility.value || !dhaMatched.value || dhaShaStatus.value === null) return true
+  return dhaShaStatus.value.toUpperCase() === 'ACTIVE'
+})
+
+function applyFacility(f: FacilityRegistryResult) {
+  if (f.officialName) facility.name = f.officialName
+  if (f.frCode) facility.facility_code = f.frCode
+  if (f.kephLevel) facility.keph_level = f.kephLevel
+
+  const beds = f.bedOccupancy || {}
+  facility.total_beds = beds.totalBeds
+  facility.normal_beds = beds.normalBeds
+  facility.icu_beds = beds.icuBeds
+  facility.hdu_beds = beds.hduBeds
+  facility.dialysis_beds = beds.dialysisBeds
+  facility.number_of_cots = beds.numberOfCots
+
+  if (f.facilityAdministratorName) facility.facility_administrator_name = f.facilityAdministratorName
+  if (f.facilityAdministratorEmail) facility.facility_administrator_email = f.facilityAdministratorEmail
+  if (f.facilityAdministratorPhone) facility.facility_administrator_phone = f.facilityAdministratorPhone
+  if (f.facilityAdministratorIdentifier) facility.facility_administrator_identifier = f.facilityAdministratorIdentifier
+
+  dhaMatched.value = true
+  dhaShaStatus.value = f.SHAOperationStatus?.operationalStatus || null
+
+  const active = (dhaShaStatus.value || '').toUpperCase() === 'ACTIVE'
+  dhaStatus.value = active
+    ? 'Facility found — fields below have been filled in.'
+    : 'Facility found, but its SHA status is not ACTIVE — saving is disabled until it is.'
+  dhaStatusType.value = active ? 'success' : 'error'
+}
+
+async function searchFacility() {
+  const identifier = dhaIdentifier.value.trim()
+  if (!identifier) {
+    dhaStatus.value = 'Enter a facility identifier first.'
+    dhaStatusType.value = 'error'
+    return
+  }
+
+  dhaSearching.value = true
+  dhaStatus.value = 'Searching…'
+  dhaStatusType.value = 'info'
+  try {
+    const result = await hospitalsApi.searchFacility(identifier)
+    const found = Array.isArray(result.data) ? result.data[0] : result.data
+
+    if (!result.ok || !found) {
+      dhaMatched.value = false
+      dhaShaStatus.value = null
+      dhaStatus.value = result.error || 'Facility not found.'
+      dhaStatusType.value = result.error === 'SHA HIE integration is not configured' ? 'info' : 'error'
+      return
+    }
+
+    applyFacility(found)
+  } catch (err: any) {
+    dhaMatched.value = false
+    dhaShaStatus.value = null
+    dhaStatus.value = 'Facility search failed.'
+    dhaStatusType.value = 'error'
+  } finally {
+    dhaSearching.value = false
+  }
+}
 
 const fieldError = (key: string) => store.fieldErrors[key]?.[0]
 
@@ -95,7 +190,7 @@ async function submit() {
     name: form.name,
     address: cleaned(form.address || {}) as any,
   }
-  if (addFacility.value && facility.name) payload.facility = { name: facility.name }
+  if (addFacility.value && facility.name) payload.facility = { ...cleaned(facility), name: facility.name }
   if (addAdmin.value) payload.admin = { ...admin }
 
   const res = await store.create(payload)
@@ -259,8 +354,53 @@ function done() {
               <h3 class="text-h6"><v-icon icon="mdi-hospital-building" class="mr-2" />First Facility</h3>
               <v-switch v-model="addFacility" color="primary" hide-details inset density="compact" label="Add a facility" />
             </div>
-            <v-text-field v-model="facility.name" :disabled="!addFacility" label="Facility name" placeholder="e.g. Main Hospital"
-              variant="outlined" density="comfortable" hide-details="auto" />
+
+            <div class="d-flex ga-2 mb-1" :class="{ 'opacity-50': !addFacility }">
+              <v-text-field v-model="dhaIdentifier" :disabled="!addFacility || dhaSearching" label="Find Facility (DHA Registry)"
+                placeholder="Facility ID / fr-code, e.g. FID-47-105963-0" variant="outlined" density="comfortable" hide-details="auto"
+                @keydown.enter.prevent="searchFacility" />
+              <v-btn color="primary" variant="tonal" :disabled="!addFacility" :loading="dhaSearching" @click="searchFacility">
+                <v-icon icon="mdi-magnify" />
+              </v-btn>
+            </div>
+            <p v-if="dhaStatus" class="text-caption mt-1 mb-3"
+              :class="{ 'text-success': dhaStatusType === 'success', 'text-error': dhaStatusType === 'error', 'textSecondary': dhaStatusType === 'info' }">
+              {{ dhaStatus }}
+            </p>
+
+            <v-text-field v-model="facility.name" :disabled="!addFacility" :readonly="dhaMatched" label="Facility name" placeholder="e.g. Main Hospital"
+              variant="outlined" density="comfortable" class="mb-3" hide-details="auto" />
+            <div class="d-flex ga-3 mb-3 flex-wrap">
+              <v-text-field v-model="facility.facility_code" :disabled="!addFacility" :readonly="dhaMatched" label="Master facility code" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.keph_level" :disabled="!addFacility" :readonly="dhaMatched" label="KEPH level" placeholder="e.g. Level 4" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+            </div>
+
+            <h4 class="text-subtitle-1 font-weight-medium mt-4 mb-2">Bed Occupancy</h4>
+            <div class="d-flex ga-3 mb-3 flex-wrap">
+              <v-text-field v-model.number="facility.total_beds" :disabled="!addFacility" :readonly="dhaMatched" type="number" label="Total beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.normal_beds" :disabled="!addFacility" :readonly="dhaMatched" type="number" label="Normal beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.icu_beds" :disabled="!addFacility" :readonly="dhaMatched" type="number" label="ICU beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+            </div>
+            <div class="d-flex ga-3 mb-3 flex-wrap">
+              <v-text-field v-model.number="facility.hdu_beds" :disabled="!addFacility" :readonly="dhaMatched" type="number" label="HDU beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.dialysis_beds" :disabled="!addFacility" :readonly="dhaMatched" type="number" label="Dialysis beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.number_of_cots" :disabled="!addFacility" :readonly="dhaMatched" type="number" label="Number of cots" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+            </div>
+
+            <h4 class="text-subtitle-1 font-weight-medium mt-4 mb-2">Facility Administrator</h4>
+            <div class="d-flex ga-3 mb-3 flex-wrap">
+              <v-text-field v-model="facility.facility_administrator_name" :disabled="!addFacility" :readonly="dhaMatched" label="Administrator name" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.facility_administrator_email" :disabled="!addFacility" :readonly="dhaMatched" label="Administrator email" type="email" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+            </div>
+            <div class="d-flex ga-3 mb-3 flex-wrap">
+              <v-text-field v-model="facility.facility_administrator_phone" :disabled="!addFacility" :readonly="dhaMatched" label="Administrator phone" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.facility_administrator_identifier" :disabled="!addFacility" :readonly="dhaMatched" label="Administrator identifier" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+            </div>
+
+            <v-alert v-if="addFacility && dhaMatched && !facilityGateOk" type="error" variant="tonal" density="compact" class="mb-3">
+              This facility's SHA status is not ACTIVE, so registration is disabled until it is.
+            </v-alert>
+
             <p class="text-caption textSecondary mt-2">The first hospital admin will be assigned to this facility.</p>
           </div>
         </template>
@@ -296,7 +436,7 @@ function done() {
             :disabled="step === 1 && !step1Valid" @click="next">
             Next
           </v-btn>
-          <v-btn v-else color="primary" prepend-icon="mdi-check" :loading="store.saving" :disabled="!step4Valid" @click="submit">
+          <v-btn v-else color="primary" prepend-icon="mdi-check" :loading="store.saving" :disabled="!step4Valid || !facilityGateOk" @click="submit">
             Register Hospital
           </v-btn>
         </div>

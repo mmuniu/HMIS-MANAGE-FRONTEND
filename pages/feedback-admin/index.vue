@@ -114,6 +114,7 @@ onMounted(load)
           <v-col cols="12" md="6" class="d-flex align-center ga-2">
             <v-btn color="primary" prepend-icon="mdi-filter" @click="load">Apply</v-btn>
             <v-btn variant="text" @click="clearFilters">Clear</v-btn>
+            <v-chip size="small" variant="tonal" color="grey">{{ items.length }} total</v-chip>
           </v-col>
         </v-row>
       </v-card-text>

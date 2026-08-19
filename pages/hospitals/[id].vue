@@ -175,7 +175,8 @@ onMounted(() => store.fetchOne(id.value))
             <p class="text-subtitle-1 font-weight-semibold mb-1">Integrations</p>
             <p class="text-body-2 textSecondary mb-0">Connect this hospital to external systems like QuickBooks, Dynamics 365 and more.</p>
           </div>
-          <v-btn color="primary" variant="tonal" prepend-icon="mdi-plug" to="/integrations">
+          <v-btn color="primary" variant="tonal" prepend-icon="mdi-plug"
+            :to="{ path: '/integrations', query: { hospitalId: id, hospitalName: h.display_name || h.name } }">
             Manage integrations
           </v-btn>
         </v-card-text>

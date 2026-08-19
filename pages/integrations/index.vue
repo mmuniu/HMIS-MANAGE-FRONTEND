@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useNuxtApp } from '#app'
 import { useAuthStore } from '@/stores/auth'
 import { useTenantStore } from '@/stores/tenant'
@@ -8,9 +9,18 @@ import { useIntegrationsApi, type Integration, type TenantIntegration, type Requ
 const auth = useAuthStore()
 const tenant = useTenantStore()
 const api = useIntegrationsApi()
+const route = useRoute()
+const router = useRouter()
 const { $showToast } = useNuxtApp()
 
 const loading = ref(false)
+
+// Platform staff arriving from a hospital's detail page manage THAT hospital's
+// integrations rather than the catalog — scoped by ?hospitalId= in the URL.
+const scopedHospitalId = computed(() => (route.query.hospitalId as string) || null)
+const scopedHospitalName = computed(() => (route.query.hospitalName as string) || null)
+const isCrossTenant = computed(() => !!scopedHospitalId.value)
+const orgId = computed(() => scopedHospitalId.value || tenant.organizationId)
 
 // ── System admin: catalog management ─────────────────────────────────────────
 const catalog = ref<Integration[]>([])
@@ -104,12 +114,10 @@ function openConnect(i: TenantIntegration) {
 }
 
 async function saveConnect() {
-  if (!selected.value) return
-  const orgId = tenant.organizationId
-  if (!orgId) return
+  if (!selected.value || !orgId.value) return
   connecting.value = true
   try {
-    await api.tenantConnect(orgId, selected.value.id, configForm.value)
+    await api.tenantConnect(orgId.value, selected.value.id, configForm.value)
     $showToast(`${selected.value.name} connected.`)
     connectDialog.value = false
     await loadTenant()
@@ -121,12 +129,10 @@ async function saveConnect() {
 }
 
 async function disconnect(i: TenantIntegration) {
-  if (!confirm(`Disconnect ${i.name}?`)) return
-  const orgId = tenant.organizationId
-  if (!orgId) return
+  if (!confirm(`Disconnect ${i.name}?`) || !orgId.value) return
   disconnecting.value = i.id
   try {
-    await api.tenantDisconnect(orgId, i.id)
+    await api.tenantDisconnect(orgId.value, i.id)
     $showToast(`${i.name} disconnected.`)
     await loadTenant()
   } catch (e: any) {
@@ -137,15 +143,22 @@ async function disconnect(i: TenantIntegration) {
 }
 
 async function loadTenant() {
-  const orgId = tenant.organizationId
-  if (!orgId) return
+  if (!orgId.value) return
   loading.value = true
-  try { tenantItems.value = await api.tenantList(orgId) }
-  finally { loading.value = false }
+  try {
+    tenantItems.value = await api.tenantList(orgId.value)
+  } catch (e: any) {
+    $showToast(e?.response?.data?.message || 'Failed to load integrations.')
+    if (isCrossTenant.value) router.push('/integrations')
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(async () => {
-  if (auth.isSystemAdmin) {
+  if (isCrossTenant.value) {
+    loadTenant()
+  } else if (auth.isSystemAdmin) {
     loadCatalog()
   } else {
     if (!tenant.organizationId) await tenant.loadContext()
@@ -157,7 +170,7 @@ onMounted(async () => {
 <template>
   <div>
     <!-- ── System admin view ───────────────────────────────────────────── -->
-    <template v-if="auth.isSystemAdmin">
+    <template v-if="auth.isSystemAdmin && !isCrossTenant">
       <div class="d-flex flex-wrap align-center justify-space-between mb-6 ga-3">
         <div>
           <h2 class="text-h4 font-weight-semibold">Integrations</h2>
@@ -270,11 +283,22 @@ onMounted(async () => {
       </v-dialog>
     </template>
 
-    <!-- ── Hospital admin view ────────────────────────────────────────────── -->
+    <!-- ── Hospital-scoped view (hospital admin, or platform staff managing a specific hospital) ── -->
     <template v-else>
+      <v-btn v-if="isCrossTenant" variant="text" prepend-icon="mdi-arrow-left" class="mb-4"
+        :to="`/hospitals/${scopedHospitalId}`">
+        Back to hospital
+      </v-btn>
+
       <div class="mb-6">
-        <h2 class="text-h4 font-weight-semibold">Integrations</h2>
-        <p class="textSecondary mb-0">Connect your hospital to external systems and services.</p>
+        <h2 class="text-h4 font-weight-semibold">
+          {{ isCrossTenant ? `Integrations — ${scopedHospitalName || scopedHospitalId}` : 'Integrations' }}
+        </h2>
+        <p class="textSecondary mb-0">
+          {{ isCrossTenant
+            ? 'Connect this hospital to external systems and services.'
+            : 'Connect your hospital to external systems and services.' }}
+        </p>
       </div>
 
       <v-progress-linear v-if="loading" indeterminate color="primary" class="mb-4" />

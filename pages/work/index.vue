@@ -100,10 +100,10 @@ onMounted(load)
   <div>
     <div class="d-flex flex-wrap align-center justify-space-between mb-6 ga-3">
       <div>
-        <h2 class="text-h4 font-weight-semibold">Bugs &amp; Features</h2>
+        <h2 class="text-h4 font-weight-semibold">Assigned Bugs</h2>
         <p class="textSecondary mb-0">
           {{ scope === 'all'
-            ? 'All bugs and features assigned across the team.'
+            ? 'Every bug and feature assigned across the team.'
             : 'Bugs and features assigned to you to work on.' }}
         </p>
       </div>

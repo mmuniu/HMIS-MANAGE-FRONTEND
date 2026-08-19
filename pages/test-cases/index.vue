@@ -72,7 +72,11 @@ async function onFile(e: Event) {
       <div v-if="auth.canAuthorTests" class="d-flex gap-2">
         <input ref="fileInput" type="file" accept=".md,.markdown,text/markdown,text/plain" hidden @change="onFile" />
         <v-btn color="primary" prepend-icon="mdi-plus" to="/test-cases/new">New Test Case</v-btn>
-        <v-btn variant="tonal" color="primary" prepend-icon="mdi-upload" :loading="store.uploading" @click="pickFile">
+        <!-- Upload Doc is system-admin only: it creates a whole suite at once and
+             skips the per-case approval workflow. Testers author one case at a
+             time instead. The API enforces this too. -->
+        <v-btn v-if="auth.isSystemAdmin" variant="tonal" color="primary" prepend-icon="mdi-upload"
+          :loading="store.uploading" @click="pickFile">
           Upload Doc
         </v-btn>
       </div>
@@ -113,11 +117,16 @@ async function onFile(e: Event) {
         </v-avatar>
         <h3 class="text-h6 mb-2">No test cases yet</h3>
         <p class="textSecondary mb-4">
-          {{ auth.canAuthorTests ? 'Create a test case with the form, or upload a role document (.md).' : 'No test cases have been published yet.' }}
+          {{ auth.canAuthorTests
+            ? (auth.isSystemAdmin
+              ? 'Create a test case with the form, or upload a role document (.md).'
+              : 'Create a test case with the form.')
+            : 'No test cases have been published yet.' }}
         </p>
         <div v-if="auth.canAuthorTests" class="d-flex justify-center gap-2">
           <v-btn color="primary" prepend-icon="mdi-plus" to="/test-cases/new">New Test Case</v-btn>
-          <v-btn variant="tonal" color="primary" prepend-icon="mdi-upload" :loading="store.uploading" @click="pickFile">Upload Doc</v-btn>
+          <v-btn v-if="auth.isSystemAdmin" variant="tonal" color="primary" prepend-icon="mdi-upload"
+            :loading="store.uploading" @click="pickFile">Upload Doc</v-btn>
         </div>
       </v-card-text>
     </v-card>

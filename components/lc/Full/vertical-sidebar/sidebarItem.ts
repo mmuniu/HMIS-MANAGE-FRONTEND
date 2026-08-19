@@ -96,11 +96,11 @@ const sidebarItem: menu[] = [
                 title: 'Feedback Admin',
                 icon: 'inbox-line-line-duotone',
                 to: '/feedback-admin',
-                // System admin triages all reports.
+                // System admin triages all reports and assigns them to devs.
                 roles: ['system_admin'],
             },
             {
-                title: 'Bugs & Features',
+                title: 'Assigned Bugs',
                 icon: 'bug-line-duotone',
                 to: '/work',
                 // Developers see their own assigned work; system admin sees all.

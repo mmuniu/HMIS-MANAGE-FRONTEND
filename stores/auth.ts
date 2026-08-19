@@ -338,9 +338,18 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  const logout = async () => {
+  /**
+   * End the session and return to the login screen.
+   *
+   * `message` lets callers explain WHY the user is being signed out — a
+   * password change reuses this so the toast says so instead of a bare
+   * "Logged out.". `revoked` skips the API call for cases where the token is
+   * already dead server-side (changing your password revokes every token), so
+   * we don't fire a request that is guaranteed to 401.
+   */
+  const logout = async (message = 'Logged out.', revoked = false) => {
     try {
-      await $axios.post('/v1/platform/logout')
+      if (!revoked) await $axios.post('/v1/platform/logout')
     } catch {
       // proceed regardless — token may already be invalid
     } finally {
@@ -352,7 +361,7 @@ export const useAuthStore = defineStore('auth', () => {
       activeSystem.value = null
       resetLoginState()
       useTenantStore().clear()
-      $showToast('Logged out.')
+      $showToast(message)
       await router.push('/auth/login')
     }
   }

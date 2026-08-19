@@ -106,7 +106,7 @@ function clearFilters() {
 <template>
   <div>
     <div class="mb-6">
-      <h2 class="text-h4 font-weight-semibold">Feedback Administration</h2>
+      <h2 class="text-h4 font-weight-semibold">Feedback Admin</h2>
       <p class="textSecondary">All bug reports and feature requests across the platform.</p>
     </div>
 

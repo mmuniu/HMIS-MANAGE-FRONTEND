@@ -99,7 +99,7 @@ export function useReportsApi() {
     return data.data as { duplicate_of: number; primary_reference: string; primary_title: string }
   }
 
-  // ---- Work queue (Bugs & Features): dev sees own, system_admin sees all ----
+  // ---- Work queue (Assigned Bugs): dev sees own, system_admin sees all ----
   async function work(params: Record<string, any> = {}) {
     const { data } = await $axios.get('/v1/platform/work', { params })
     return data as { data: ReportSummary[]; meta: any & { scope: 'all' | 'mine' } }

@@ -45,6 +45,13 @@ const sidebarItem: menu[] = [
                 roles: ['system_admin', 'hospital_admin'],
             },
             {
+                title: 'Users',
+                icon: 'users-group-rounded-line-duotone',
+                to: '/users',
+                // System admin manages every account on the platform.
+                roles: ['system_admin'],
+            },
+            {
                 title: 'Test Cases',
                 icon: 'clipboard-check-line-duotone',
                 to: '/test-cases',

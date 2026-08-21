@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useHospitalsStore } from '@/stores/hospitals'
 import { useAuthStore } from '@/stores/auth'
@@ -49,7 +49,21 @@ function provisionAdmin(adminId: number) {
   store.provisionAdmin(id.value, adminId)
 }
 
-onMounted(() => store.fetchOne(id.value))
+// `[id].vue` is reused (not remounted) when navigating from one hospital's
+// detail page straight to another's, since both match this same route —
+// watch the param directly rather than relying on onMounted alone, or the
+// page would keep showing the previous hospital's facilities/admins (and a
+// leftover one-time credentials panel from a provisionAdmin() call made on
+// the hospital navigated away from).
+watch(
+  id,
+  (newId) => {
+    store.lastAdminProvisionResult = null
+    showAdminPassword.value = false
+    store.fetchOne(newId)
+  },
+  { immediate: true },
+)
 </script>
 
 <template>

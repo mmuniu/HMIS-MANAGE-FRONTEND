@@ -17,6 +17,7 @@ const ROLE_ROUTES: { prefix: string; roles: string[] }[] = [
   { prefix: '/tester-activity', roles: ['system_admin'] },
   // /run-history is open to all platform users — no rule needed.
   { prefix: '/feedback-admin', roles: ['system_admin'] },
+  { prefix: '/users', roles: ['system_admin'] },
   { prefix: '/work', roles: ['developer'] }, // system_admin bypasses this check
   // /feedback (submit + my reports) is open to everyone — no rule.
 ]

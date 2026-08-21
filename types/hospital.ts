@@ -33,6 +33,43 @@ export interface Hospital {
   updated_at: string | null
 }
 
+// A facility as gathered during provisioning (bed capacity, facility
+// administrator contact) — only present on the show() detail response.
+export interface HospitalFacility {
+  id: string
+  name: string
+  status: string
+  core_facility_id: string | null
+  facility_code: string | null
+  keph_level: string | null
+  total_beds: number | null
+  normal_beds: number | null
+  icu_beds: number | null
+  hdu_beds: number | null
+  dialysis_beds: number | null
+  number_of_cots: number | null
+  facility_administrator_name: string | null
+  facility_administrator_email: string | null
+  facility_administrator_phone: string | null
+  facility_administrator_identifier: string | null
+}
+
+// A hospital-admin account assigned to the organization — only present on
+// the show() detail response.
+export interface HospitalAdminUser {
+  id: number
+  name: string
+  username: string
+  email: string
+}
+
+// GET /v1/platform/hospitals/{id} returns everything gathered during
+// provisioning, not just the bare organization fields list() gives back.
+export interface HospitalDetail extends Hospital {
+  facilities: HospitalFacility[]
+  admins: HospitalAdminUser[]
+}
+
 export interface PaginationMeta {
   current_page: number
   last_page: number
@@ -46,7 +83,7 @@ export interface HospitalListResponse {
 }
 
 export interface HospitalShowResponse {
-  data: Hospital
+  data: HospitalDetail
 }
 
 // First facility, matching the extra registry fields on the `facilities` table

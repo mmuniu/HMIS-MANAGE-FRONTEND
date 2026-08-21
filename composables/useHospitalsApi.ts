@@ -3,7 +3,7 @@ import type {
   CreateHospitalPayload,
   CreateHospitalResponse,
   FacilityRegistrySearchResponse,
-  Hospital,
+  HospitalDetail,
   HospitalListResponse,
   HospitalShowResponse,
   RetryProvisioningResponse,
@@ -12,10 +12,11 @@ import type {
 /**
  * Read access to platform hospitals (organizations / tenants).
  * Backend:
- *   GET  /v1/platform/hospitals       (paginated)
- *   GET  /v1/platform/hospitals/{id}
- *   GET  /v1/platform/hospitals/facility-search (DHA SHA HIE lookup)
- *   POST /v1/platform/hospitals/{id}/provision (retry core-service sync)
+ *   GET    /v1/platform/hospitals       (paginated)
+ *   GET    /v1/platform/hospitals/{id}
+ *   DELETE /v1/platform/hospitals/{id}  (soft-delete, system admin only)
+ *   GET    /v1/platform/hospitals/facility-search (DHA SHA HIE lookup)
+ *   POST   /v1/platform/hospitals/{id}/provision (retry core-service sync)
  */
 export function useHospitalsApi() {
   const { $axios } = useNuxtApp()
@@ -25,9 +26,13 @@ export function useHospitalsApi() {
     return data
   }
 
-  async function show(id: string): Promise<Hospital> {
+  async function show(id: string): Promise<HospitalDetail> {
     const { data } = await $axios.get<HospitalShowResponse>(`/v1/platform/hospitals/${id}`)
     return data.data
+  }
+
+  async function destroy(id: string): Promise<void> {
+    await $axios.delete(`/v1/platform/hospitals/${id}`)
   }
 
   async function create(payload: CreateHospitalPayload): Promise<CreateHospitalResponse> {
@@ -55,5 +60,5 @@ export function useHospitalsApi() {
     }
   }
 
-  return { list, show, create, retryProvisioning, searchFacility }
+  return { list, show, create, destroy, retryProvisioning, searchFacility }
 }

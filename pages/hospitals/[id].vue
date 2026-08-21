@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { onMounted, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { onMounted, computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useHospitalsStore } from '@/stores/hospitals'
+import { useAuthStore } from '@/stores/auth'
 import { STATUS_COLOR, TIER_COLOR, BILLING_COLOR } from '@/types/hospital'
 
 const route = useRoute()
+const router = useRouter()
 const store = useHospitalsStore()
+const auth = useAuthStore()
 
 const id = computed(() => String(route.params.id))
 const h = computed(() => store.current)
@@ -16,14 +19,37 @@ const addressLines = computed(() => {
   return [a.line1, a.city, a.country].filter(Boolean)
 })
 
+const BED_FIELDS: { key: 'total_beds' | 'normal_beds' | 'icu_beds' | 'hdu_beds' | 'dialysis_beds' | 'number_of_cots'; label: string }[] = [
+  { key: 'total_beds', label: 'Total beds' },
+  { key: 'normal_beds', label: 'Normal beds' },
+  { key: 'icu_beds', label: 'ICU beds' },
+  { key: 'hdu_beds', label: 'HDU beds' },
+  { key: 'dialysis_beds', label: 'Dialysis beds' },
+  { key: 'number_of_cots', label: 'Number of cots' },
+]
+
+const confirmDelete = ref(false)
+
+async function deleteHospital() {
+  const res = await store.remove(id.value)
+  confirmDelete.value = false
+  if (res.success) router.push('/hospitals')
+}
+
 onMounted(() => store.fetchOne(id.value))
 </script>
 
 <template>
   <div>
-    <v-btn variant="text" prepend-icon="mdi-arrow-left" class="mb-4" to="/hospitals">
-      Back to hospitals
-    </v-btn>
+    <div class="d-flex align-center justify-space-between mb-4">
+      <v-btn variant="text" prepend-icon="mdi-arrow-left" class="ma-0" to="/hospitals">
+        Back to hospitals
+      </v-btn>
+      <v-btn v-if="auth.isSystemAdmin && h" color="error" variant="tonal" prepend-icon="mdi-delete"
+        @click="confirmDelete = true">
+        Delete hospital
+      </v-btn>
+    </div>
 
     <v-alert v-if="store.error" type="error" variant="tonal" class="mb-4" :text="store.error" />
     <v-progress-linear v-if="store.loading" indeterminate color="primary" class="mb-4" />
@@ -168,6 +194,64 @@ onMounted(() => store.fetchOne(id.value))
         </v-col>
       </v-row>
 
+      <!-- 6. Facilities (bed capacity + facility administrator, from provisioning) -->
+      <v-row v-if="h.facilities.length">
+        <v-col v-for="f in h.facilities" :key="f.id" cols="12" md="6">
+          <v-card rounded="lg" elevation="10" class="h-100">
+            <v-card-item>
+              <v-card-title><v-icon icon="mdi-hospital-building" class="mr-2" />{{ f.name }}</v-card-title>
+              <template #append>
+                <v-chip :color="f.core_facility_id ? 'success' : 'warning'" size="small" variant="tonal" label>
+                  {{ f.core_facility_id ? 'Provisioned' : 'Not in core-service' }}
+                </v-chip>
+              </template>
+            </v-card-item>
+            <v-card-text>
+              <v-list density="compact" lines="two">
+                <v-list-item title="Facility code" :subtitle="f.facility_code || '—'" />
+                <v-list-item title="KEPH level" :subtitle="f.keph_level || '—'" />
+              </v-list>
+
+              <p class="text-caption textSecondary text-uppercase mt-2 mb-1">Bed occupancy</p>
+              <v-row dense>
+                <v-col v-for="bf in BED_FIELDS" :key="bf.key" cols="6" sm="4">
+                  <p class="text-caption textSecondary mb-0">{{ bf.label }}</p>
+                  <p class="text-body-1 font-weight-medium mb-0">{{ f[bf.key] ?? '—' }}</p>
+                </v-col>
+              </v-row>
+
+              <template v-if="f.facility_administrator_name || f.facility_administrator_email">
+                <p class="text-caption textSecondary text-uppercase mt-3 mb-1">Facility administrator</p>
+                <v-list density="compact" lines="two">
+                  <v-list-item title="Name" :subtitle="f.facility_administrator_name || '—'" />
+                  <v-list-item title="Email" :subtitle="f.facility_administrator_email || '—'" />
+                  <v-list-item title="Phone" :subtitle="f.facility_administrator_phone || '—'" />
+                  <v-list-item title="Identifier" :subtitle="f.facility_administrator_identifier || '—'" />
+                </v-list>
+              </template>
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+      <v-alert v-else type="info" variant="tonal" class="mt-6">
+        No facility has been added to this hospital yet.
+      </v-alert>
+
+      <!-- 7. Hospital admin accounts -->
+      <v-card rounded="lg" elevation="10" class="mt-6">
+        <v-card-item>
+          <v-card-title><v-icon icon="mdi-account-tie" class="mr-2" />Hospital Admins</v-card-title>
+        </v-card-item>
+        <v-card-text>
+          <v-list v-if="h.admins.length" density="comfortable" lines="two">
+            <v-list-item v-for="a in h.admins" :key="a.id" :title="a.name" :subtitle="`${a.username} · ${a.email}`">
+              <template #prepend><v-icon icon="mdi-account-circle" class="mr-2" /></template>
+            </v-list-item>
+          </v-list>
+          <p v-else class="text-body-2 textSecondary mb-0">No admin account has been created for this hospital yet.</p>
+        </v-card-text>
+      </v-card>
+
       <!-- Integrations shortcut -->
       <v-card rounded="lg" elevation="10" class="mt-6">
         <v-card-text class="d-flex align-center justify-space-between pa-5">
@@ -182,5 +266,22 @@ onMounted(() => store.fetchOne(id.value))
         </v-card-text>
       </v-card>
     </template>
+
+    <!-- Delete confirmation dialog -->
+    <v-dialog v-model="confirmDelete" max-width="440">
+      <v-card rounded="lg">
+        <v-card-title class="text-h6">Delete hospital?</v-card-title>
+        <v-card-text>
+          This will permanently remove <strong>{{ h?.display_name || h?.name }}</strong> from the platform's
+          active hospital list. Its facilities, admin accounts and integration config are kept and can be
+          restored if this was a mistake — contact platform engineering to reverse it.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="store.deleting" @click="confirmDelete = false">Cancel</v-btn>
+          <v-btn color="error" variant="flat" :loading="store.deleting" @click="deleteHospital">Delete</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>

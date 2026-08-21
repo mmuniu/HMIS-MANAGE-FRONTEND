@@ -1,18 +1,19 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useHospitalsApi } from '~/composables/useHospitalsApi'
-import type { CreateHospitalPayload, CreateHospitalResponse, Hospital, PaginationMeta, RetryProvisioningResponse } from '~/types/hospital'
+import type { CreateHospitalPayload, CreateHospitalResponse, Hospital, HospitalDetail, PaginationMeta, RetryProvisioningResponse } from '~/types/hospital'
 
 export const useHospitalsStore = defineStore('hospitals', () => {
   const api = useHospitalsApi()
 
   const items = ref<Hospital[]>([])
   const meta = ref<PaginationMeta | null>(null)
-  const current = ref<Hospital | null>(null)
+  const current = ref<HospitalDetail | null>(null)
   const loading = ref(false)
   const error = ref('')
   const saving = ref(false)
   const retrying = ref(false)
+  const deleting = ref(false)
   // Full response from the most recent create() call, kept around so the
   // caller can render provisioning outcome instead of only reading it once.
   const lastCreateResult = ref<CreateHospitalResponse | null>(null)
@@ -91,9 +92,28 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     }
   }
 
+  async function remove(id: string) {
+    deleting.value = true
+    error.value = ''
+    try {
+      await api.destroy(id)
+      items.value = items.value.filter((h) => h.id !== id)
+      if (current.value?.id === id) current.value = null
+      return { success: true as const }
+    } catch (err: any) {
+      error.value =
+        err?.response?.status === 403
+          ? err.response.data?.message || 'You do not have permission to delete this hospital.'
+          : err?.response?.data?.message || 'Failed to delete hospital.'
+      return { success: false as const }
+    } finally {
+      deleting.value = false
+    }
+  }
+
   return {
-    items, meta, current, loading, error, saving, retrying, fieldErrors,
+    items, meta, current, loading, error, saving, retrying, deleting, fieldErrors,
     lastCreateResult, lastRetryResult,
-    fetchList, fetchOne, create, retryProvisioning,
+    fetchList, fetchOne, create, retryProvisioning, remove,
   }
 })

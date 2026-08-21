@@ -13,7 +13,7 @@
                     class="border-e px-md-12 px-6 py-md-12 py-6"
                   >
                     <div class="d-flex"><Logo /></div>
-                    <h2 class="text-34 my-6">Sign in to HMIS Platform</h2>
+                    <h2 class="text-34 my-6">Sign in to {{ tenantBranding.branding?.name || 'HMIS Platform' }}</h2>
                     <BoxedLoginForm />
                     <p class="text-16 text-medium-emphasis mt-6">
                       Accounts are provisioned by your platform administrator.
@@ -65,12 +65,17 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from "vue";
 import BoxedLoginForm from "@/components/auth/BoxedLoginForm.vue";
 
 import { AuthCuroselData } from "@/_mockApis/components/pages/auth";
 import Logo from "~/components/lc/Full/logo/Logo.vue";
+import { useTenantBrandingStore } from "@/stores/tenantBranding";
 
 definePageMeta({
   layout: "blank",
 });
+
+const tenantBranding = useTenantBrandingStore();
+onMounted(() => tenantBranding.resolveFromHost());
 </script>

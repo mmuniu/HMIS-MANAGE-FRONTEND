@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useNuxtApp } from '#app'
 import { useHospitalsStore } from '@/stores/hospitals'
 import { useAuthStore } from '@/stores/auth'
-import { STATUS_COLOR, TIER_COLOR, BILLING_COLOR } from '@/types/hospital'
+import { STATUS_COLOR, TIER_COLOR, BILLING_COLOR, type HospitalAdminUser } from '@/types/hospital'
 
 const route = useRoute()
 const router = useRouter()
 const store = useHospitalsStore()
 const auth = useAuthStore()
+const { $showToast } = useNuxtApp()
 
 const id = computed(() => String(route.params.id))
 const h = computed(() => store.current)
@@ -49,6 +51,27 @@ function provisionAdmin(adminId: number) {
   store.provisionAdmin(id.value, adminId)
 }
 
+const editAdminDialog = ref(false)
+const editingAdmin = ref<HospitalAdminUser | null>(null)
+const editAdminForm = reactive({ name: '', username: '', email: '' })
+
+function openEditAdmin(a: HospitalAdminUser) {
+  editingAdmin.value = a
+  editAdminForm.name = a.name
+  editAdminForm.username = a.username
+  editAdminForm.email = a.email
+  editAdminDialog.value = true
+}
+
+async function saveAdminEdit() {
+  if (!editingAdmin.value) return
+  const res = await store.updateAdmin(id.value, editingAdmin.value.id, { ...editAdminForm })
+  if (res.success) {
+    editAdminDialog.value = false
+    $showToast(res.notified ? 'Admin details updated — confirmation email sent.' : 'Admin details updated.')
+  }
+}
+
 // `[id].vue` is reused (not remounted) when navigating from one hospital's
 // detail page straight to another's, since both match this same route —
 // watch the param directly rather than relying on onMounted alone, or the
@@ -60,6 +83,8 @@ watch(
   (newId) => {
     store.lastAdminProvisionResult = null
     showAdminPassword.value = false
+    editAdminDialog.value = false
+    editingAdmin.value = null
     store.fetchOne(newId)
   },
   { immediate: true },
@@ -285,6 +310,7 @@ watch(
                       Provision
                     </v-btn>
                   </template>
+                  <v-btn icon="mdi-pencil" variant="text" size="small" @click="openEditAdmin(a)" />
                 </div>
               </template>
             </v-list-item>
@@ -349,6 +375,26 @@ watch(
           <v-spacer />
           <v-btn variant="text" :disabled="store.deleting" @click="confirmDelete = false">Cancel</v-btn>
           <v-btn color="error" variant="flat" :loading="store.deleting" @click="deleteHospital">Delete</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Edit admin dialog -->
+    <v-dialog v-model="editAdminDialog" max-width="480">
+      <v-card rounded="lg">
+        <v-card-title class="text-h6">Edit admin details</v-card-title>
+        <v-card-text>
+          <v-text-field v-model="editAdminForm.name" label="Name" variant="outlined" density="comfortable" class="mb-3" hide-details="auto" />
+          <v-text-field v-model="editAdminForm.username" label="Username" variant="outlined" density="comfortable" class="mb-3" hide-details="auto" />
+          <v-text-field v-model="editAdminForm.email" label="Email" type="email" variant="outlined" density="comfortable" hide-details="auto" />
+          <p class="text-caption textSecondary mt-3 mb-0">
+            Saving sends a notification email to the admin's (possibly new) address confirming what changed.
+          </p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="store.updatingAdminId === editingAdmin?.id" @click="editAdminDialog = false">Cancel</v-btn>
+          <v-btn color="primary" variant="flat" :loading="store.updatingAdminId === editingAdmin?.id" @click="saveAdminEdit">Save</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

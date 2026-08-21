@@ -74,6 +74,20 @@ export interface ProvisionAdminResponse {
   password: string
 }
 
+export interface UpdateAdminPayload {
+  name?: string
+  username?: string
+  email?: string
+}
+
+// Response of PATCH /v1/platform/hospitals/{id}/admins/{userId}.
+// `notified` reports whether the "your details changed" email actually went
+// out — it can be false if nothing in the payload differed from before.
+export interface UpdateAdminResponse {
+  data: HospitalAdminUser
+  notified: boolean
+}
+
 // GET /v1/platform/hospitals/{id} returns everything gathered during
 // provisioning, not just the bare organization fields list() gives back.
 export interface HospitalDetail extends Hospital {

@@ -8,6 +8,8 @@ import type {
   HospitalShowResponse,
   ProvisionAdminResponse,
   RetryProvisioningResponse,
+  UpdateAdminPayload,
+  UpdateAdminResponse,
 } from '~/types/hospital'
 
 /**
@@ -51,6 +53,11 @@ export function useHospitalsApi() {
     return data
   }
 
+  async function updateAdmin(id: string, userId: number, payload: UpdateAdminPayload): Promise<UpdateAdminResponse> {
+    const { data } = await $axios.patch<UpdateAdminResponse>(`/v1/platform/hospitals/${id}/admins/${userId}`, payload)
+    return data
+  }
+
   // Backend always answers with the {ok, status, data, error} envelope, even
   // for "not configured" / auth failures — those come back as non-2xx, so
   // pull the envelope out of the error response instead of throwing.
@@ -66,5 +73,5 @@ export function useHospitalsApi() {
     }
   }
 
-  return { list, show, create, destroy, retryProvisioning, provisionAdmin, searchFacility }
+  return { list, show, create, destroy, retryProvisioning, provisionAdmin, updateAdmin, searchFacility }
 }

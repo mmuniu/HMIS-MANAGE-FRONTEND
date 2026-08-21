@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useHospitalsApi } from '~/composables/useHospitalsApi'
-import type { CreateHospitalPayload, CreateHospitalResponse, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse } from '~/types/hospital'
+import type { CreateHospitalPayload, CreateHospitalResponse, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, UpdateAdminPayload } from '~/types/hospital'
 
 export const useHospitalsStore = defineStore('hospitals', () => {
   const api = useHospitalsApi()
@@ -23,6 +23,8 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   const provisioningAdminId = ref<number | null>(null)
   // Most recent provisionAdmin() result — carries the one-time temp password.
   const lastAdminProvisionResult = ref<ProvisionAdminResponse | null>(null)
+  // id of the admin currently being edited/saved, if any (drives the dialog's save spinner).
+  const updatingAdminId = ref<number | null>(null)
   // Field-level validation errors from the backend (422), keyed by field name.
   const fieldErrors = ref<Record<string, string[]>>({})
 
@@ -115,6 +117,24 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     }
   }
 
+  async function updateAdmin(orgId: string, userId: number, payload: UpdateAdminPayload) {
+    updatingAdminId.value = userId
+    error.value = ''
+    try {
+      const res = await api.updateAdmin(orgId, userId, payload)
+      if (current.value) {
+        const index = current.value.admins.findIndex((a) => a.id === userId)
+        if (index !== -1) current.value.admins[index] = res.data
+      }
+      return { success: true as const, notified: res.notified }
+    } catch (err: any) {
+      error.value = err?.response?.data?.message || 'Failed to update admin.'
+      return { success: false as const, notified: false }
+    } finally {
+      updatingAdminId.value = null
+    }
+  }
+
   async function remove(id: string) {
     deleting.value = true
     error.value = ''
@@ -136,8 +156,8 @@ export const useHospitalsStore = defineStore('hospitals', () => {
 
   return {
     items, meta, current, loading, error, saving, retrying, deleting, fieldErrors,
-    provisioningAdminId, lastAdminProvisionResult,
+    provisioningAdminId, lastAdminProvisionResult, updatingAdminId,
     lastCreateResult, lastRetryResult,
-    fetchList, fetchOne, create, retryProvisioning, provisionAdmin, remove,
+    fetchList, fetchOne, create, retryProvisioning, provisionAdmin, updateAdmin, remove,
   }
 })

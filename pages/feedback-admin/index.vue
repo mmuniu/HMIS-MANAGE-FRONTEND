@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive } from 'vue'
+import { useRouter } from 'vue-router'
 import { useReportsApi } from '@/composables/useReportsApi'
 import {
   MODULES, SEVERITIES, STATUS_LABELS, STATUS_COLORS,
   type ReportSummary, type ReportStatus,
 } from '@/types/report'
 
+const router = useRouter()
 const api = useReportsApi()
 
 const items = ref<ReportSummary[]>([])
@@ -20,7 +22,25 @@ const filters = reactive({
   date_from: '', date_to: '',
 })
 
-const statusItems = (Object.keys(STATUS_LABELS) as ReportStatus[]).map((v) => ({ title: STATUS_LABELS[v], value: v }))
+// Server-side paging. Without this the table only ever showed the first page
+// the API returned (25 rows), which on a busy system is all one status —
+// it looked like the list was filtered to "Raised" when it simply wasn't paged.
+const page = ref(1)
+const perPage = ref(25)
+const total = ref(0)
+
+// An explicit "All" entry (value null) so the default state is visible rather
+// than an empty box, and you can get back to everything without clearing.
+const statusItems = [
+  { title: 'All statuses', value: null as any },
+  ...(Object.keys(STATUS_LABELS) as ReportStatus[]).map((v) => ({ title: STATUS_LABELS[v], value: v })),
+]
+const typeItems = [
+  { title: 'All types', value: null as any },
+  { title: 'Bug', value: 'bug' }, { title: 'Feature', value: 'feature' }, { title: 'Observation', value: 'observation' },
+]
+const moduleItems = [{ title: 'All modules', value: null as any }, ...MODULES.map((m) => ({ title: m, value: m }))]
+const severityItems = [{ title: 'All severities', value: null as any }, ...SEVERITIES.map((s) => ({ title: s, value: s }))]
 
 const headers = [
   { title: 'Ticket', key: 'ticket_id', sortable: false },
@@ -56,10 +76,11 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const params: Record<string, any> = {}
+    const params: Record<string, any> = { page: page.value, per_page: perPage.value }
     for (const [k, v] of Object.entries(filters)) if (v) params[k] = v
     const res = await api.adminList(params)
     items.value = res.data
+    total.value = res.meta?.total ?? res.data.length
   } catch (e: any) {
     error.value = e?.response?.data?.message || 'Failed to load reports.'
   } finally {
@@ -67,18 +88,25 @@ async function load() {
   }
 }
 
-function clearFilters() {
-  Object.assign(filters, { search: '', status: null, type: null, module: null, severity: null, date_from: '', date_to: '' })
+/** Filters changed — go back to page 1, otherwise you can land past the end. */
+function applyFilters() {
+  page.value = 1
   load()
 }
 
-onMounted(load)
+function clearFilters() {
+  Object.assign(filters, { search: '', status: null, type: null, module: null, severity: null, date_from: '', date_to: '' })
+  applyFilters()
+}
+
+// No onMounted(load) — v-data-table-server emits update:options on mount,
+// which fires load() once. Calling both would double-request on every visit.
 </script>
 
 <template>
   <div>
     <div class="mb-6">
-      <h2 class="text-h4 font-weight-semibold">Feedback Administration</h2>
+      <h2 class="text-h4 font-weight-semibold">Feedback Admin</h2>
       <p class="textSecondary">All bug reports and feature requests across the platform.</p>
     </div>
 
@@ -94,16 +122,16 @@ onMounted(load)
               @keyup.enter="load" />
           </v-col>
           <v-col cols="6" md="2">
-            <v-select v-model="filters.status" :items="statusItems" label="Status" variant="outlined" density="comfortable" hide-details clearable />
+            <v-select v-model="filters.status" :items="statusItems" label="Status" variant="outlined" density="comfortable" hide-details />
           </v-col>
           <v-col cols="6" md="2">
-            <v-select v-model="filters.type" :items="[{title:'Bug',value:'bug'},{title:'Feature',value:'feature'},{title:'Observation',value:'observation'}]" label="Type" variant="outlined" density="comfortable" hide-details clearable />
+            <v-select v-model="filters.type" :items="typeItems" label="Type" variant="outlined" density="comfortable" hide-details />
           </v-col>
           <v-col cols="6" md="2">
-            <v-select v-model="filters.module" :items="MODULES" label="Module" variant="outlined" density="comfortable" hide-details clearable />
+            <v-select v-model="filters.module" :items="moduleItems" label="Module" variant="outlined" density="comfortable" hide-details />
           </v-col>
           <v-col cols="6" md="2">
-            <v-select v-model="filters.severity" :items="SEVERITIES" label="Severity" variant="outlined" density="comfortable" hide-details clearable class="text-capitalize" />
+            <v-select v-model="filters.severity" :items="severityItems" label="Severity" variant="outlined" density="comfortable" hide-details class="text-capitalize" />
           </v-col>
           <v-col cols="6" md="3">
             <v-text-field v-model="filters.date_from" type="date" label="From" variant="outlined" density="comfortable" hide-details />
@@ -112,9 +140,9 @@ onMounted(load)
             <v-text-field v-model="filters.date_to" type="date" label="To" variant="outlined" density="comfortable" hide-details />
           </v-col>
           <v-col cols="12" md="6" class="d-flex align-center ga-2">
-            <v-btn color="primary" prepend-icon="mdi-filter" @click="load">Apply</v-btn>
+            <v-btn color="primary" prepend-icon="mdi-filter" :loading="loading" @click="applyFilters">Apply</v-btn>
             <v-btn variant="text" @click="clearFilters">Clear</v-btn>
-            <v-chip size="small" variant="tonal" color="grey">{{ items.length }} total</v-chip>
+            <v-chip v-if="total" variant="tonal" label>{{ total }} total</v-chip>
           </v-col>
         </v-row>
       </v-card-text>
@@ -122,8 +150,15 @@ onMounted(load)
 
     <!-- Table -->
     <v-card rounded="lg" elevation="10">
-      <v-data-table :headers="headers" :items="items" :loading="loading" density="comfortable" hover
-        @click:row="(_e: any, { item }: any) => window.open(`/feedback-admin/${item.ticket_id}?from=${encodeURIComponent('/feedback-admin')}`, '_blank')">
+      <v-data-table-server
+        v-model:page="page"
+        v-model:items-per-page="perPage"
+        :items-length="total"
+        :headers="headers" :items="items" :loading="loading"
+        :items-per-page-options="[25, 50, 100, 200]"
+        density="comfortable" hover
+        @update:options="load"
+        @click:row="(_e: any, { item }: any) => router.push(`/feedback-admin/${item.ticket_id}?from=${encodeURIComponent('/feedback-admin')}`)">
         <template #item.ticket_id="{ item }"><span class="font-mono text-caption">{{ item.ticket_id.slice(0, 8) }}</span></template>
         <template #item.type="{ item }">
           <v-chip :color="item.type === 'bug' ? 'error' : item.type === 'observation' ? 'teal' : 'primary'" size="small" variant="tonal" label>
@@ -152,7 +187,7 @@ onMounted(load)
             @click.stop="confirmDelete = item" />
         </template>
         <template #no-data><div class="pa-8 text-center textSecondary">No reports match your filters.</div></template>
-      </v-data-table>
+      </v-data-table-server>
     </v-card>
 
     <!-- Delete confirmation dialog -->

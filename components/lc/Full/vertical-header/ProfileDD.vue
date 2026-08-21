@@ -33,8 +33,17 @@ const tenant = useTenantStore();
             <span class="text-caption textSecondary">{{ auth.user?.email }}</span>
           </div>
         </div>
+        <v-divider class="mb-2" />
+        <v-list density="compact" class="pa-0 mb-2" bg-color="transparent">
+          <v-list-item
+            to="/account/password"
+            rounded="md"
+            prepend-icon="mdi-lock-reset"
+            title="Change Password"
+          />
+        </v-list>
         <v-divider class="mb-3" />
-        <v-btn block color="error" variant="tonal" prepend-icon="mdi-logout" @click="auth.logout">
+        <v-btn block color="error" variant="tonal" prepend-icon="mdi-logout" @click="auth.logout()">
           Logout
         </v-btn>
       </div>

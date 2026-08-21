@@ -59,6 +59,13 @@ const sidebarItem: menu[] = [
                 roles: ['tester', 'developer', 'qa'],
             },
             {
+                title: 'My Test Cases',
+                icon: 'document-add-line-duotone',
+                to: '/my-test-cases',
+                // Authors (tester + developer) track their created cases' approval.
+                roles: ['tester', 'developer'],
+            },
+            {
                 title: 'Test Approvals',
                 icon: 'shield-check-line-duotone',
                 to: '/test-approvals',
@@ -96,11 +103,11 @@ const sidebarItem: menu[] = [
                 title: 'Feedback Admin',
                 icon: 'inbox-line-line-duotone',
                 to: '/feedback-admin',
-                // System admin triages all reports.
+                // System admin triages all reports and assigns them to devs.
                 roles: ['system_admin'],
             },
             {
-                title: 'Bugs & Features',
+                title: 'Assigned Bugs',
                 icon: 'bug-line-duotone',
                 to: '/work',
                 // Developers see their own assigned work; system admin sees all.

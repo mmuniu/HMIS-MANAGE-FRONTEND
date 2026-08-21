@@ -189,6 +189,31 @@ export interface CreateHospitalPayload {
   admin?: { name: string; username: string; email: string; password: string }
 }
 
+// Payload for PUT /v1/platform/hospitals/{id} (matches UpdateHospitalRequest).
+// Organization-level fields only — editing facilities/admin accounts is a
+// separate concern, not part of this form.
+export interface UpdateHospitalPayload {
+  name?: string
+  legal_name?: string
+  display_name?: string
+  timezone?: string
+  locale?: string
+  address?: HospitalAddress
+  subdomain?: string
+  custom_domain?: string
+  subscription_tier?: SubscriptionTier
+  billing_status?: BillingStatus
+  payment_gateway_customer_id?: string
+  max_user_slots?: number
+  max_patient_records?: number
+  status?: HospitalStatus
+  is_sandbox?: boolean
+}
+
+export interface UpdateHospitalResponse {
+  data: Hospital
+}
+
 export interface CreateHospitalResponse {
   data: Hospital
   facility: { id: string; name: string; core_facility_id: string | null } | null

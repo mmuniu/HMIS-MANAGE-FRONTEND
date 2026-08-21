@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useHospitalsApi } from '~/composables/useHospitalsApi'
-import type { CreateHospitalPayload, CreateHospitalResponse, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse } from '~/types/hospital'
+import type { CreateHospitalPayload, CreateHospitalResponse, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, UpdateHospitalPayload } from '~/types/hospital'
 
 export const useHospitalsStore = defineStore('hospitals', () => {
   const api = useHospitalsApi()
@@ -77,6 +77,29 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     }
   }
 
+  async function update(id: string, payload: UpdateHospitalPayload) {
+    saving.value = true
+    error.value = ''
+    fieldErrors.value = {}
+    try {
+      const res = await api.update(id, payload)
+      if (current.value?.id === id) Object.assign(current.value, res.data)
+      const inList = items.value.find((h) => h.id === id)
+      if (inList) Object.assign(inList, res.data)
+      return { success: true as const, data: res }
+    } catch (err: any) {
+      if (err?.response?.status === 422) {
+        fieldErrors.value = err.response.data?.errors || {}
+        error.value = err.response.data?.message || 'Please fix the highlighted fields.'
+      } else {
+        error.value = err?.response?.data?.message || 'Failed to update hospital.'
+      }
+      return { success: false as const }
+    } finally {
+      saving.value = false
+    }
+  }
+
   async function retryProvisioning(id: string) {
     retrying.value = true
     error.value = ''
@@ -138,6 +161,6 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     items, meta, current, loading, error, saving, retrying, deleting, fieldErrors,
     provisioningAdminId, lastAdminProvisionResult,
     lastCreateResult, lastRetryResult,
-    fetchList, fetchOne, create, retryProvisioning, provisionAdmin, remove,
+    fetchList, fetchOne, create, update, retryProvisioning, provisionAdmin, remove,
   }
 })

@@ -453,33 +453,33 @@ function done() {
               {{ dhaStatus }}
             </p>
 
-            <v-text-field v-model="facility.name" :disabled="!addFacility" :readonly="dhaMatched" label="Facility name" placeholder="e.g. Main Hospital"
+            <v-text-field v-model="facility.name" :disabled="!addFacility" readonly label="Facility name" placeholder="e.g. Main Hospital"
               variant="outlined" density="comfortable" class="mb-3" hide-details="auto" />
             <div class="d-flex ga-3 mb-3 flex-wrap">
-              <v-text-field v-model="facility.facility_code" :disabled="!addFacility" :readonly="dhaMatched" label="Master facility code" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
-              <v-text-field v-model="facility.keph_level" :disabled="!addFacility" :readonly="dhaMatched" label="KEPH level" placeholder="e.g. Level 4" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.facility_code" :disabled="!addFacility" label="Master facility code" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.keph_level" :disabled="!addFacility" readonly label="KEPH level" placeholder="e.g. Level 4" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
             </div>
 
             <h4 class="text-subtitle-1 font-weight-medium mt-4 mb-2">Bed Occupancy</h4>
             <div class="d-flex ga-3 mb-3 flex-wrap">
-              <v-text-field v-model.number="facility.total_beds" :disabled="!addFacility" :readonly="dhaMatched" type="number" label="Total beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
-              <v-text-field v-model.number="facility.normal_beds" :disabled="!addFacility" :readonly="dhaMatched" type="number" label="Normal beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
-              <v-text-field v-model.number="facility.icu_beds" :disabled="!addFacility" :readonly="dhaMatched" type="number" label="ICU beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.total_beds" :disabled="!addFacility" readonly type="number" label="Total beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.normal_beds" :disabled="!addFacility" readonly type="number" label="Normal beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.icu_beds" :disabled="!addFacility" readonly type="number" label="ICU beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
             </div>
             <div class="d-flex ga-3 mb-3 flex-wrap">
-              <v-text-field v-model.number="facility.hdu_beds" :disabled="!addFacility" :readonly="dhaMatched" type="number" label="HDU beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
-              <v-text-field v-model.number="facility.dialysis_beds" :disabled="!addFacility" :readonly="dhaMatched" type="number" label="Dialysis beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
-              <v-text-field v-model.number="facility.number_of_cots" :disabled="!addFacility" :readonly="dhaMatched" type="number" label="Number of cots" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.hdu_beds" :disabled="!addFacility" readonly type="number" label="HDU beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.dialysis_beds" :disabled="!addFacility" readonly type="number" label="Dialysis beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.number_of_cots" :disabled="!addFacility" readonly type="number" label="Number of cots" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
             </div>
 
             <h4 class="text-subtitle-1 font-weight-medium mt-4 mb-2">Facility Administrator</h4>
             <div class="d-flex ga-3 mb-3 flex-wrap">
-              <v-text-field v-model="facility.facility_administrator_name" :disabled="!addFacility" :readonly="dhaMatched" label="Administrator name" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
-              <v-text-field v-model="facility.facility_administrator_email" :disabled="!addFacility" :readonly="dhaMatched" label="Administrator email" type="email" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.facility_administrator_name" :disabled="!addFacility" readonly label="Administrator name" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.facility_administrator_email" :disabled="!addFacility" readonly label="Administrator email" type="email" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
             </div>
             <div class="d-flex ga-3 mb-3 flex-wrap">
-              <v-text-field v-model="facility.facility_administrator_phone" :disabled="!addFacility" :readonly="dhaMatched" label="Administrator phone" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
-              <v-text-field v-model="facility.facility_administrator_identifier" :disabled="!addFacility" :readonly="dhaMatched" label="Administrator identifier" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.facility_administrator_phone" :disabled="!addFacility" readonly label="Administrator phone" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.facility_administrator_identifier" :disabled="!addFacility" readonly label="Administrator identifier" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
             </div>
 
             <v-alert v-if="addFacility && dhaMatched && !facilityGateOk" type="error" variant="tonal" density="compact" class="mb-3">

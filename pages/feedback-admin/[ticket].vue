@@ -15,15 +15,15 @@ const { $showToast } = useNuxtApp()
 
 const ticket = computed(() => String(route.params.ticket))
 
-// Back navigation returns to wherever the user came from (Bugs & Features or
-// Feedback Administration), falling back to the work queue for email deep-links.
+// Back navigation returns to wherever the user came from (Assigned Bugs or
+// Feedback Admin), falling back to the work queue for email deep-links.
 const KNOWN_ORIGINS = ['/work', '/feedback-admin']
 const backTarget = computed(() => {
   const from = String(route.query.from ?? '')
   return KNOWN_ORIGINS.includes(from) ? from : '/work'
 })
 const backLabel = computed(() =>
-  backTarget.value === '/feedback-admin' ? 'Back to Feedback Administration' : 'Back to Bugs & Features',
+  backTarget.value === '/feedback-admin' ? 'Back to Feedback Admin' : 'Back to Assigned Bugs',
 )
 function goBack() {
   router.push(backTarget.value)

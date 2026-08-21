@@ -97,10 +97,16 @@ watch(
       <v-btn variant="text" prepend-icon="mdi-arrow-left" class="ma-0" to="/hospitals">
         Back to hospitals
       </v-btn>
-      <v-btn v-if="auth.isSystemAdmin && h" color="error" variant="tonal" prepend-icon="mdi-delete"
-        @click="confirmDelete = true">
-        Delete hospital
-      </v-btn>
+      <div class="d-flex ga-2">
+        <v-btn v-if="auth.isPlatformUser && h" color="primary" variant="tonal" prepend-icon="mdi-pencil"
+          :to="`/hospitals/${id}/edit`">
+          Edit hospital
+        </v-btn>
+        <v-btn v-if="auth.isSystemAdmin && h" color="error" variant="tonal" prepend-icon="mdi-delete"
+          @click="confirmDelete = true">
+          Delete hospital
+        </v-btn>
+      </div>
     </div>
 
     <v-alert v-if="store.error" type="error" variant="tonal" class="mb-4" :text="store.error" />

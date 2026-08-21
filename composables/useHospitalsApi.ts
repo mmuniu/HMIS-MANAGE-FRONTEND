@@ -8,8 +8,13 @@ import type {
   HospitalShowResponse,
   ProvisionAdminResponse,
   RetryProvisioningResponse,
+<<<<<<< HEAD
   UpdateAdminPayload,
   UpdateAdminResponse,
+=======
+  UpdateHospitalPayload,
+  UpdateHospitalResponse,
+>>>>>>> 06794bf351253daff330e38517d398a2f77570ca
 } from '~/types/hospital'
 
 /**
@@ -17,6 +22,7 @@ import type {
  * Backend:
  *   GET    /v1/platform/hospitals       (paginated)
  *   GET    /v1/platform/hospitals/{id}
+ *   PUT    /v1/platform/hospitals/{id}  (edit details, platform staff only)
  *   DELETE /v1/platform/hospitals/{id}  (soft-delete, system admin only)
  *   GET    /v1/platform/hospitals/facility-search (DHA SHA HIE lookup)
  *   POST   /v1/platform/hospitals/{id}/provision (retry core-service sync)
@@ -36,6 +42,11 @@ export function useHospitalsApi() {
 
   async function destroy(id: string): Promise<void> {
     await $axios.delete(`/v1/platform/hospitals/${id}`)
+  }
+
+  async function update(id: string, payload: UpdateHospitalPayload): Promise<UpdateHospitalResponse> {
+    const { data } = await $axios.put<UpdateHospitalResponse>(`/v1/platform/hospitals/${id}`, payload)
+    return data
   }
 
   async function create(payload: CreateHospitalPayload): Promise<CreateHospitalResponse> {
@@ -73,5 +84,9 @@ export function useHospitalsApi() {
     }
   }
 
+<<<<<<< HEAD
   return { list, show, create, destroy, retryProvisioning, provisionAdmin, updateAdmin, searchFacility }
+=======
+  return { list, show, create, update, destroy, retryProvisioning, provisionAdmin, searchFacility }
+>>>>>>> 06794bf351253daff330e38517d398a2f77570ca
 }

@@ -53,23 +53,48 @@ const facility = reactive<HospitalFacilityPayload>({
 
 const addAdmin = ref(true)
 const admin = reactive({ name: '', username: '', email: '', password: '' })
-// True once the temporary password was auto-generated from the HIE facility
-// administrator's name — locks the field so it can't be hand-edited into
-// something weaker; use regeneratePassword() to get a different one.
+// True once a temporary password has been auto-generated — locks the field
+// so it can't be hand-edited into something weaker; use regeneratePassword()
+// to get a different one.
 const adminPasswordLocked = ref(false)
 
-const PASSWORD_SYMBOLS = ['!', '@', '#', '$', '%', '^', '&', '*']
+// Letter-heavy on purpose: a short random letter block plus the person's
+// name reads (and types) far easier than a wall of digits/symbols, while a
+// couple of digits and a single symbol still satisfy typical complexity
+// checks without dominating the password.
+const PASSWORD_SYMBOLS = ['!', '@', '#', '$', '%']
+const LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+function randomLetters(count: number): string {
+  let out = ''
+  for (let i = 0; i < count; i++) out += LETTERS[Math.floor(Math.random() * LETTERS.length)]
+  return out
+}
 
 function generateTempPassword(fullName: string): string {
   const firstName = fullName.trim().split(/\s+/)[0] || 'User'
-  const digits = Math.floor(100000 + Math.random() * 900000)
+  const letters = randomLetters(4)
+  const digits = Math.floor(10 + Math.random() * 90)
   const symbol = PASSWORD_SYMBOLS[Math.floor(Math.random() * PASSWORD_SYMBOLS.length)]
-  return `${firstName}${digits}${symbol}`
+  return `${firstName}${letters}${digits}${symbol}`
 }
 
 function regeneratePassword() {
   admin.password = generateTempPassword(admin.name || 'User')
+  adminPasswordLocked.value = true
 }
+
+// Auto-generate as soon as there's an admin to generate one for — most
+// registrations never touch the DHA registry lookup, so that can't be the
+// only trigger. Re-generates on each name edit so the password stays based
+// on the name actually entered, not a placeholder from before it was typed.
+function onAdminNameInput() {
+  if (addAdmin.value) regeneratePassword()
+}
+
+watch(step, (s) => {
+  if (s === 4 && addAdmin.value && !admin.password) regeneratePassword()
+})
 
 // DHA SHA HIE facility registry lookup — see ShaHieClient / HospitalController::searchFacility.
 // Never blocks: an unconfigured/unreachable registry just falls back to manual entry below.
@@ -388,6 +413,7 @@ function done() {
         <template #item.1>
           <div class="pa-2">
             <h3 class="text-h6 mb-4"><v-icon icon="mdi-map-marker" class="mr-2" />Identity & Localization</h3>
+
             <v-text-field v-model="form.name" label="Hospital name *" variant="outlined" density="comfortable"
               :error-messages="fieldError('name')" class="mb-3" hide-details="auto" />
             <div class="d-flex ga-3 mb-3 flex-wrap">
@@ -498,7 +524,7 @@ function done() {
               <v-switch v-model="addAdmin" color="primary" hide-details inset density="compact" label="Create admin" />
             </div>
             <v-text-field v-model="admin.name" :disabled="!addAdmin" label="Full name" variant="outlined" density="comfortable"
-              :error-messages="fieldError('admin.name')" class="mb-3" hide-details="auto" />
+              :error-messages="fieldError('admin.name')" class="mb-3" hide-details="auto" @blur="onAdminNameInput" />
             <v-text-field v-model="admin.username" :disabled="!addAdmin" label="Username" variant="outlined" density="comfortable"
               :error-messages="fieldError('admin.username')" class="mb-3" hide-details="auto" />
             <v-text-field v-model="admin.email" :disabled="!addAdmin" label="Email" type="email" variant="outlined" density="comfortable"
@@ -506,7 +532,7 @@ function done() {
             <v-text-field v-model="admin.password" :disabled="!addAdmin" :readonly="adminPasswordLocked"
               :type="adminPasswordLocked ? 'text' : 'password'" label="Temporary password" variant="outlined" density="comfortable"
               :error-messages="fieldError('admin.password')"
-              :hint="adminPasswordLocked ? 'Auto-generated from the HIE facility administrator\'s name. An invite email is sent to this admin.' : 'Min 8 characters. An invite email is sent to this admin.'"
+              :hint="adminPasswordLocked ? 'Auto-generated. An invite email is sent to this admin.' : 'Min 8 characters. An invite email is sent to this admin.'"
               persistent-hint hide-details="auto">
               <template v-if="adminPasswordLocked" #append-inner>
                 <v-btn icon="mdi-refresh" size="small" variant="text" :disabled="!addAdmin" @click="regeneratePassword" />

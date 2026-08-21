@@ -8,13 +8,10 @@ import type {
   HospitalShowResponse,
   ProvisionAdminResponse,
   RetryProvisioningResponse,
-<<<<<<< HEAD
   UpdateAdminPayload,
   UpdateAdminResponse,
-=======
   UpdateHospitalPayload,
   UpdateHospitalResponse,
->>>>>>> 06794bf351253daff330e38517d398a2f77570ca
 } from '~/types/hospital'
 
 /**
@@ -84,9 +81,5 @@ export function useHospitalsApi() {
     }
   }
 
-<<<<<<< HEAD
-  return { list, show, create, destroy, retryProvisioning, provisionAdmin, updateAdmin, searchFacility }
-=======
-  return { list, show, create, update, destroy, retryProvisioning, provisionAdmin, searchFacility }
->>>>>>> 06794bf351253daff330e38517d398a2f77570ca
+  return { list, show, create, update, destroy, retryProvisioning, provisionAdmin, updateAdmin, searchFacility }
 }

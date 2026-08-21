@@ -1,11 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useHospitalsApi } from '~/composables/useHospitalsApi'
-<<<<<<< HEAD
-import type { CreateHospitalPayload, CreateHospitalResponse, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, UpdateAdminPayload } from '~/types/hospital'
-=======
-import type { CreateHospitalPayload, CreateHospitalResponse, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, UpdateHospitalPayload } from '~/types/hospital'
->>>>>>> 06794bf351253daff330e38517d398a2f77570ca
+import type { CreateHospitalPayload, CreateHospitalResponse, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, UpdateAdminPayload, UpdateHospitalPayload } from '~/types/hospital'
 
 export const useHospitalsStore = defineStore('hospitals', () => {
   const api = useHospitalsApi()
@@ -185,10 +181,6 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     items, meta, current, loading, error, saving, retrying, deleting, fieldErrors,
     provisioningAdminId, lastAdminProvisionResult, updatingAdminId,
     lastCreateResult, lastRetryResult,
-<<<<<<< HEAD
-    fetchList, fetchOne, create, retryProvisioning, provisionAdmin, updateAdmin, remove,
-=======
-    fetchList, fetchOne, create, update, retryProvisioning, provisionAdmin, remove,
->>>>>>> 06794bf351253daff330e38517d398a2f77570ca
+    fetchList, fetchOne, create, update, retryProvisioning, provisionAdmin, updateAdmin, remove,
   }
 })

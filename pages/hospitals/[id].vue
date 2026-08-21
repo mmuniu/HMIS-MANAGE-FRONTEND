@@ -36,6 +36,19 @@ async function deleteHospital() {
   if (res.success) router.push('/hospitals')
 }
 
+const showAdminPassword = ref(false)
+const copiedAdminField = ref<'username' | 'password' | null>(null)
+
+async function copyAdminField(text: string, field: 'username' | 'password') {
+  await navigator.clipboard.writeText(text)
+  copiedAdminField.value = field
+  setTimeout(() => (copiedAdminField.value = null), 1500)
+}
+
+function provisionAdmin(adminId: number) {
+  store.provisionAdmin(id.value, adminId)
+}
+
 onMounted(() => store.fetchOne(id.value))
 </script>
 
@@ -246,9 +259,51 @@ onMounted(() => store.fetchOne(id.value))
           <v-list v-if="h.admins?.length" density="comfortable" lines="two">
             <v-list-item v-for="a in h.admins" :key="a.id" :title="a.name" :subtitle="`${a.username} · ${a.email}`">
               <template #prepend><v-icon icon="mdi-account-circle" class="mr-2" /></template>
+              <template #append>
+                <div class="d-flex align-center ga-2">
+                  <v-chip v-if="a.core_user_id" color="success" size="small" variant="tonal" label>
+                    Core account active
+                  </v-chip>
+                  <template v-else>
+                    <v-chip color="warning" size="small" variant="tonal" label>Not in core-service</v-chip>
+                    <v-btn size="small" variant="tonal" prepend-icon="mdi-cloud-upload"
+                      :loading="store.provisioningAdminId === a.id" @click="provisionAdmin(a.id)">
+                      Provision
+                    </v-btn>
+                  </template>
+                </div>
+              </template>
             </v-list-item>
           </v-list>
           <p v-else class="text-body-2 textSecondary mb-0">No admin account has been created for this hospital yet.</p>
+
+          <!-- One-time credentials from a just-completed provisionAdmin() call — the -->
+          <!-- backend never keeps the plaintext, so this is the only chance to see it. -->
+          <v-card v-if="store.lastAdminProvisionResult" variant="tonal" color="primary" rounded="lg" class="mt-4">
+            <v-card-text>
+              <p class="text-subtitle-2 font-weight-medium mb-3">
+                New core-service login for {{ store.lastAdminProvisionResult.data.username }}
+              </p>
+              <div class="d-flex align-center ga-2 mb-1">
+                <span class="text-body-2">Username:</span>
+                <span class="font-mono font-weight-medium">{{ store.lastAdminProvisionResult.data.username }}</span>
+                <v-btn icon="mdi-content-copy" size="x-small" variant="text"
+                  @click="copyAdminField(store.lastAdminProvisionResult.data.username, 'username')" />
+                <v-chip v-if="copiedAdminField === 'username'" size="x-small" color="success" variant="flat">Copied</v-chip>
+              </div>
+              <div class="d-flex align-center ga-2">
+                <span class="text-body-2">Password:</span>
+                <span class="font-mono font-weight-medium">{{ showAdminPassword ? store.lastAdminProvisionResult.password : '••••••••' }}</span>
+                <v-btn :icon="showAdminPassword ? 'mdi-eye-off' : 'mdi-eye'" size="x-small" variant="text" @click="showAdminPassword = !showAdminPassword" />
+                <v-btn icon="mdi-content-copy" size="x-small" variant="text"
+                  @click="copyAdminField(store.lastAdminProvisionResult.password, 'password')" />
+                <v-chip v-if="copiedAdminField === 'password'" size="x-small" color="success" variant="flat">Copied</v-chip>
+              </div>
+              <p class="text-caption textSecondary mt-2 mb-0">
+                This password replaces the admin's previous one and won't be shown again — share it with them now.
+              </p>
+            </v-card-text>
+          </v-card>
         </v-card-text>
       </v-card>
 

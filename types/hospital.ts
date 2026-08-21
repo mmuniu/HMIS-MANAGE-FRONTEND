@@ -61,6 +61,17 @@ export interface HospitalAdminUser {
   name: string
   username: string
   email: string
+  // null = never provisioned in core-service — the detail page offers a
+  // one-off "provision this admin" action in that case.
+  core_user_id: string | null
+}
+
+// Response of POST /v1/platform/hospitals/{id}/admins/{userId}/provision.
+// `password` is a freshly generated temporary password — shown once, the
+// same "won't be shown again" contract as the registration wizard.
+export interface ProvisionAdminResponse {
+  data: { id: number; username: string; email: string; core_user_id: string }
+  password: string
 }
 
 // GET /v1/platform/hospitals/{id} returns everything gathered during

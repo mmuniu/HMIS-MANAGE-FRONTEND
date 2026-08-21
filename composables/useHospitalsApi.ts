@@ -6,6 +6,7 @@ import type {
   HospitalDetail,
   HospitalListResponse,
   HospitalShowResponse,
+  ProvisionAdminResponse,
   RetryProvisioningResponse,
 } from '~/types/hospital'
 
@@ -45,6 +46,11 @@ export function useHospitalsApi() {
     return data
   }
 
+  async function provisionAdmin(id: string, userId: number): Promise<ProvisionAdminResponse> {
+    const { data } = await $axios.post<ProvisionAdminResponse>(`/v1/platform/hospitals/${id}/admins/${userId}/provision`)
+    return data
+  }
+
   // Backend always answers with the {ok, status, data, error} envelope, even
   // for "not configured" / auth failures — those come back as non-2xx, so
   // pull the envelope out of the error response instead of throwing.
@@ -60,5 +66,5 @@ export function useHospitalsApi() {
     }
   }
 
-  return { list, show, create, destroy, retryProvisioning, searchFacility }
+  return { list, show, create, destroy, retryProvisioning, provisionAdmin, searchFacility }
 }

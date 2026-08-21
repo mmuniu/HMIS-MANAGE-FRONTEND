@@ -195,7 +195,7 @@ onMounted(() => store.fetchOne(id.value))
       </v-row>
 
       <!-- 6. Facilities (bed capacity + facility administrator, from provisioning) -->
-      <v-row v-if="h.facilities.length">
+      <v-row v-if="h.facilities?.length">
         <v-col v-for="f in h.facilities" :key="f.id" cols="12" md="6">
           <v-card rounded="lg" elevation="10" class="h-100">
             <v-card-item>
@@ -243,7 +243,7 @@ onMounted(() => store.fetchOne(id.value))
           <v-card-title><v-icon icon="mdi-account-tie" class="mr-2" />Hospital Admins</v-card-title>
         </v-card-item>
         <v-card-text>
-          <v-list v-if="h.admins.length" density="comfortable" lines="two">
+          <v-list v-if="h.admins?.length" density="comfortable" lines="two">
             <v-list-item v-for="a in h.admins" :key="a.id" :title="a.name" :subtitle="`${a.username} · ${a.email}`">
               <template #prepend><v-icon icon="mdi-account-circle" class="mr-2" /></template>
             </v-list-item>

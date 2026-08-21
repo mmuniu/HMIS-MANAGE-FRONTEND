@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useHospitalsApi } from '~/composables/useHospitalsApi'
-import type { CreateHospitalPayload, CreateHospitalResponse, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, UpdateAdminPayload, UpdateHospitalPayload } from '~/types/hospital'
+import type { CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, UpdateAdminPayload, UpdateHospitalPayload } from '~/types/hospital'
 
 export const useHospitalsStore = defineStore('hospitals', () => {
   const api = useHospitalsApi()
@@ -25,6 +25,8 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   const lastAdminProvisionResult = ref<ProvisionAdminResponse | null>(null)
   // id of the admin currently being edited/saved, if any (drives the dialog's save spinner).
   const updatingAdminId = ref<number | null>(null)
+  // true while a new admin is being created (drives the "Add admin" dialog's save spinner).
+  const addingAdmin = ref(false)
   // Field-level validation errors from the backend (422), keyed by field name.
   const fieldErrors = ref<Record<string, string[]>>({})
 
@@ -158,6 +160,21 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     }
   }
 
+  async function addAdmin(orgId: string, payload: CreateAdminPayload) {
+    addingAdmin.value = true
+    error.value = ''
+    try {
+      const res = await api.addAdmin(orgId, payload)
+      if (current.value) current.value.admins.push(res.data)
+      return { success: true as const, data: res }
+    } catch (err: any) {
+      error.value = err?.response?.data?.message || 'Failed to add admin.'
+      return { success: false as const }
+    } finally {
+      addingAdmin.value = false
+    }
+  }
+
   async function remove(id: string) {
     deleting.value = true
     error.value = ''
@@ -179,8 +196,8 @@ export const useHospitalsStore = defineStore('hospitals', () => {
 
   return {
     items, meta, current, loading, error, saving, retrying, deleting, fieldErrors,
-    provisioningAdminId, lastAdminProvisionResult, updatingAdminId,
+    provisioningAdminId, lastAdminProvisionResult, updatingAdminId, addingAdmin,
     lastCreateResult, lastRetryResult,
-    fetchList, fetchOne, create, update, retryProvisioning, provisionAdmin, updateAdmin, remove,
+    fetchList, fetchOne, create, update, retryProvisioning, provisionAdmin, updateAdmin, addAdmin, remove,
   }
 })

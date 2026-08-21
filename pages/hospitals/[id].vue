@@ -72,6 +72,36 @@ async function saveAdminEdit() {
   }
 }
 
+const addAdminDialog = ref(false)
+const addAdminForm = reactive({ name: '', username: '', email: '', password: '' })
+const showAddAdminPassword = ref(false)
+
+const PASSWORD_SYMBOLS = ['!', '@', '#', '$', '%', '^', '&', '*']
+function generateAddAdminPassword() {
+  const firstName = addAdminForm.name.trim().split(/\s+/)[0] || 'User'
+  const digits = Math.floor(100000 + Math.random() * 900000)
+  const symbol = PASSWORD_SYMBOLS[Math.floor(Math.random() * PASSWORD_SYMBOLS.length)]
+  addAdminForm.password = `${firstName}${digits}${symbol}`
+  showAddAdminPassword.value = true
+}
+
+function openAddAdmin() {
+  addAdminForm.name = ''
+  addAdminForm.username = ''
+  addAdminForm.email = ''
+  addAdminForm.password = ''
+  showAddAdminPassword.value = false
+  addAdminDialog.value = true
+}
+
+async function saveNewAdmin() {
+  const res = await store.addAdmin(id.value, { ...addAdminForm })
+  if (res.success) {
+    addAdminDialog.value = false
+    $showToast('Admin added — an invite email was sent.')
+  }
+}
+
 // `[id].vue` is reused (not remounted) when navigating from one hospital's
 // detail page straight to another's, since both match this same route —
 // watch the param directly rather than relying on onMounted alone, or the
@@ -85,6 +115,7 @@ watch(
     showAdminPassword.value = false
     editAdminDialog.value = false
     editingAdmin.value = null
+    addAdminDialog.value = false
     store.fetchOne(newId)
   },
   { immediate: true },
@@ -299,6 +330,16 @@ watch(
       <v-card rounded="lg" elevation="10" class="mt-6">
         <v-card-item>
           <v-card-title><v-icon icon="mdi-account-tie" class="mr-2" />Hospital Admins</v-card-title>
+          <template #append>
+            <v-tooltip v-if="!h.facilities?.length" text="Add a facility to this hospital before adding an admin">
+              <template #activator="{ props }">
+                <span v-bind="props"><v-btn color="primary" variant="tonal" prepend-icon="mdi-account-plus" disabled>Add admin</v-btn></span>
+              </template>
+            </v-tooltip>
+            <v-btn v-else color="primary" variant="tonal" prepend-icon="mdi-account-plus" @click="openAddAdmin">
+              Add admin
+            </v-btn>
+          </template>
         </v-card-item>
         <v-card-text>
           <v-list v-if="h.admins?.length" density="comfortable" lines="two">
@@ -401,6 +442,36 @@ watch(
           <v-spacer />
           <v-btn variant="text" :disabled="store.updatingAdminId === editingAdmin?.id" @click="editAdminDialog = false">Cancel</v-btn>
           <v-btn color="primary" variant="flat" :loading="store.updatingAdminId === editingAdmin?.id" @click="saveAdminEdit">Save</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Add admin dialog -->
+    <v-dialog v-model="addAdminDialog" max-width="480">
+      <v-card rounded="lg">
+        <v-card-title class="text-h6">Add hospital admin</v-card-title>
+        <v-card-text>
+          <v-text-field v-model="addAdminForm.name" label="Name" variant="outlined" density="comfortable" class="mb-3" hide-details="auto" />
+          <v-text-field v-model="addAdminForm.username" label="Username" variant="outlined" density="comfortable" class="mb-3" hide-details="auto" />
+          <v-text-field v-model="addAdminForm.email" label="Email" type="email" variant="outlined" density="comfortable" class="mb-3" hide-details="auto" />
+          <v-text-field
+            v-model="addAdminForm.password" label="Password" :type="showAddAdminPassword ? 'text' : 'password'"
+            variant="outlined" density="comfortable" hide-details="auto"
+            hint="Min 8 characters. An invite email is sent to this admin." persistent-hint
+          >
+            <template #append-inner>
+              <v-btn icon="mdi-refresh" size="small" variant="text" @click="generateAddAdminPassword" />
+            </template>
+          </v-text-field>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="store.addingAdmin" @click="addAdminDialog = false">Cancel</v-btn>
+          <v-btn color="primary" variant="flat" :loading="store.addingAdmin"
+            :disabled="!addAdminForm.name || !addAdminForm.username || !addAdminForm.email || addAdminForm.password.length < 8"
+            @click="saveNewAdmin">
+            Add admin
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

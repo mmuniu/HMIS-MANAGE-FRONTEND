@@ -80,6 +80,18 @@ export interface UpdateAdminPayload {
   email?: string
 }
 
+export interface CreateAdminPayload {
+  name: string
+  username: string
+  email: string
+  password: string
+}
+
+// Response of POST /v1/platform/hospitals/{id}/admins.
+export interface CreateAdminResponse {
+  data: HospitalAdminUser
+}
+
 // Response of PATCH /v1/platform/hospitals/{id}/admins/{userId}.
 // `notified` reports whether the "your details changed" email actually went
 // out — it can be false if nothing in the payload differed from before.

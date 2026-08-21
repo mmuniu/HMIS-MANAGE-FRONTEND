@@ -78,6 +78,12 @@ export interface UpdateAdminPayload {
   name?: string
   username?: string
   email?: string
+  // Optional password reset. If this admin has no core_user_id yet, the
+  // backend creates their core-service account with this password and the
+  // notification email tells them to use it there — otherwise it can only
+  // change their local hmis-manage password (no core-service update
+  // endpoint exists), and the email says so explicitly.
+  password?: string
 }
 
 export interface CreateAdminPayload {

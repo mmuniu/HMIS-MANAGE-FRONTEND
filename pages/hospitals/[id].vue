@@ -51,21 +51,36 @@ function provisionAdmin(adminId: number) {
   store.provisionAdmin(id.value, adminId)
 }
 
+const PASSWORD_SYMBOLS = ['!', '@', '#', '$', '%', '^', '&', '*']
+
 const editAdminDialog = ref(false)
 const editingAdmin = ref<HospitalAdminUser | null>(null)
-const editAdminForm = reactive({ name: '', username: '', email: '' })
+const editAdminForm = reactive({ name: '', username: '', email: '', password: '' })
+const showEditAdminPassword = ref(false)
 
 function openEditAdmin(a: HospitalAdminUser) {
   editingAdmin.value = a
   editAdminForm.name = a.name
   editAdminForm.username = a.username
   editAdminForm.email = a.email
+  editAdminForm.password = ''
+  showEditAdminPassword.value = false
   editAdminDialog.value = true
+}
+
+function generateEditAdminPassword() {
+  const firstName = editAdminForm.name.trim().split(/\s+/)[0] || 'User'
+  const digits = Math.floor(100000 + Math.random() * 900000)
+  const symbol = PASSWORD_SYMBOLS[Math.floor(Math.random() * PASSWORD_SYMBOLS.length)]
+  editAdminForm.password = `${firstName}${digits}${symbol}`
+  showEditAdminPassword.value = true
 }
 
 async function saveAdminEdit() {
   if (!editingAdmin.value) return
-  const res = await store.updateAdmin(id.value, editingAdmin.value.id, { ...editAdminForm })
+  const payload: Record<string, string> = { name: editAdminForm.name, username: editAdminForm.username, email: editAdminForm.email }
+  if (editAdminForm.password) payload.password = editAdminForm.password
+  const res = await store.updateAdmin(id.value, editingAdmin.value.id, payload)
   if (res.success) {
     editAdminDialog.value = false
     $showToast(res.notified ? 'Admin details updated — confirmation email sent.' : 'Admin details updated.')
@@ -76,7 +91,6 @@ const addAdminDialog = ref(false)
 const addAdminForm = reactive({ name: '', username: '', email: '', password: '' })
 const showAddAdminPassword = ref(false)
 
-const PASSWORD_SYMBOLS = ['!', '@', '#', '$', '%', '^', '&', '*']
 function generateAddAdminPassword() {
   const firstName = addAdminForm.name.trim().split(/\s+/)[0] || 'User'
   const digits = Math.floor(100000 + Math.random() * 900000)
@@ -433,7 +447,19 @@ watch(
         <v-card-text>
           <v-text-field v-model="editAdminForm.name" label="Name" variant="outlined" density="comfortable" class="mb-3" hide-details="auto" />
           <v-text-field v-model="editAdminForm.username" label="Username" variant="outlined" density="comfortable" class="mb-3" hide-details="auto" />
-          <v-text-field v-model="editAdminForm.email" label="Email" type="email" variant="outlined" density="comfortable" hide-details="auto" />
+          <v-text-field v-model="editAdminForm.email" label="Email" type="email" variant="outlined" density="comfortable" class="mb-3" hide-details="auto" />
+          <v-text-field
+            v-model="editAdminForm.password" label="Reset password (optional)" :type="showEditAdminPassword ? 'text' : 'password'"
+            variant="outlined" density="comfortable" hide-details="auto"
+            :hint="editingAdmin?.core_user_id
+              ? 'Leave blank to keep their current password. Filling this in changes their LOCAL platform password only — there is no way to update their existing core-service password.'
+              : 'Leave blank to keep their current password. Filling this in also creates their core-service account with this password, since they don\'t have one yet.'"
+            persistent-hint
+          >
+            <template #append-inner>
+              <v-btn icon="mdi-refresh" size="small" variant="text" @click="generateEditAdminPassword" />
+            </template>
+          </v-text-field>
           <p class="text-caption textSecondary mt-3 mb-0">
             Saving sends a notification email to the admin's (possibly new) address confirming what changed.
           </p>
@@ -441,7 +467,10 @@ watch(
         <v-card-actions>
           <v-spacer />
           <v-btn variant="text" :disabled="store.updatingAdminId === editingAdmin?.id" @click="editAdminDialog = false">Cancel</v-btn>
-          <v-btn color="primary" variant="flat" :loading="store.updatingAdminId === editingAdmin?.id" @click="saveAdminEdit">Save</v-btn>
+          <v-btn color="primary" variant="flat" :loading="store.updatingAdminId === editingAdmin?.id"
+            :disabled="!!editAdminForm.password && editAdminForm.password.length < 8" @click="saveAdminEdit">
+            Save
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

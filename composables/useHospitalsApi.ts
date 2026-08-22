@@ -73,6 +73,11 @@ export function useHospitalsApi() {
     return data
   }
 
+  async function removeAdmin(id: string, userId: number): Promise<{ core_deactivated: boolean }> {
+    const { data } = await $axios.delete<{ core_deactivated: boolean }>(`/v1/platform/hospitals/${id}/admins/${userId}`)
+    return data
+  }
+
   // Backend always answers with the {ok, status, data, error} envelope, even
   // for "not configured" / auth failures — those come back as non-2xx, so
   // pull the envelope out of the error response instead of throwing.
@@ -88,5 +93,5 @@ export function useHospitalsApi() {
     }
   }
 
-  return { list, show, create, update, destroy, retryProvisioning, provisionAdmin, updateAdmin, addAdmin, searchFacility }
+  return { list, show, create, update, destroy, retryProvisioning, provisionAdmin, updateAdmin, addAdmin, removeAdmin, searchFacility }
 }

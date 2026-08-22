@@ -30,6 +30,8 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   const lastAdminUpdateResult = ref<{ username: string; password: string } | null>(null)
   // true while a new admin is being created (drives the "Add admin" dialog's save spinner).
   const addingAdmin = ref(false)
+  // id of the admin currently being removed, if any (drives the confirm dialog's spinner).
+  const removingAdminId = ref<number | null>(null)
   // Field-level validation errors from the backend (422), keyed by field name.
   const fieldErrors = ref<Record<string, string[]>>({})
 
@@ -181,6 +183,21 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     }
   }
 
+  async function removeAdmin(orgId: string, userId: number) {
+    removingAdminId.value = userId
+    error.value = ''
+    try {
+      const res = await api.removeAdmin(orgId, userId)
+      if (current.value) current.value.admins = current.value.admins.filter((a) => a.id !== userId)
+      return { success: true as const, coreDeactivated: res.core_deactivated }
+    } catch (err: any) {
+      error.value = err?.response?.data?.message || 'Failed to remove admin.'
+      return { success: false as const, coreDeactivated: false }
+    } finally {
+      removingAdminId.value = null
+    }
+  }
+
   async function remove(id: string) {
     deleting.value = true
     error.value = ''
@@ -202,8 +219,8 @@ export const useHospitalsStore = defineStore('hospitals', () => {
 
   return {
     items, meta, current, loading, error, saving, retrying, deleting, fieldErrors,
-    provisioningAdminId, lastAdminProvisionResult, updatingAdminId, lastAdminUpdateResult, addingAdmin,
+    provisioningAdminId, lastAdminProvisionResult, updatingAdminId, lastAdminUpdateResult, addingAdmin, removingAdminId,
     lastCreateResult, lastRetryResult,
-    fetchList, fetchOne, create, update, retryProvisioning, provisionAdmin, updateAdmin, addAdmin, remove,
+    fetchList, fetchOne, create, update, retryProvisioning, provisionAdmin, updateAdmin, addAdmin, removeAdmin, remove,
   }
 })

@@ -125,6 +125,24 @@ async function saveNewAdmin() {
   }
 }
 
+const confirmDeleteAdmin = ref<HospitalAdminUser | null>(null)
+
+async function deleteAdmin() {
+  if (!confirmDeleteAdmin.value) return
+  const admin = confirmDeleteAdmin.value
+  const res = await store.removeAdmin(id.value, admin.id)
+  if (res.success) {
+    confirmDeleteAdmin.value = null
+    $showToast(
+      admin.core_user_id
+        ? res.coreDeactivated
+          ? 'Admin removed and their core-service account deactivated.'
+          : 'Admin removed, but their core-service account could not be deactivated — check platform logs.'
+        : 'Admin removed from this hospital.',
+    )
+  }
+}
+
 // `[id].vue` is reused (not remounted) when navigating from one hospital's
 // detail page straight to another's, since both match this same route —
 // watch the param directly rather than relying on onMounted alone, or the
@@ -141,6 +159,7 @@ watch(
     editAdminDialog.value = false
     editingAdmin.value = null
     addAdminDialog.value = false
+    confirmDeleteAdmin.value = null
     store.fetchOne(newId)
   },
   { immediate: true },
@@ -383,6 +402,7 @@ watch(
                     </v-btn>
                   </template>
                   <v-btn icon="mdi-pencil" variant="text" size="small" @click="openEditAdmin(a)" />
+                  <v-btn icon="mdi-delete-outline" color="error" variant="text" size="small" @click="confirmDeleteAdmin = a" />
                 </div>
               </template>
             </v-list-item>
@@ -540,6 +560,25 @@ watch(
             @click="saveNewAdmin">
             Add admin
           </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Delete admin confirmation dialog -->
+    <v-dialog v-model="confirmDeleteAdmin" max-width="460">
+      <v-card rounded="lg">
+        <v-card-title class="text-h6">Remove admin?</v-card-title>
+        <v-card-text>
+          This removes <strong>{{ confirmDeleteAdmin?.name }}</strong>'s access to this hospital.
+          <template v-if="confirmDeleteAdmin?.core_user_id">
+            Their core-service account will also be deactivated, so they can't log in there either.
+          </template>
+          Their hmis-manage account itself is kept — this can be reversed by adding them back.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="store.removingAdminId === confirmDeleteAdmin?.id" @click="confirmDeleteAdmin = null">Cancel</v-btn>
+          <v-btn color="error" variant="flat" :loading="store.removingAdminId === confirmDeleteAdmin?.id" @click="deleteAdmin">Remove</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

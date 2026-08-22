@@ -57,6 +57,7 @@ const editAdminDialog = ref(false)
 const editingAdmin = ref<HospitalAdminUser | null>(null)
 const editAdminForm = reactive({ name: '', username: '', email: '', password: '' })
 const showEditAdminPassword = ref(false)
+const showUpdatedAdminPassword = ref(false)
 
 function openEditAdmin(a: HospitalAdminUser) {
   editingAdmin.value = a
@@ -80,10 +81,18 @@ async function saveAdminEdit() {
   if (!editingAdmin.value) return
   const payload: Record<string, string> = { name: editAdminForm.name, username: editAdminForm.username, email: editAdminForm.email }
   if (editAdminForm.password) payload.password = editAdminForm.password
+  const hadPassword = !!editAdminForm.password
   const res = await store.updateAdmin(id.value, editingAdmin.value.id, payload)
   if (res.success) {
     editAdminDialog.value = false
-    $showToast(res.notified ? 'Admin details updated — confirmation email sent.' : 'Admin details updated.')
+    showUpdatedAdminPassword.value = false
+    $showToast(
+      hadPassword
+        ? 'Admin details updated — credentials emailed and shown below.'
+        : res.notified
+          ? 'Admin details updated — confirmation email sent.'
+          : 'Admin details updated.',
+    )
   }
 }
 
@@ -126,7 +135,9 @@ watch(
   id,
   (newId) => {
     store.lastAdminProvisionResult = null
+    store.lastAdminUpdateResult = null
     showAdminPassword.value = false
+    showUpdatedAdminPassword.value = false
     editAdminDialog.value = false
     editingAdmin.value = null
     addAdminDialog.value = false
@@ -402,6 +413,34 @@ watch(
               </div>
               <p class="text-caption textSecondary mt-2 mb-0">
                 This password replaces the admin's previous one and won't be shown again — share it with them now.
+              </p>
+            </v-card-text>
+          </v-card>
+
+          <!-- One-time credentials from a just-completed updateAdmin() password reset — -->
+          <!-- also emailed, but shown here too so it can be copied without leaving the page. -->
+          <v-card v-if="store.lastAdminUpdateResult" variant="tonal" color="primary" rounded="lg" class="mt-4">
+            <v-card-text>
+              <p class="text-subtitle-2 font-weight-medium mb-3">
+                Updated login for {{ store.lastAdminUpdateResult.username }}
+              </p>
+              <div class="d-flex align-center ga-2 mb-1">
+                <span class="text-body-2">Username:</span>
+                <span class="font-mono font-weight-medium">{{ store.lastAdminUpdateResult.username }}</span>
+                <v-btn icon="mdi-content-copy" size="x-small" variant="text"
+                  @click="copyAdminField(store.lastAdminUpdateResult.username, 'username')" />
+                <v-chip v-if="copiedAdminField === 'username'" size="x-small" color="success" variant="flat">Copied</v-chip>
+              </div>
+              <div class="d-flex align-center ga-2">
+                <span class="text-body-2">Password:</span>
+                <span class="font-mono font-weight-medium">{{ showUpdatedAdminPassword ? store.lastAdminUpdateResult.password : '••••••••' }}</span>
+                <v-btn :icon="showUpdatedAdminPassword ? 'mdi-eye-off' : 'mdi-eye'" size="x-small" variant="text" @click="showUpdatedAdminPassword = !showUpdatedAdminPassword" />
+                <v-btn icon="mdi-content-copy" size="x-small" variant="text"
+                  @click="copyAdminField(store.lastAdminUpdateResult.password, 'password')" />
+                <v-chip v-if="copiedAdminField === 'password'" size="x-small" color="success" variant="flat">Copied</v-chip>
+              </div>
+              <p class="text-caption textSecondary mt-2 mb-0">
+                Also emailed to the admin and won't be shown again — share it with them now.
               </p>
             </v-card-text>
           </v-card>

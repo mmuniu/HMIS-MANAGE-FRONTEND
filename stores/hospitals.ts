@@ -25,6 +25,9 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   const lastAdminProvisionResult = ref<ProvisionAdminResponse | null>(null)
   // id of the admin currently being edited/saved, if any (drives the dialog's save spinner).
   const updatingAdminId = ref<number | null>(null)
+  // Most recent updateAdmin() result, when it included a password reset —
+  // carries the one-time credentials, same copy-once contract as provisionAdmin().
+  const lastAdminUpdateResult = ref<{ username: string; password: string } | null>(null)
   // true while a new admin is being created (drives the "Add admin" dialog's save spinner).
   const addingAdmin = ref(false)
   // Field-level validation errors from the backend (422), keyed by field name.
@@ -129,6 +132,7 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     try {
       const res = await api.provisionAdmin(orgId, userId)
       lastAdminProvisionResult.value = res
+      lastAdminUpdateResult.value = null // only one one-time-credentials panel shown at a time
       if (current.value) {
         const admin = current.value.admins.find((a) => a.id === userId)
         if (admin) admin.core_user_id = res.data.core_user_id
@@ -151,6 +155,8 @@ export const useHospitalsStore = defineStore('hospitals', () => {
         const index = current.value.admins.findIndex((a) => a.id === userId)
         if (index !== -1) current.value.admins[index] = res.data
       }
+      lastAdminProvisionResult.value = null // only one one-time-credentials panel shown at a time
+      lastAdminUpdateResult.value = res.password ? { username: res.data.username, password: res.password } : null
       return { success: true as const, notified: res.notified }
     } catch (err: any) {
       error.value = err?.response?.data?.message || 'Failed to update admin.'
@@ -196,7 +202,7 @@ export const useHospitalsStore = defineStore('hospitals', () => {
 
   return {
     items, meta, current, loading, error, saving, retrying, deleting, fieldErrors,
-    provisioningAdminId, lastAdminProvisionResult, updatingAdminId, addingAdmin,
+    provisioningAdminId, lastAdminProvisionResult, updatingAdminId, lastAdminUpdateResult, addingAdmin,
     lastCreateResult, lastRetryResult,
     fetchList, fetchOne, create, update, retryProvisioning, provisionAdmin, updateAdmin, addAdmin, remove,
   }

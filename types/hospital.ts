@@ -104,6 +104,9 @@ export interface CreateAdminResponse {
 export interface UpdateAdminResponse {
   data: HospitalAdminUser
   notified: boolean
+  // Echoed back only when the edit included a password reset — never
+  // persisted anywhere, shown once in a copy-once credentials panel.
+  password: string | null
 }
 
 // GET /v1/platform/hospitals/{id} returns everything gathered during

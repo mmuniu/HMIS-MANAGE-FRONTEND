@@ -219,6 +219,8 @@ export interface CreateHospitalPayload {
   // system
   status?: HospitalStatus
   is_sandbox?: boolean
+  // set when the wizard was launched from a deployment's Stage 6
+  deployment_id?: string
   // optional first facility + admin
   facility?: HospitalFacilityPayload
   admin?: { name: string; username: string; email: string; password: string }

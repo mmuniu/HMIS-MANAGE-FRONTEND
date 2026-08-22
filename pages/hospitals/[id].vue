@@ -4,12 +4,15 @@ import { useRoute, useRouter } from 'vue-router'
 import { useNuxtApp } from '#app'
 import { useHospitalsStore } from '@/stores/hospitals'
 import { useAuthStore } from '@/stores/auth'
+import { useDeploymentsStore } from '@/stores/deployments'
 import { STATUS_COLOR, TIER_COLOR, BILLING_COLOR, type HospitalAdminUser } from '@/types/hospital'
+import type { Deployment } from '@/types/deployment'
 
 const route = useRoute()
 const router = useRouter()
 const store = useHospitalsStore()
 const auth = useAuthStore()
+const deploymentsStore = useDeploymentsStore()
 const { $showToast } = useNuxtApp()
 
 const id = computed(() => String(route.params.id))
@@ -125,6 +128,23 @@ async function saveNewAdmin() {
   }
 }
 
+const deployment = ref<Deployment | null>(null)
+const startingDeployment = ref(false)
+
+async function checkDeployment() {
+  deployment.value = await deploymentsStore.findForOrganization(id.value)
+}
+
+async function startDeployment() {
+  startingDeployment.value = true
+  try {
+    const res = await deploymentsStore.create({ organization_id: id.value })
+    if (res.success) router.push(`/deployments/${res.data.id}`)
+  } finally {
+    startingDeployment.value = false
+  }
+}
+
 const confirmDeleteAdmin = ref<HospitalAdminUser | null>(null)
 
 async function deleteAdmin() {
@@ -160,7 +180,9 @@ watch(
     editingAdmin.value = null
     addAdminDialog.value = false
     confirmDeleteAdmin.value = null
+    deployment.value = null
     store.fetchOne(newId)
+    checkDeployment()
   },
   { immediate: true },
 )
@@ -173,6 +195,14 @@ watch(
         Back to hospitals
       </v-btn>
       <div class="d-flex ga-2">
+        <v-btn v-if="auth.isSystemAdmin && h && deployment" color="primary" variant="tonal" prepend-icon="mdi-format-list-checks"
+          :to="`/deployments/${deployment.id}`">
+          View deployment
+        </v-btn>
+        <v-btn v-else-if="auth.isSystemAdmin && h" color="primary" variant="tonal" prepend-icon="mdi-rocket-launch-outline"
+          :loading="startingDeployment" @click="startDeployment">
+          Start deployment
+        </v-btn>
         <v-btn v-if="auth.isPlatformUser && h" color="primary" variant="tonal" prepend-icon="mdi-pencil"
           :to="`/hospitals/${id}/edit`">
           Edit hospital

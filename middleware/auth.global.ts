@@ -10,6 +10,7 @@ const ROLE_ROUTES: { prefix: string; roles: string[] }[] = [
   // gate the NON-system-admin roles.
   { prefix: '/hospitals/new', roles: ['system_admin'] },   // only system admin creates hospitals
   { prefix: '/hospitals', roles: ['system_admin', 'hospital_admin'] },
+  { prefix: '/deployments', roles: ['system_admin'] },
   { prefix: '/my-test-cases', roles: ['developer', 'tester'] }, // authors' own submissions
   { prefix: '/test-cases/new', roles: ['developer', 'tester'] }, // authoring only
   { prefix: '/test-cases', roles: ['developer', 'tester', 'qa'] },

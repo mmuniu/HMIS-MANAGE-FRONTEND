@@ -17,17 +17,51 @@ function onOpen(isOpen: boolean) {
   }
 }
 
+// Deployment lifecycle events (Phase 8 — see HOSPITAL_PROVISIONING_FLOW.md).
+// Unmapped events fall through to the default bell icon/primary color below.
+const DEPLOYMENT_EVENT_ICON: Record<string, string> = {
+  'deployment.stage_unlocked': 'lock-keyhole-unlocked-line-duotone',
+  'deployment.assignment_created': 'user-check-rounded-line-duotone',
+  'deployment.readiness_failed': 'close-circle-line-duotone',
+  'deployment.migration_failed': 'database-line-duotone',
+  'deployment.uat_failed': 'close-circle-line-duotone',
+  'deployment.critical_defect_reported': 'bug-line-duotone',
+  'deployment.period_ending_soon': 'hourglass-line-duotone',
+  'deployment.stage_stale': 'clock-circle-line-duotone',
+  'deployment.check_in_due': 'calendar-mark-line-duotone',
+};
+const DEPLOYMENT_EVENT_COLOR: Record<string, string> = {
+  'deployment.stage_unlocked': 'primary',
+  'deployment.assignment_created': 'primary',
+  'deployment.readiness_failed': 'warning',
+  'deployment.migration_failed': 'error',
+  'deployment.uat_failed': 'warning',
+  'deployment.critical_defect_reported': 'error',
+  'deployment.period_ending_soon': 'warning',
+  'deployment.stage_stale': 'warning',
+  'deployment.check_in_due': 'warning',
+};
+
 function iconFor(event: string) {
   if (event === 'hospital.provisioning_failed') return 'cloud-cross-line-duotone';
+  if (DEPLOYMENT_EVENT_ICON[event]) return DEPLOYMENT_EVENT_ICON[event];
   return 'bell-bing-line-duotone';
 }
 function colorFor(event: string) {
   if (event === 'hospital.provisioning_failed') return 'warning';
+  if (DEPLOYMENT_EVENT_COLOR[event]) return DEPLOYMENT_EVENT_COLOR[event];
   return 'primary';
 }
 
 async function onItemClick(item: (typeof store.items)[number]) {
   await store.markRead(item.id);
+  // Deployment notifications take priority over the org-id routing below —
+  // a notification can only be "about" one thing.
+  const deploymentId = item.data.deployment_id;
+  if (typeof deploymentId === 'string') {
+    router.push(`/deployments/${deploymentId}`);
+    return;
+  }
   const orgId = item.data.organization_id;
   if (typeof orgId === 'string') router.push(`/hospitals/${orgId}`);
 }

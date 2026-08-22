@@ -39,6 +39,13 @@ const sidebarItem: menu[] = [
                 roles: ['system_admin', 'hospital_admin'],
             },
             {
+                title: 'Deployments',
+                icon: 'checklist-minimalistic-line-duotone',
+                to: '/deployments',
+                // Platform staff track each hospital's implementation lifecycle.
+                roles: ['system_admin'],
+            },
+            {
                 title: 'Integrations',
                 icon: 'plug-circle-line-duotone',
                 to: '/integrations',

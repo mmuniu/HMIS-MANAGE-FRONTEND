@@ -74,6 +74,41 @@ export interface ProvisionAdminResponse {
   password: string
 }
 
+export interface UpdateAdminPayload {
+  name?: string
+  username?: string
+  email?: string
+  // Optional password reset. If this admin has no core_user_id yet, the
+  // backend creates their core-service account with this password and the
+  // notification email tells them to use it there — otherwise it can only
+  // change their local hmis-manage password (no core-service update
+  // endpoint exists), and the email says so explicitly.
+  password?: string
+}
+
+export interface CreateAdminPayload {
+  name: string
+  username: string
+  email: string
+  password: string
+}
+
+// Response of POST /v1/platform/hospitals/{id}/admins.
+export interface CreateAdminResponse {
+  data: HospitalAdminUser
+}
+
+// Response of PATCH /v1/platform/hospitals/{id}/admins/{userId}.
+// `notified` reports whether the "your details changed" email actually went
+// out — it can be false if nothing in the payload differed from before.
+export interface UpdateAdminResponse {
+  data: HospitalAdminUser
+  notified: boolean
+  // Echoed back only when the edit included a password reset — never
+  // persisted anywhere, shown once in a copy-once credentials panel.
+  password: string | null
+}
+
 // GET /v1/platform/hospitals/{id} returns everything gathered during
 // provisioning, not just the bare organization fields list() gives back.
 export interface HospitalDetail extends Hospital {
@@ -184,6 +219,8 @@ export interface CreateHospitalPayload {
   // system
   status?: HospitalStatus
   is_sandbox?: boolean
+  // set when the wizard was launched from a deployment's Stage 6
+  deployment_id?: string
   // optional first facility + admin
   facility?: HospitalFacilityPayload
   admin?: { name: string; username: string; email: string; password: string }

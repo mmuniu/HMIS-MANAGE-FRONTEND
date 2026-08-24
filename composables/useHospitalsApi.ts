@@ -1,5 +1,7 @@
 import { useNuxtApp } from '#app'
 import type {
+  CreateAdminPayload,
+  CreateAdminResponse,
   CreateHospitalPayload,
   CreateHospitalResponse,
   FacilityRegistrySearchResponse,
@@ -8,6 +10,8 @@ import type {
   HospitalShowResponse,
   ProvisionAdminResponse,
   RetryProvisioningResponse,
+  UpdateAdminPayload,
+  UpdateAdminResponse,
   UpdateHospitalPayload,
   UpdateHospitalResponse,
 } from '~/types/hospital'
@@ -54,8 +58,23 @@ export function useHospitalsApi() {
     return data
   }
 
+  async function addAdmin(id: string, payload: CreateAdminPayload): Promise<CreateAdminResponse> {
+    const { data } = await $axios.post<CreateAdminResponse>(`/v1/platform/hospitals/${id}/admins`, payload)
+    return data
+  }
+
   async function provisionAdmin(id: string, userId: number): Promise<ProvisionAdminResponse> {
     const { data } = await $axios.post<ProvisionAdminResponse>(`/v1/platform/hospitals/${id}/admins/${userId}/provision`)
+    return data
+  }
+
+  async function updateAdmin(id: string, userId: number, payload: UpdateAdminPayload): Promise<UpdateAdminResponse> {
+    const { data } = await $axios.patch<UpdateAdminResponse>(`/v1/platform/hospitals/${id}/admins/${userId}`, payload)
+    return data
+  }
+
+  async function removeAdmin(id: string, userId: number): Promise<{ core_deactivated: boolean }> {
+    const { data } = await $axios.delete<{ core_deactivated: boolean }>(`/v1/platform/hospitals/${id}/admins/${userId}`)
     return data
   }
 
@@ -74,5 +93,5 @@ export function useHospitalsApi() {
     }
   }
 
-  return { list, show, create, update, destroy, retryProvisioning, provisionAdmin, searchFacility }
+  return { list, show, create, update, destroy, retryProvisioning, provisionAdmin, updateAdmin, addAdmin, removeAdmin, searchFacility }
 }

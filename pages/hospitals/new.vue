@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { reactive, ref, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useHospitalsStore } from '@/stores/hospitals'
 import { useHospitalsApi } from '@/composables/useHospitalsApi'
 import type { CreateHospitalPayload, FacilityRegistryResult, HospitalFacilityPayload } from '@/types/hospital'
 
 const router = useRouter()
+const route = useRoute()
 const store = useHospitalsStore()
 const hospitalsApi = useHospitalsApi()
+
+// Set when this wizard was launched from a deployment's Stage 6
+// ("Register hospital") — links the new org back to it and, on success,
+// returns to the deployment instead of the hospital detail page.
+const deploymentId = typeof route.query.deployment_id === 'string' ? route.query.deployment_id : undefined
 
 const TIERS = ['BASIC', 'PREMIUM', 'ENTERPRISE']
 const BILLING = ['ACTIVE', 'PAST_DUE', 'SUSPENDED']
@@ -301,6 +307,7 @@ async function submit() {
   }
   if (addFacility.value && facility.name) payload.facility = { ...cleaned(facility), name: facility.name }
   if (addAdmin.value) payload.admin = { ...admin }
+  if (deploymentId) payload.deployment_id = deploymentId
 
   const res = await store.create(payload)
   if (res.success) {
@@ -316,6 +323,10 @@ async function submit() {
 }
 
 function done() {
+  if (deploymentId) {
+    router.push(`/deployments/${deploymentId}`)
+    return
+  }
   const id = store.lastCreateResult?.data.id
   if (id) router.push(`/hospitals/${id}`)
   else router.push('/hospitals')

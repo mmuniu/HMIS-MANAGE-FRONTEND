@@ -1,14 +1,19 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useNuxtApp } from '#app'
 import { useHospitalsStore } from '@/stores/hospitals'
 import { useAuthStore } from '@/stores/auth'
-import { STATUS_COLOR, TIER_COLOR, BILLING_COLOR } from '@/types/hospital'
+import { useDeploymentsStore } from '@/stores/deployments'
+import { STATUS_COLOR, TIER_COLOR, BILLING_COLOR, type HospitalAdminUser } from '@/types/hospital'
+import type { Deployment } from '@/types/deployment'
 
 const route = useRoute()
 const router = useRouter()
 const store = useHospitalsStore()
 const auth = useAuthStore()
+const deploymentsStore = useDeploymentsStore()
+const { $showToast } = useNuxtApp()
 
 const id = computed(() => String(route.params.id))
 const h = computed(() => store.current)
@@ -49,6 +54,115 @@ function provisionAdmin(adminId: number) {
   store.provisionAdmin(id.value, adminId)
 }
 
+const PASSWORD_SYMBOLS = ['!', '@', '#', '$', '%', '^', '&', '*']
+
+const editAdminDialog = ref(false)
+const editingAdmin = ref<HospitalAdminUser | null>(null)
+const editAdminForm = reactive({ name: '', username: '', email: '', password: '' })
+const showEditAdminPassword = ref(false)
+const showUpdatedAdminPassword = ref(false)
+
+function openEditAdmin(a: HospitalAdminUser) {
+  editingAdmin.value = a
+  editAdminForm.name = a.name
+  editAdminForm.username = a.username
+  editAdminForm.email = a.email
+  editAdminForm.password = ''
+  showEditAdminPassword.value = false
+  editAdminDialog.value = true
+}
+
+function generateEditAdminPassword() {
+  const firstName = editAdminForm.name.trim().split(/\s+/)[0] || 'User'
+  const digits = Math.floor(100000 + Math.random() * 900000)
+  const symbol = PASSWORD_SYMBOLS[Math.floor(Math.random() * PASSWORD_SYMBOLS.length)]
+  editAdminForm.password = `${firstName}${digits}${symbol}`
+  showEditAdminPassword.value = true
+}
+
+async function saveAdminEdit() {
+  if (!editingAdmin.value) return
+  const payload: Record<string, string> = { name: editAdminForm.name, username: editAdminForm.username, email: editAdminForm.email }
+  if (editAdminForm.password) payload.password = editAdminForm.password
+  const hadPassword = !!editAdminForm.password
+  const res = await store.updateAdmin(id.value, editingAdmin.value.id, payload)
+  if (res.success) {
+    editAdminDialog.value = false
+    showUpdatedAdminPassword.value = false
+    $showToast(
+      hadPassword
+        ? 'Admin details updated — credentials emailed and shown below.'
+        : res.notified
+          ? 'Admin details updated — confirmation email sent.'
+          : 'Admin details updated.',
+    )
+  }
+}
+
+const addAdminDialog = ref(false)
+const addAdminForm = reactive({ name: '', username: '', email: '', password: '' })
+const showAddAdminPassword = ref(false)
+
+function generateAddAdminPassword() {
+  const firstName = addAdminForm.name.trim().split(/\s+/)[0] || 'User'
+  const digits = Math.floor(100000 + Math.random() * 900000)
+  const symbol = PASSWORD_SYMBOLS[Math.floor(Math.random() * PASSWORD_SYMBOLS.length)]
+  addAdminForm.password = `${firstName}${digits}${symbol}`
+  showAddAdminPassword.value = true
+}
+
+function openAddAdmin() {
+  addAdminForm.name = ''
+  addAdminForm.username = ''
+  addAdminForm.email = ''
+  addAdminForm.password = ''
+  showAddAdminPassword.value = false
+  addAdminDialog.value = true
+}
+
+async function saveNewAdmin() {
+  const res = await store.addAdmin(id.value, { ...addAdminForm })
+  if (res.success) {
+    addAdminDialog.value = false
+    $showToast('Admin added — an invite email was sent.')
+  }
+}
+
+const deployment = ref<Deployment | null>(null)
+const startingDeployment = ref(false)
+
+async function checkDeployment() {
+  deployment.value = await deploymentsStore.findForOrganization(id.value)
+}
+
+async function startDeployment() {
+  startingDeployment.value = true
+  try {
+    const res = await deploymentsStore.create({ organization_id: id.value })
+    if (res.success) router.push(`/deployments/${res.data.id}`)
+  } finally {
+    startingDeployment.value = false
+  }
+}
+
+const confirmDeleteAdmin = ref<HospitalAdminUser | null>(null)
+
+async function deleteAdmin() {
+  if (!confirmDeleteAdmin.value) return
+  const admin = confirmDeleteAdmin.value
+  const res = await store.removeAdmin(id.value, admin.id)
+  if (res.success) {
+    confirmDeleteAdmin.value = null
+    $showToast(
+      admin.core_user_id
+        ? res.coreDeactivated
+          ? 'Admin removed and their core-service account deactivated.'
+          : 'Admin removed, but their core-service account could not be deactivated — check platform logs.'
+        : 'Admin removed from this hospital.',
+    )
+  }
+}
+
 // `[id]/index.vue` is reused (not remounted) when navigating from one hospital's
 // detail page straight to another's, since both match this same route —
 // watch the param directly rather than relying on onMounted alone, or the
@@ -59,8 +173,16 @@ watch(
   id,
   (newId) => {
     store.lastAdminProvisionResult = null
+    store.lastAdminUpdateResult = null
     showAdminPassword.value = false
+    showUpdatedAdminPassword.value = false
+    editAdminDialog.value = false
+    editingAdmin.value = null
+    addAdminDialog.value = false
+    confirmDeleteAdmin.value = null
+    deployment.value = null
     store.fetchOne(newId)
+    checkDeployment()
   },
   { immediate: true },
 )
@@ -73,6 +195,14 @@ watch(
         Back to hospitals
       </v-btn>
       <div class="d-flex ga-2">
+        <v-btn v-if="auth.isSystemAdmin && h && deployment" color="primary" variant="tonal" prepend-icon="mdi-format-list-checks"
+          :to="`/deployments/${deployment.id}`">
+          View deployment
+        </v-btn>
+        <v-btn v-else-if="auth.isSystemAdmin && h" color="primary" variant="tonal" prepend-icon="mdi-rocket-launch-outline"
+          :loading="startingDeployment" @click="startDeployment">
+          Start deployment
+        </v-btn>
         <v-btn v-if="auth.isPlatformUser && h" color="primary" variant="tonal" prepend-icon="mdi-pencil"
           :to="`/hospitals/${id}/edit`">
           Edit hospital
@@ -274,6 +404,16 @@ watch(
       <v-card rounded="lg" elevation="10" class="mt-6">
         <v-card-item>
           <v-card-title><v-icon icon="mdi-account-tie" class="mr-2" />Hospital Admins</v-card-title>
+          <template #append>
+            <v-tooltip v-if="!h.facilities?.length" text="Add a facility to this hospital before adding an admin">
+              <template #activator="{ props }">
+                <span v-bind="props"><v-btn color="primary" variant="tonal" prepend-icon="mdi-account-plus" disabled>Add admin</v-btn></span>
+              </template>
+            </v-tooltip>
+            <v-btn v-else color="primary" variant="tonal" prepend-icon="mdi-account-plus" @click="openAddAdmin">
+              Add admin
+            </v-btn>
+          </template>
         </v-card-item>
         <v-card-text>
           <v-list v-if="h.admins?.length" density="comfortable" lines="two">
@@ -291,6 +431,8 @@ watch(
                       Provision
                     </v-btn>
                   </template>
+                  <v-btn icon="mdi-pencil" variant="text" size="small" @click="openEditAdmin(a)" />
+                  <v-btn icon="mdi-delete-outline" color="error" variant="text" size="small" @click="confirmDeleteAdmin = a" />
                 </div>
               </template>
             </v-list-item>
@@ -321,6 +463,34 @@ watch(
               </div>
               <p class="text-caption textSecondary mt-2 mb-0">
                 This password replaces the admin's previous one and won't be shown again — share it with them now.
+              </p>
+            </v-card-text>
+          </v-card>
+
+          <!-- One-time credentials from a just-completed updateAdmin() password reset — -->
+          <!-- also emailed, but shown here too so it can be copied without leaving the page. -->
+          <v-card v-if="store.lastAdminUpdateResult" variant="tonal" color="primary" rounded="lg" class="mt-4">
+            <v-card-text>
+              <p class="text-subtitle-2 font-weight-medium mb-3">
+                Updated login for {{ store.lastAdminUpdateResult.username }}
+              </p>
+              <div class="d-flex align-center ga-2 mb-1">
+                <span class="text-body-2">Username:</span>
+                <span class="font-mono font-weight-medium">{{ store.lastAdminUpdateResult.username }}</span>
+                <v-btn icon="mdi-content-copy" size="x-small" variant="text"
+                  @click="copyAdminField(store.lastAdminUpdateResult.username, 'username')" />
+                <v-chip v-if="copiedAdminField === 'username'" size="x-small" color="success" variant="flat">Copied</v-chip>
+              </div>
+              <div class="d-flex align-center ga-2">
+                <span class="text-body-2">Password:</span>
+                <span class="font-mono font-weight-medium">{{ showUpdatedAdminPassword ? store.lastAdminUpdateResult.password : '••••••••' }}</span>
+                <v-btn :icon="showUpdatedAdminPassword ? 'mdi-eye-off' : 'mdi-eye'" size="x-small" variant="text" @click="showUpdatedAdminPassword = !showUpdatedAdminPassword" />
+                <v-btn icon="mdi-content-copy" size="x-small" variant="text"
+                  @click="copyAdminField(store.lastAdminUpdateResult.password, 'password')" />
+                <v-chip v-if="copiedAdminField === 'password'" size="x-small" color="success" variant="flat">Copied</v-chip>
+              </div>
+              <p class="text-caption textSecondary mt-2 mb-0">
+                Also emailed to the admin and won't be shown again — share it with them now.
               </p>
             </v-card-text>
           </v-card>
@@ -355,6 +525,90 @@ watch(
           <v-spacer />
           <v-btn variant="text" :disabled="store.deleting" @click="confirmDelete = false">Cancel</v-btn>
           <v-btn color="error" variant="flat" :loading="store.deleting" @click="deleteHospital">Delete</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Edit admin dialog -->
+    <v-dialog v-model="editAdminDialog" max-width="480">
+      <v-card rounded="lg">
+        <v-card-title class="text-h6">Edit admin details</v-card-title>
+        <v-card-text>
+          <v-text-field v-model="editAdminForm.name" label="Name" variant="outlined" density="comfortable" class="mb-3" hide-details="auto" />
+          <v-text-field v-model="editAdminForm.username" label="Username" variant="outlined" density="comfortable" class="mb-3" hide-details="auto" />
+          <v-text-field v-model="editAdminForm.email" label="Email" type="email" variant="outlined" density="comfortable" class="mb-3" hide-details="auto" />
+          <v-text-field
+            v-model="editAdminForm.password" label="Reset password (optional)" :type="showEditAdminPassword ? 'text' : 'password'"
+            variant="outlined" density="comfortable" hide-details="auto"
+            :hint="editingAdmin?.core_user_id
+              ? 'Leave blank to keep their current password. Filling this in changes their LOCAL platform password only — there is no way to update their existing core-service password.'
+              : 'Leave blank to keep their current password. Filling this in also creates their core-service account with this password, since they don\'t have one yet.'"
+            persistent-hint
+          >
+            <template #append-inner>
+              <v-btn icon="mdi-refresh" size="small" variant="text" @click="generateEditAdminPassword" />
+            </template>
+          </v-text-field>
+          <p class="text-caption textSecondary mt-3 mb-0">
+            Saving sends a notification email to the admin's (possibly new) address confirming what changed.
+          </p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="store.updatingAdminId === editingAdmin?.id" @click="editAdminDialog = false">Cancel</v-btn>
+          <v-btn color="primary" variant="flat" :loading="store.updatingAdminId === editingAdmin?.id"
+            :disabled="!!editAdminForm.password && editAdminForm.password.length < 8" @click="saveAdminEdit">
+            Save
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Add admin dialog -->
+    <v-dialog v-model="addAdminDialog" max-width="480">
+      <v-card rounded="lg">
+        <v-card-title class="text-h6">Add hospital admin</v-card-title>
+        <v-card-text>
+          <v-text-field v-model="addAdminForm.name" label="Name" variant="outlined" density="comfortable" class="mb-3" hide-details="auto" />
+          <v-text-field v-model="addAdminForm.username" label="Username" variant="outlined" density="comfortable" class="mb-3" hide-details="auto" />
+          <v-text-field v-model="addAdminForm.email" label="Email" type="email" variant="outlined" density="comfortable" class="mb-3" hide-details="auto" />
+          <v-text-field
+            v-model="addAdminForm.password" label="Password" :type="showAddAdminPassword ? 'text' : 'password'"
+            variant="outlined" density="comfortable" hide-details="auto"
+            hint="Min 8 characters. An invite email is sent to this admin." persistent-hint
+          >
+            <template #append-inner>
+              <v-btn icon="mdi-refresh" size="small" variant="text" @click="generateAddAdminPassword" />
+            </template>
+          </v-text-field>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="store.addingAdmin" @click="addAdminDialog = false">Cancel</v-btn>
+          <v-btn color="primary" variant="flat" :loading="store.addingAdmin"
+            :disabled="!addAdminForm.name || !addAdminForm.username || !addAdminForm.email || addAdminForm.password.length < 8"
+            @click="saveNewAdmin">
+            Add admin
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Delete admin confirmation dialog -->
+    <v-dialog v-model="confirmDeleteAdmin" max-width="460">
+      <v-card rounded="lg">
+        <v-card-title class="text-h6">Remove admin?</v-card-title>
+        <v-card-text>
+          This removes <strong>{{ confirmDeleteAdmin?.name }}</strong>'s access to this hospital.
+          <template v-if="confirmDeleteAdmin?.core_user_id">
+            Their core-service account will also be deactivated, so they can't log in there either.
+          </template>
+          Their hmis-manage account itself is kept — this can be reversed by adding them back.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="store.removingAdminId === confirmDeleteAdmin?.id" @click="confirmDeleteAdmin = null">Cancel</v-btn>
+          <v-btn color="error" variant="flat" :loading="store.removingAdminId === confirmDeleteAdmin?.id" @click="deleteAdmin">Remove</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

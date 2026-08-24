@@ -49,7 +49,7 @@ function provisionAdmin(adminId: number) {
   store.provisionAdmin(id.value, adminId)
 }
 
-// `[id].vue` is reused (not remounted) when navigating from one hospital's
+// `[id]/index.vue` is reused (not remounted) when navigating from one hospital's
 // detail page straight to another's, since both match this same route —
 // watch the param directly rather than relying on onMounted alone, or the
 // page would keep showing the previous hospital's facilities/admins (and a

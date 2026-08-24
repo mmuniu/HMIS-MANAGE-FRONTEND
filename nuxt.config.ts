@@ -10,6 +10,11 @@ export default defineNuxtConfig({
   // Enable server-side rendering
   ssr: false,
 
+  // Dev server port. Override with NUXT_PORT (or `nuxt dev --port`) if 3003 is taken.
+  devServer: {
+    port: Number(process.env.NUXT_PORT ?? 3003),
+  },
+
   // TypeScript configuration
   typescript: {
     shim: false,

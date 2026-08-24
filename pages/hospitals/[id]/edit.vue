@@ -50,6 +50,7 @@ watch(
     form.custom_domain = hospital.custom_domain ?? ''
     form.subscription_tier = hospital.subscription_tier
     form.billing_status = hospital.billing_status
+    form.payment_gateway_customer_id = hospital.payment_gateway_customer_id ?? ''
     form.max_user_slots = hospital.max_user_slots
     form.max_patient_records = hospital.max_patient_records
     form.status = hospital.status

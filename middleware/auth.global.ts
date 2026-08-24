@@ -8,11 +8,12 @@ const ROLE_ROUTES: { prefix: string; roles: string[] }[] = [
   // More specific prefixes first (first match wins).
   // NOTE: system_admin bypasses ALL of these (see below) — so these lists only
   // gate the NON-system-admin roles.
-  { prefix: '/hospitals/new', roles: ['system_admin'] },   // only system admin creates hospitals
-  { prefix: '/hospitals', roles: ['system_admin', 'hospital_admin'] },
-  { prefix: '/my-test-cases', roles: ['developer', 'tester'] }, // authors' own submissions
-  { prefix: '/test-cases/new', roles: ['developer', 'tester'] }, // authoring only
-  { prefix: '/test-cases', roles: ['developer', 'tester', 'qa'] },
+  // system_admin + provisioning_admin register hospitals.
+  { prefix: '/hospitals/new', roles: ['system_admin', 'provisioning_admin'] },
+  { prefix: '/hospitals', roles: ['system_admin', 'hospital_admin', 'provisioning_admin'] },
+  { prefix: '/my-test-cases', roles: ['developer', 'tester', 'provisioning_admin'] }, // authors' own submissions
+  { prefix: '/test-cases/new', roles: ['developer', 'tester', 'provisioning_admin'] }, // authoring only
+  { prefix: '/test-cases', roles: ['developer', 'tester', 'qa', 'provisioning_admin'] },
   { prefix: '/test-approvals', roles: ['developer', 'system_admin'] }, // devs approve too
   { prefix: '/systems', roles: ['system_admin'] },
   { prefix: '/tester-activity', roles: ['system_admin'] },

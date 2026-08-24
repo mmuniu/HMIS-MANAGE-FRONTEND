@@ -15,7 +15,7 @@ export interface menu {
     type?: string;
     subCaption?: string;
     // Account types allowed to see this item. Omit = visible to everyone.
-    // Values: 'developer' | 'tester' | 'hospital_admin'
+    // Values: 'developer' | 'tester' | 'qa' | 'provisioning_admin' | 'hospital_admin'
     roles?: string[];
 }
 
@@ -36,7 +36,15 @@ const sidebarItem: menu[] = [
                 title: 'Hospitals',
                 icon: 'hospital-line-duotone',
                 to: '/hospitals',
-                roles: ['system_admin', 'hospital_admin'],
+                // Provisioning admins register new hospitals here.
+                roles: ['system_admin', 'hospital_admin', 'provisioning_admin'],
+            },
+            {
+                title: 'Deployments',
+                icon: 'checklist-minimalistic-line-duotone',
+                to: '/deployments',
+                // Platform staff track each hospital's implementation lifecycle.
+                roles: ['system_admin'],
             },
             {
                 title: 'Integrations',
@@ -45,18 +53,25 @@ const sidebarItem: menu[] = [
                 roles: ['system_admin', 'hospital_admin'],
             },
             {
+                title: 'Users',
+                icon: 'users-group-rounded-line-duotone',
+                to: '/users',
+                // System admin manages every account on the platform.
+                roles: ['system_admin'],
+            },
+            {
                 title: 'Test Cases',
                 icon: 'clipboard-check-line-duotone',
                 to: '/test-cases',
                 // Testers + QA run test cases; developers oversee them.
-                roles: ['tester', 'developer', 'qa'],
+                roles: ['tester', 'developer', 'qa', 'provisioning_admin'],
             },
             {
                 title: 'My Test Cases',
                 icon: 'document-add-line-duotone',
                 to: '/my-test-cases',
-                // Authors (tester + developer) track their created cases' approval.
-                roles: ['tester', 'developer'],
+                // Authors (tester + developer + provisioning admin) track approval.
+                roles: ['tester', 'developer', 'provisioning_admin'],
             },
             {
                 title: 'Test Approvals',
@@ -84,7 +99,7 @@ const sidebarItem: menu[] = [
                 icon: 'history-line-duotone',
                 to: '/run-history',
                 // Everyone sees their own run history; admin sees all.
-                roles: ['tester', 'qa', 'developer', 'system_admin'],
+                roles: ['tester', 'qa', 'developer', 'system_admin', 'provisioning_admin'],
             },
             {
                 title: 'Report a Bug',

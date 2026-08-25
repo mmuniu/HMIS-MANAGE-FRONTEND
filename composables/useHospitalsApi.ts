@@ -10,6 +10,7 @@ import type {
   HospitalShowResponse,
   ProvisionAdminResponse,
   RetryProvisioningResponse,
+  SeedReferenceDataResponse,
   UpdateAdminPayload,
   UpdateAdminResponse,
   UpdateHospitalPayload,
@@ -58,6 +59,11 @@ export function useHospitalsApi() {
     return data
   }
 
+  async function seedReferenceData(id: string): Promise<SeedReferenceDataResponse> {
+    const { data } = await $axios.post<SeedReferenceDataResponse>(`/v1/platform/hospitals/${id}/seed-reference-data`)
+    return data
+  }
+
   async function addAdmin(id: string, payload: CreateAdminPayload): Promise<CreateAdminResponse> {
     const { data } = await $axios.post<CreateAdminResponse>(`/v1/platform/hospitals/${id}/admins`, payload)
     return data
@@ -93,5 +99,5 @@ export function useHospitalsApi() {
     }
   }
 
-  return { list, show, create, update, destroy, retryProvisioning, provisionAdmin, updateAdmin, addAdmin, removeAdmin, searchFacility }
+  return { list, show, create, update, destroy, retryProvisioning, seedReferenceData, provisionAdmin, updateAdmin, addAdmin, removeAdmin, searchFacility }
 }

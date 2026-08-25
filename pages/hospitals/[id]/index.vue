@@ -331,6 +331,25 @@ watch(
                 <v-list density="compact" lines="two">
                   <v-list-item title="Core org ID" :subtitle="h.core_org_id" />
                 </v-list>
+
+                <p class="text-body-2 textSecondary mb-3 mt-2">
+                  Clinics/destinations, procedures, treatment actions, and
+                  other reference data don't come with provisioning — run
+                  this once to seed the standard set for this hospital.
+                </p>
+
+                <v-alert v-if="store.lastSeedResult?.error" type="error" variant="tonal" class="mb-3">
+                  Seeding failed: {{ store.lastSeedResult.error }}
+                </v-alert>
+                <v-alert v-else-if="store.lastSeedResult" type="success" variant="tonal" class="mb-3">
+                  Reference data seeded — {{ Object.values(store.lastSeedResult.results || {}).filter(r => r.success).length }}
+                  of {{ Object.keys(store.lastSeedResult.results || {}).length }} seeders succeeded.
+                </v-alert>
+
+                <v-btn color="primary" variant="tonal" prepend-icon="mdi-seed-outline"
+                  :loading="store.seeding" @click="store.seedReferenceData(id)">
+                  Seed Facility
+                </v-btn>
               </template>
               <template v-else>
                 <v-chip color="warning" variant="flat" label class="mb-2">Not provisioned in core-service</v-chip>

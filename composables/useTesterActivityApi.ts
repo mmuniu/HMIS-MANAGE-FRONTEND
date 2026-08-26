@@ -14,7 +14,7 @@ export interface TesterActivityRow {
   username: string
   email: string
   // Anyone who runs test cases can appear here, so role is any platform role.
-  role: 'tester' | 'qa' | 'developer' | 'system_admin'
+  role: 'tester' | 'qa' | 'developer' | 'system_admin' | 'provisioning_admin'
   can_author: boolean
   verdicts: TesterVerdicts
   pass_rate: number

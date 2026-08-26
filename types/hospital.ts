@@ -267,6 +267,13 @@ export interface RetryProvisioningResponse {
   core_provisioning_error: string | null
 }
 
+// Response of POST /v1/platform/hospitals/{id}/seed-reference-data.
+export interface SeedReferenceDataResponse {
+  message: string
+  results: Record<string, { success: boolean; ms?: number; error?: string }> | null
+  error: string | null
+}
+
 // Vuetify chip colors per enum value (used in list + detail views).
 export const STATUS_COLOR: Record<HospitalStatus, string> = {
   PROVISIONING: 'info',

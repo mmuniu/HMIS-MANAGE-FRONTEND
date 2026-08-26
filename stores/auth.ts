@@ -94,7 +94,8 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => !!token.value)
   const roles = computed(() => user.value?.roles ?? [])
 
-  // Platform account type (system_admin/developer/tester/qa) or null for tenant users.
+  // Platform account type (system_admin/developer/tester/qa/provisioning_admin)
+  // or null for tenant users.
   const platformRole = computed(() => user.value?.platform_role ?? null)
   // System admin = top-level superuser with access to everything.
   const isSystemAdmin = computed(() => platformRole.value === 'system_admin')
@@ -102,8 +103,11 @@ export const useAuthStore = defineStore('auth', () => {
   const isTester = computed(() => platformRole.value === 'tester')
   // QA = run-only tester: works with existing tests but cannot author them.
   const isQa = computed(() => platformRole.value === 'qa')
+  // Provisioning admin = full tester access + may register/edit hospitals.
+  const isProvisioningAdmin = computed(() => platformRole.value === 'provisioning_admin')
   const isPlatformUser = computed(
-    () => isSystemAdmin.value || isDeveloper.value || isTester.value || isQa.value,
+    () => isSystemAdmin.value || isDeveloper.value || isTester.value || isQa.value
+      || isProvisioningAdmin.value,
   )
   // Hospital admin: driven by the real tenant role_key returned in user.roles.
   const isHospitalAdmin = computed(
@@ -112,7 +116,11 @@ export const useAuthStore = defineStore('auth', () => {
   // Anyone with cross-tenant "sees everything" access.
   const isSuperAccess = computed(() => isSystemAdmin.value || isDeveloper.value)
   // Who may create/edit/delete/upload test cases (QA excluded; system admin allowed).
-  const canAuthorTests = computed(() => isSystemAdmin.value || isDeveloper.value || isTester.value)
+  const canAuthorTests = computed(
+    () => isSystemAdmin.value || isDeveloper.value || isTester.value || isProvisioningAdmin.value,
+  )
+  // May register a new hospital (system admin, or a provisioning admin).
+  const canRegisterHospitals = computed(() => isSystemAdmin.value || isProvisioningAdmin.value)
   // Who may approve/reject pending test cases (developers + system admin).
   const canApproveTests = computed(() => isSystemAdmin.value || isDeveloper.value)
 
@@ -396,6 +404,8 @@ export const useAuthStore = defineStore('auth', () => {
     roles,
     platformRole,
     isSystemAdmin,
+    isProvisioningAdmin,
+    canRegisterHospitals,
     isDeveloper,
     isTester,
     isQa,

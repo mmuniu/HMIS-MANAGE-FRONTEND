@@ -48,9 +48,11 @@ function fmtDate(iso: string | null): string {
 // Anyone can run test cases, so any role may appear here.
 const ROLE_LABELS: Record<string, string> = {
   tester: 'Tester', qa: 'QA', developer: 'Developer', system_admin: 'System Admin',
+  provisioning_admin: 'Provisioning Admin',
 }
 const ROLE_COLORS: Record<string, string> = {
   tester: 'primary', qa: 'warning', developer: 'info', system_admin: 'success',
+  provisioning_admin: 'secondary',
 }
 function roleLabel(r: string) { return ROLE_LABELS[r] ?? r }
 function roleColor(r: string) { return ROLE_COLORS[r] ?? 'secondary' }

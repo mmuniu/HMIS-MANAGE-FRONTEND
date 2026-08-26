@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useHospitalsApi } from '~/composables/useHospitalsApi'
-import type { CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, UpdateAdminPayload, UpdateHospitalPayload } from '~/types/hospital'
+import type { CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedReferenceDataResponse, UpdateAdminPayload, UpdateHospitalPayload } from '~/types/hospital'
 
 export const useHospitalsStore = defineStore('hospitals', () => {
   const api = useHospitalsApi()
@@ -19,6 +19,9 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   const lastCreateResult = ref<CreateHospitalResponse | null>(null)
   // Same idea for the most recent retryProvisioning() call.
   const lastRetryResult = ref<RetryProvisioningResponse | null>(null)
+  const seeding = ref(false)
+  // Most recent seedReferenceData() ("Seed Facility" button) result.
+  const lastSeedResult = ref<SeedReferenceDataResponse | null>(null)
   // id of the admin currently being provisioned, if any (drives a per-row spinner).
   const provisioningAdminId = ref<number | null>(null)
   // Most recent provisionAdmin() result — carries the one-time temp password.
@@ -128,6 +131,21 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     }
   }
 
+  async function seedReferenceData(id: string) {
+    seeding.value = true
+    error.value = ''
+    try {
+      const res = await api.seedReferenceData(id)
+      lastSeedResult.value = res
+      return { success: !res.error, data: res }
+    } catch (err: any) {
+      error.value = err?.response?.data?.message || 'Failed to seed reference data.'
+      return { success: false as const }
+    } finally {
+      seeding.value = false
+    }
+  }
+
   async function provisionAdmin(orgId: string, userId: number) {
     provisioningAdminId.value = userId
     error.value = ''
@@ -220,7 +238,7 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   return {
     items, meta, current, loading, error, saving, retrying, deleting, fieldErrors,
     provisioningAdminId, lastAdminProvisionResult, updatingAdminId, lastAdminUpdateResult, addingAdmin, removingAdminId,
-    lastCreateResult, lastRetryResult,
-    fetchList, fetchOne, create, update, retryProvisioning, provisionAdmin, updateAdmin, addAdmin, removeAdmin, remove,
+    lastCreateResult, lastRetryResult, seeding, lastSeedResult,
+    fetchList, fetchOne, create, update, retryProvisioning, seedReferenceData, provisionAdmin, updateAdmin, addAdmin, removeAdmin, remove,
   }
 })

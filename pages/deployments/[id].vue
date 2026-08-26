@@ -70,6 +70,13 @@ function completeStage(stageNumber: number) {
   store.completeStage(id.value, stageNumber)
 }
 
+// Team-First Reorder — see HOSPITAL_PROVISIONING_FLOW.md. Mirrors
+// DeploymentAccess::canActOnStage() on the backend so controls for a stage
+// the viewer can't act on are disabled rather than erroring on click.
+function canAct(stageNumber: number): boolean {
+  return d.value?.viewer.can_act_stage_numbers.includes(stageNumber) ?? false
+}
+
 // Explains, in Stage 6's "Mark complete" tooltip, exactly what core-service
 // provisioning is still missing — so the hard gate isn't a dead end.
 const provisioningGapMessage = computed(() => {
@@ -387,83 +394,117 @@ watch(id, (newId) => store.fetchOne(newId), { immediate: true })
                     <div class="d-flex align-center ga-2">
                       <v-btn
                         v-if="s.stage_number === STAGE_READINESS_NUMBER"
-                        size="small" variant="tonal" @click="activeDialog = 'readiness'"
+                        size="small" variant="tonal" :disabled="!canAct(STAGE_READINESS_NUMBER)"
+                        :title="!canAct(STAGE_READINESS_NUMBER) ? 'Only the assigned deployment lead or a platform admin can manage this stage' : undefined"
+                        @click="activeDialog = 'readiness'"
                       >
                         Manage
                       </v-btn>
                       <template v-if="s.stage_number === STAGE_INFORMATION_NUMBER">
-                        <v-btn size="small" variant="tonal" @click="activeDialog = 'information'">Checklist</v-btn>
-                        <v-btn size="small" variant="tonal" @click="activeDialog = 'documents'">Documents</v-btn>
+                        <v-btn
+                          size="small" variant="tonal" :disabled="!canAct(STAGE_INFORMATION_NUMBER)"
+                          :title="!canAct(STAGE_INFORMATION_NUMBER) ? 'Only the assigned deployment lead or a platform admin can manage this stage' : undefined"
+                          @click="activeDialog = 'information'"
+                        >Checklist</v-btn>
+                        <v-btn
+                          size="small" variant="tonal" :disabled="!canAct(STAGE_INFORMATION_NUMBER)"
+                          :title="!canAct(STAGE_INFORMATION_NUMBER) ? 'Only the assigned deployment lead or a platform admin can manage this stage' : undefined"
+                          @click="activeDialog = 'documents'"
+                        >Documents</v-btn>
                       </template>
                       <v-btn
                         v-if="s.stage_number === STAGE_ASSIGNMENT_NUMBER"
-                        size="small" variant="tonal" @click="activeDialog = 'assignments'"
+                        size="small" variant="tonal" :disabled="!d?.viewer.can_manage_assignments"
+                        :title="!d?.viewer.can_manage_assignments ? 'Only a platform admin can manage team assignments' : undefined"
+                        @click="activeDialog = 'assignments'"
                       >
                         Manage
                       </v-btn>
                       <v-btn
                         v-if="s.stage_number === STAGE_WORK_ORDER_NUMBER"
-                        size="small" variant="tonal" @click="activeDialog = 'workplan'"
+                        size="small" variant="tonal" :disabled="!canAct(STAGE_WORK_ORDER_NUMBER)"
+                        :title="!canAct(STAGE_WORK_ORDER_NUMBER) ? 'Only the assigned deployment lead or a platform admin can manage this stage' : undefined"
+                        @click="activeDialog = 'workplan'"
                       >
                         Manage
                       </v-btn>
                       <v-btn
                         v-if="s.stage_number === STAGE_MIGRATION_NUMBER"
-                        size="small" variant="tonal" @click="activeDialog = 'migration'"
+                        size="small" variant="tonal" :disabled="!canAct(STAGE_MIGRATION_NUMBER)"
+                        :title="!canAct(STAGE_MIGRATION_NUMBER) ? 'Only the assigned technical lead or a platform admin can manage this stage' : undefined"
+                        @click="activeDialog = 'migration'"
                       >
                         Manage
                       </v-btn>
                       <v-btn
                         v-if="s.stage_number === STAGE_CONFIGURATION_NUMBER"
-                        size="small" variant="tonal" @click="activeDialog = 'configuration'"
+                        size="small" variant="tonal" :disabled="!canAct(STAGE_CONFIGURATION_NUMBER)"
+                        :title="!canAct(STAGE_CONFIGURATION_NUMBER) ? 'Only the assigned technical lead or a platform admin can manage this stage' : undefined"
+                        @click="activeDialog = 'configuration'"
                       >
                         Manage
                       </v-btn>
                       <v-btn
                         v-if="s.stage_number === STAGE_TRAINING_NUMBER"
-                        size="small" variant="tonal" @click="activeDialog = 'training'"
+                        size="small" variant="tonal" :disabled="!canAct(STAGE_TRAINING_NUMBER)"
+                        :title="!canAct(STAGE_TRAINING_NUMBER) ? 'Only the assigned training personnel or a platform admin can manage this stage' : undefined"
+                        @click="activeDialog = 'training'"
                       >
                         Manage
                       </v-btn>
                       <v-btn
                         v-if="s.stage_number === STAGE_UAT_NUMBER"
-                        size="small" variant="tonal" @click="activeDialog = 'uat'"
+                        size="small" variant="tonal" :disabled="!canAct(STAGE_UAT_NUMBER)"
+                        :title="!canAct(STAGE_UAT_NUMBER) ? 'Only the assigned technical lead or a platform admin can manage this stage' : undefined"
+                        @click="activeDialog = 'uat'"
                       >
                         Manage
                       </v-btn>
                       <v-btn
                         v-if="s.stage_number === STAGE_GO_LIVE_NUMBER"
-                        size="small" variant="tonal" @click="activeDialog = 'golive'"
+                        size="small" variant="tonal" :disabled="!canAct(STAGE_GO_LIVE_NUMBER)"
+                        :title="!canAct(STAGE_GO_LIVE_NUMBER) ? 'Only the assigned deployment lead or a platform admin can manage this stage' : undefined"
+                        @click="activeDialog = 'golive'"
                       >
                         Manage
                       </v-btn>
                       <v-btn
                         v-if="s.stage_number === STAGE_HYPERCARE_NUMBER"
-                        size="small" variant="tonal" @click="activeDialog = 'hypercare'"
+                        size="small" variant="tonal" :disabled="!canAct(STAGE_HYPERCARE_NUMBER)"
+                        :title="!canAct(STAGE_HYPERCARE_NUMBER) ? 'Only the assigned support team member or a platform admin can manage this stage' : undefined"
+                        @click="activeDialog = 'hypercare'"
                       >
                         Manage
                       </v-btn>
                       <v-btn
                         v-if="s.stage_number === STAGE_STABILIZATION_NUMBER"
-                        size="small" variant="tonal" @click="activeDialog = 'stabilization'"
+                        size="small" variant="tonal" :disabled="!canAct(STAGE_STABILIZATION_NUMBER)"
+                        :title="!canAct(STAGE_STABILIZATION_NUMBER) ? 'Only the assigned support team member or a platform admin can manage this stage' : undefined"
+                        @click="activeDialog = 'stabilization'"
                       >
                         Manage
                       </v-btn>
                       <v-btn
                         v-if="s.stage_number === STAGE_SIGNOFF_NUMBER"
-                        size="small" variant="tonal" @click="activeDialog = 'signoff'"
+                        size="small" variant="tonal" :disabled="!canAct(STAGE_SIGNOFF_NUMBER)"
+                        :title="!canAct(STAGE_SIGNOFF_NUMBER) ? 'Only the assigned deployment lead or a platform admin can manage this stage' : undefined"
+                        @click="activeDialog = 'signoff'"
                       >
                         Manage
                       </v-btn>
                       <v-btn
                         v-if="s.stage_number === STAGE_HANDOVER_NUMBER"
-                        size="small" variant="tonal" @click="activeDialog = 'handover'"
+                        size="small" variant="tonal" :disabled="!canAct(STAGE_HANDOVER_NUMBER)"
+                        :title="!canAct(STAGE_HANDOVER_NUMBER) ? 'Only the assigned support team member or a platform admin can manage this stage' : undefined"
+                        @click="activeDialog = 'handover'"
                       >
                         Manage
                       </v-btn>
                       <v-btn
                         v-if="s.stage_number === STAGE_REVIEW_NUMBER"
-                        size="small" variant="tonal" @click="activeDialog = 'review'"
+                        size="small" variant="tonal" :disabled="!canAct(STAGE_REVIEW_NUMBER)"
+                        :title="!canAct(STAGE_REVIEW_NUMBER) ? 'Only the assigned support team member or a platform admin can manage this stage' : undefined"
+                        @click="activeDialog = 'review'"
                       >
                         Manage
                       </v-btn>
@@ -492,6 +533,16 @@ watch(id, (newId) => store.fetchOne(newId), { immediate: true })
                         <v-tooltip
                           v-if="isStageBlocked(s.stage_number)"
                           location="top" :text="stageGapMessage(s.stage_number)"
+                        >
+                          <template #activator="{ props }">
+                            <span v-bind="props">
+                              <v-btn size="small" color="primary" variant="tonal" disabled>Mark complete</v-btn>
+                            </span>
+                          </template>
+                        </v-tooltip>
+                        <v-tooltip
+                          v-else-if="!canAct(s.stage_number)"
+                          location="top" text="Only this stage's assigned team member or a platform admin can mark it complete"
                         >
                           <template #activator="{ props }">
                             <span v-bind="props">

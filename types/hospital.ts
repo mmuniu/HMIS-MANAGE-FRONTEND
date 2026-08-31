@@ -267,11 +267,25 @@ export interface RetryProvisioningResponse {
   core_provisioning_error: string | null
 }
 
-// Response of POST /v1/platform/hospitals/{id}/seed-reference-data.
+// Response of POST /v1/platform/hospitals/{id}/seed-reference-data — the
+// seeders now run on the queue (a full run takes well over any reasonable
+// HTTP timeout), so this only confirms the run was queued; poll
+// GET .../seed-reference-data/{runId} (seedingStatus) for the outcome.
 export interface SeedReferenceDataResponse {
   message: string
+  seeding_run_id: number
+  status: SeedingRunStatus
+}
+
+export type SeedingRunStatus = 'pending' | 'running' | 'success' | 'failed'
+
+export interface SeedingStatusResponse {
+  seeding_run_id: number
+  status: SeedingRunStatus
   results: Record<string, { success: boolean; ms?: number; error?: string }> | null
   error: string | null
+  started_at: string | null
+  finished_at: string | null
 }
 
 // Vuetify chip colors per enum value (used in list + detail views).

@@ -11,7 +11,10 @@ const ROLE_ROUTES: { prefix: string; roles: string[] }[] = [
   // system_admin + provisioning_admin register hospitals.
   { prefix: '/hospitals/new', roles: ['system_admin', 'provisioning_admin'] },
   { prefix: '/hospitals', roles: ['system_admin', 'hospital_admin', 'provisioning_admin'] },
-  { prefix: '/deployments', roles: ['system_admin'] },
+  // deployment_contact: an invited external team member, scoped to their
+  // assigned deployment(s) only — the API enforces that scoping, this just
+  // lets them reach the page at all.
+  { prefix: '/deployments', roles: ['system_admin', 'deployment_contact'] },
   { prefix: '/my-test-cases', roles: ['developer', 'tester', 'provisioning_admin'] }, // authors' own submissions
   { prefix: '/test-cases/new', roles: ['developer', 'tester', 'provisioning_admin'] }, // authoring only
   { prefix: '/test-cases', roles: ['developer', 'tester', 'qa', 'provisioning_admin'] },

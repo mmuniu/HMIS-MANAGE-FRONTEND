@@ -166,6 +166,10 @@ export const useDeploymentsStore = defineStore('deployments', () => {
     return mutate(() => api.deleteAssignment(deploymentId, assignmentId))
   }
 
+  function inviteAssignment(deploymentId: string, assignmentId: number) {
+    return mutate(() => api.inviteAssignment(deploymentId, assignmentId))
+  }
+
   function upsertWorkPlan(deploymentId: string, payload: UpsertWorkPlanPayload) {
     return mutate(() => api.upsertWorkPlan(deploymentId, payload))
   }
@@ -259,7 +263,7 @@ export const useDeploymentsStore = defineStore('deployments', () => {
     fetchList, fetchOne, create, completeStage, findForOrganization,
     updateChecklistItem,
     addDocument, uploadDocument, reviewDocument, deleteDocument,
-    addAssignment, deleteAssignment,
+    addAssignment, deleteAssignment, inviteAssignment,
     upsertWorkPlan,
     requestApproval, decideApproval,
     upsertMigration,

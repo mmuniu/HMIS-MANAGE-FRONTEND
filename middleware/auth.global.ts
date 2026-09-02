@@ -15,6 +15,10 @@ const ROLE_ROUTES: { prefix: string; roles: string[] }[] = [
   // assigned deployment(s) only — the API enforces that scoping, this just
   // lets them reach the page at all.
   { prefix: '/deployments', roles: ['system_admin', 'deployment_contact'] },
+  // Integration config carries third-party credentials — restricted to the
+  // roles that administer hospitals, matching the backend's
+  // IntegrationController::authorizeOrgAccess check.
+  { prefix: '/integrations', roles: ['system_admin', 'hospital_admin', 'provisioning_admin'] },
   { prefix: '/my-test-cases', roles: ['developer', 'tester', 'provisioning_admin'] }, // authors' own submissions
   { prefix: '/test-cases/new', roles: ['developer', 'tester', 'provisioning_admin'] }, // authoring only
   { prefix: '/test-cases', roles: ['developer', 'tester', 'qa', 'provisioning_admin'] },

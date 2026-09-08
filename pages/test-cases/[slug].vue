@@ -12,6 +12,11 @@ const route = useRoute()
 const router = useRouter()
 const store = useTestCasesStore()
 const auth = useAuthStore()
+
+// Who may open a linked bug: system admins triage them, developers are the
+// ones they get assigned to. Everyone else sees the chip but cannot click it —
+// /feedback/{ticket} only ever returns the caller's own reports.
+const canOpenBugs = computed(() => auth.isSystemAdmin || auth.isDeveloper)
 const api = useTestCasesApi()
 const reportsApi = useReportsApi()
 const { $showToast } = useNuxtApp()
@@ -321,8 +326,16 @@ async function reject(c: TestCase) {
               <div v-if="c.bugs && c.bugs.length" class="mt-3">
                 <p class="text-overline textSecondary mb-1"><v-icon icon="mdi-bug" size="14" class="mr-1" />Linked bugs</p>
                 <div class="d-flex flex-wrap gap-2">
+                  <!-- Everyone SEES which bugs came off this case, but only
+                       system admins and developers can open one. The old link
+                       went to /feedback/{ticket}, which returns only the
+                       caller's OWN reports — so for anyone other than the
+                       reporter it 404'd. Non-privileged roles now get a plain,
+                       unclickable chip instead of a dead link. -->
                   <v-chip v-for="b in c.bugs" :key="b.ticket_id" size="small" variant="tonal" color="warning" label
-                    :to="`/feedback/${b.ticket_id}`">
+                    :to="canOpenBugs ? `/feedback-admin/${b.ticket_id}` : undefined"
+                    :link="canOpenBugs"
+                    :style="canOpenBugs ? undefined : 'cursor: default'">
                     {{ b.ticket_id.slice(0, 8) }} · {{ b.status }}
                   </v-chip>
                 </div>

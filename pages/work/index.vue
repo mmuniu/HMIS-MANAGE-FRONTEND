@@ -3,7 +3,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useReportsApi } from '@/composables/useReportsApi'
 import { useAuthStore } from '@/stores/auth'
-import type { ReportSummary } from '~/types/report'
+import { SEVERITIES, type ReportSummary, type Severity } from '~/types/report'
 
 const api = useReportsApi()
 const router = useRouter()
@@ -19,10 +19,18 @@ const assignees = ref<{ id: number; name: string }[]>([])
 const filters = reactive({
   assigned_to: null as number | null,
   type: null as string | null,
+  severity: null as Severity | null,
   sort: 'newest' as 'newest' | 'oldest',
   date_from: '' as string,
   date_to: '' as string,
 })
+
+// Severity options for the filter, ordered most-urgent first so "critical" is
+// the first thing reachable in the dropdown.
+const SEVERITY_OPTIONS = [...SEVERITIES].reverse().map((s) => ({
+  title: s.charAt(0).toUpperCase() + s.slice(1),
+  value: s,
+}))
 
 function clearRange() {
   filters.date_from = ''
@@ -50,6 +58,7 @@ async function load() {
   try {
     const params: Record<string, any> = { sort: filters.sort }
     if (filters.type) params.type = filters.type
+    if (filters.severity) params.severity = filters.severity
     if (filters.assigned_to) params.assigned_to = filters.assigned_to
     if (filters.date_from) params.date_from = filters.date_from
     if (filters.date_to) params.date_to = filters.date_to
@@ -68,6 +77,7 @@ async function load() {
 function clearFilters() {
   filters.assigned_to = null
   filters.type = null
+  filters.severity = null
   filters.sort = 'newest'
   filters.date_from = ''
   filters.date_to = ''
@@ -128,6 +138,14 @@ onMounted(load)
             v-model="filters.type"
             :items="[{ title: 'Bug', value: 'bug' }, { title: 'Feature', value: 'feature' }]"
             label="Type" clearable
+            variant="outlined" density="compact" hide-details
+            style="max-width: 180px"
+            @update:model-value="load"
+          />
+          <v-select
+            v-model="filters.severity"
+            :items="SEVERITY_OPTIONS"
+            label="Severity" clearable
             variant="outlined" density="compact" hide-details
             style="max-width: 180px"
             @update:model-value="load"

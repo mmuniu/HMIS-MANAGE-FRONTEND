@@ -23,6 +23,7 @@ const localShow = computed({
 })
 
 const assignments = computed(() => store.current?.assignments || [])
+const canManage = computed(() => store.current?.viewer.can_manage_assignments ?? false)
 
 function assignmentsFor(role: AssignmentRole) {
   return assignments.value.filter((a) => a.role_key === role)
@@ -88,6 +89,14 @@ async function removeAssignment(assignmentId: number) {
   await store.deleteAssignment(props.deploymentId, assignmentId)
   removingId.value = null
 }
+
+const invitingId = ref<number | null>(null)
+
+async function sendInvite(assignmentId: number) {
+  invitingId.value = assignmentId
+  await store.inviteAssignment(props.deploymentId, assignmentId)
+  invitingId.value = null
+}
 </script>
 
 <template>
@@ -104,22 +113,39 @@ async function removeAssignment(assignmentId: number) {
             <span class="font-weight-medium">{{ ASSIGNMENT_ROLE_LABEL[role] }}</span>
             <v-chip v-if="REQUIRED_ASSIGNMENT_ROLES.includes(role)" size="x-small" variant="tonal" color="primary" label>required</v-chip>
           </div>
-          <div v-if="assignmentsFor(role).length" class="d-flex flex-wrap ga-2 mb-1">
+          <div v-if="assignmentsFor(role).length" class="d-flex flex-wrap ga-2 align-center mb-1">
             <v-chip
               v-for="a in assignmentsFor(role)" :key="a.id"
-              closable size="small" variant="tonal"
+              :closable="canManage" size="small" variant="tonal"
               :disabled="removingId === a.id"
               @click:close="removeAssignment(a.id)"
             >
               {{ a.assignee_name || a.contact_name }}
               <span v-if="a.contact_email" class="text-caption ml-1">({{ a.contact_email }})</span>
             </v-chip>
+            <template v-for="a in assignmentsFor(role)" :key="`status-${a.id}`">
+              <v-chip v-if="a.assignee_user_id" size="x-small" variant="text" color="success" label>
+                linked to platform account
+              </v-chip>
+              <v-btn
+                v-else-if="a.contact_email && canManage"
+                size="x-small" variant="tonal" color="primary"
+                :loading="invitingId === a.id"
+                @click="sendInvite(a.id)"
+              >
+                Send invite
+              </v-btn>
+            </template>
           </div>
           <p v-else class="text-caption textSecondary mb-1">Not yet assigned.</p>
         </div>
 
         <v-divider class="my-4" />
 
+        <p v-if="!canManage" class="text-caption textSecondary">
+          Only a platform administrator can manage this deployment's team assignments.
+        </p>
+        <template v-else>
         <h4 class="text-subtitle-1 font-weight-medium mb-2">Add assignment</h4>
         <div class="d-flex flex-wrap ga-2 align-center mb-2">
           <v-select
@@ -153,6 +179,7 @@ async function removeAssignment(assignmentId: number) {
         <v-btn color="primary" variant="tonal" :loading="adding" :disabled="!canAdd" @click="addAssignment">
           Add assignment
         </v-btn>
+        </template>
       </v-card-text>
     </v-card>
   </v-dialog>

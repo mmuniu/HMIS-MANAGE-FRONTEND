@@ -12,9 +12,14 @@ export const STAGE_PROVISIONING_NUMBER = 6
 
 // Phase 3 — see HOSPITAL_PROVISIONING_FLOW.md. These four stages each get
 // their own "Manage" dialog instead of a bare "Mark complete" button.
-export const STAGE_READINESS_NUMBER = 2
-export const STAGE_INFORMATION_NUMBER = 3
-export const STAGE_ASSIGNMENT_NUMBER = 4
+// Renumbered by the Team-First Reorder: team_assignment moved to stage 1 so
+// every later stage has a known owner to gate on; contract_authorization/
+// facility_readiness/client_kickoff shifted 1->2/2->3/3->4. Stages 5-16
+// (below) are unaffected.
+export const STAGE_CONTRACT_NUMBER = 2
+export const STAGE_READINESS_NUMBER = 3
+export const STAGE_INFORMATION_NUMBER = 4
+export const STAGE_ASSIGNMENT_NUMBER = 1
 export const STAGE_WORK_ORDER_NUMBER = 5
 
 // Phase 4 — see HOSPITAL_PROVISIONING_FLOW.md.
@@ -39,10 +44,10 @@ export const STAGE_REVIEW_NUMBER = 16
 // Deployment::STAGES on the backend so the checklist can label stages
 // without waiting on a round-trip.
 export const STAGE_DEFINITIONS: { number: number; key: string; title: string }[] = [
-  { number: 1, key: 'contract_authorization', title: 'Contract Confirmation & Deployment Authorization' },
-  { number: 2, key: 'facility_readiness', title: 'Facility Readiness Assessment' },
-  { number: 3, key: 'client_kickoff', title: 'Client Kickoff & Information/Document Collection' },
-  { number: 4, key: 'team_assignment', title: 'Deployment Team & Technical Support Assignment' },
+  { number: 1, key: 'team_assignment', title: 'Deployment Team & Technical Support Assignment' },
+  { number: 2, key: 'contract_authorization', title: 'Contract Confirmation & Deployment Authorization' },
+  { number: 3, key: 'facility_readiness', title: 'Facility Readiness Assessment' },
+  { number: 4, key: 'client_kickoff', title: 'Client Kickoff & Information/Document Collection' },
   { number: 5, key: 'work_order_approval', title: 'Work Plan & Work Order Approval' },
   { number: 6, key: 'provisioning', title: 'Organization Provisioning, Environment Setup & Configuration' },
   { number: 7, key: 'data_migration', title: 'Data Migration Assessment & Migration' },
@@ -536,7 +541,15 @@ export interface CheckInStatusDetail {
   total_completed: number
 }
 
+// Team-First Reorder — see HOSPITAL_PROVISIONING_FLOW.md. Lets the UI grey
+// out controls the current viewer can't use instead of erroring on click.
+export interface ViewerPermissions {
+  can_manage_assignments: boolean
+  can_act_stage_numbers: number[]
+}
+
 export interface DeploymentDetail extends Deployment {
+  viewer: ViewerPermissions
   provisioning_status: ProvisioningStatusDetail | null
   readiness_status: ReadinessStatusDetail
   information_status: InformationStatusDetail

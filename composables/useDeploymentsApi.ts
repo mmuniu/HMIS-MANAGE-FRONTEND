@@ -125,6 +125,11 @@ export function useDeploymentsApi() {
     return data.data
   }
 
+  async function inviteAssignment(id: string, assignmentId: number): Promise<DeploymentDetail> {
+    const { data } = await $axios.post<DeploymentShowResponse>(`/v1/platform/deployments/${id}/assignments/${assignmentId}/invite`)
+    return data.data
+  }
+
   async function upsertWorkPlan(id: string, payload: UpsertWorkPlanPayload): Promise<DeploymentDetail> {
     const { data } = await $axios.put<DeploymentShowResponse>(`/v1/platform/deployments/${id}/work-plan`, payload)
     return data.data
@@ -239,7 +244,7 @@ export function useDeploymentsApi() {
     list, create, show, completeStage,
     updateChecklistItem,
     addDocument, uploadDocument, reviewDocument, deleteDocument,
-    addAssignment, deleteAssignment,
+    addAssignment, deleteAssignment, inviteAssignment,
     upsertWorkPlan,
     requestApproval, decideApproval,
     upsertMigration,

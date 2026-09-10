@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useHospitalsApi } from '~/composables/useHospitalsApi'
-import type { CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedReferenceDataResponse, UpdateAdminPayload, UpdateHospitalPayload } from '~/types/hospital'
+import type { CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedingStatusResponse, UpdateAdminPayload, UpdateHospitalPayload } from '~/types/hospital'
 
 export const useHospitalsStore = defineStore('hospitals', () => {
   const api = useHospitalsApi()
@@ -20,8 +20,9 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   // Same idea for the most recent retryProvisioning() call.
   const lastRetryResult = ref<RetryProvisioningResponse | null>(null)
   const seeding = ref(false)
-  // Most recent seedReferenceData() ("Seed Facility" button) result.
-  const lastSeedResult = ref<SeedReferenceDataResponse | null>(null)
+  // Final polled status of the most recent seedReferenceData() ("Seed
+  // Facility" button) run.
+  const lastSeedResult = ref<SeedingStatusResponse | null>(null)
   // id of the admin currently being provisioned, if any (drives a per-row spinner).
   const provisioningAdminId = ref<number | null>(null)
   // Most recent provisionAdmin() result — carries the one-time temp password.
@@ -131,13 +132,39 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     }
   }
 
+  // Seeding a facility runs on the queue and commonly takes well past a
+  // minute (core-service destinations/procedures, evaluation-service
+  // procedure catalogue, inventory-service product catalogue, each a real
+  // network call to a separate service) — polling here instead of awaiting
+  // one request is what lets `seeding` stay accurate for however long the
+  // run actually takes, rather than the button reporting "Failed" the
+  // moment an arbitrary client timeout elapses on a run that's still going.
+  const SEEDING_POLL_INTERVAL_MS = 3000
+  const SEEDING_POLL_TIMEOUT_MS = 10 * 60 * 1000
+
   async function seedReferenceData(id: string) {
     seeding.value = true
     error.value = ''
+    lastSeedResult.value = null
     try {
-      const res = await api.seedReferenceData(id)
-      lastSeedResult.value = res
-      return { success: !res.error, data: res }
+      const started = await api.seedReferenceData(id)
+      const runId = started.seeding_run_id
+
+      const deadline = Date.now() + SEEDING_POLL_TIMEOUT_MS
+      while (Date.now() < deadline) {
+        const status = await api.getSeedingStatus(id, runId)
+
+        if (status.status === 'success' || status.status === 'failed') {
+          lastSeedResult.value = status
+          if (status.status === 'failed') error.value = status.error || 'Seeding failed.'
+          return { success: status.status === 'success', data: status }
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, SEEDING_POLL_INTERVAL_MS))
+      }
+
+      error.value = 'Seeding is taking longer than expected — check back shortly, it may still complete.'
+      return { success: false as const }
     } catch (err: any) {
       error.value = err?.response?.data?.message || 'Failed to seed reference data.'
       return { success: false as const }

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useHospitalsApi } from '~/composables/useHospitalsApi'
-import type { CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedingStatusResponse, UpdateAdminPayload, UpdateHospitalPayload } from '~/types/hospital'
+import type { CoreOrganization, CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedingStatusResponse, UpdateAdminPayload, UpdateHospitalPayload } from '~/types/hospital'
 
 export const useHospitalsStore = defineStore('hospitals', () => {
   const api = useHospitalsApi()
@@ -38,6 +38,10 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   const removingAdminId = ref<number | null>(null)
   // Field-level validation errors from the backend (422), keyed by field name.
   const fieldErrors = ref<Record<string, string[]>>({})
+  // Organizations already provisioned in core-service, for the register-
+  // hospital wizard's "use existing organization" picker.
+  const coreOrganizations = ref<CoreOrganization[]>([])
+  const loadingCoreOrganizations = ref(false)
 
   async function fetchList(page = 1, perPage = 25) {
     loading.value = true
@@ -66,6 +70,17 @@ export const useHospitalsStore = defineStore('hospitals', () => {
           : err?.response?.data?.message || 'Failed to load hospital.'
     } finally {
       loading.value = false
+    }
+  }
+
+  async function fetchCoreOrganizations() {
+    loadingCoreOrganizations.value = true
+    try {
+      coreOrganizations.value = await api.getCoreOrganizations()
+    } catch (err: any) {
+      error.value = err?.response?.data?.message || 'Failed to load organizations.'
+    } finally {
+      loadingCoreOrganizations.value = false
     }
   }
 
@@ -142,6 +157,21 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   const SEEDING_POLL_INTERVAL_MS = 3000
   const SEEDING_POLL_TIMEOUT_MS = 10 * 60 * 1000
 
+  // A poll GET can fail for reasons that have nothing to do with the
+  // seeding run itself — the 10s axios timeout on a busy moment, a dropped
+  // connection, a transient 502 from the proxy. The run underneath keeps
+  // going regardless (it executes on the queue worker, independent of
+  // whoever is or isn't polling it), so one bad poll is not evidence of
+  // failure. Confirmed live: runs 21 and 22 both show status=success,
+  // finished within ~1s of being created, on attempts where the UI reported
+  // "Failed to seed reference data." — that message was always thrown by
+  // the try/catch below reacting to a poll request error, never by the API
+  // actually returning status=failed (nothing reached the Laravel log on
+  // either occasion). A single throw ending the whole loop turned every
+  // transient network hiccup into a false failure on an operation that had
+  // already succeeded or was still correctly in progress.
+  const SEEDING_POLL_MAX_CONSECUTIVE_ERRORS = 3
+
   async function seedReferenceData(id: string) {
     seeding.value = true
     error.value = ''
@@ -151,8 +181,24 @@ export const useHospitalsStore = defineStore('hospitals', () => {
       const runId = started.seeding_run_id
 
       const deadline = Date.now() + SEEDING_POLL_TIMEOUT_MS
+      let consecutiveErrors = 0
+
       while (Date.now() < deadline) {
-        const status = await api.getSeedingStatus(id, runId)
+        let status
+        try {
+          status = await api.getSeedingStatus(id, runId)
+          consecutiveErrors = 0
+        } catch (pollErr) {
+          consecutiveErrors++
+          if (consecutiveErrors >= SEEDING_POLL_MAX_CONSECUTIVE_ERRORS) {
+            // Several polls in a row failed to even reach the server — that's
+            // a real connectivity problem worth surfacing, distinct from the
+            // run's own outcome, which may still be fine.
+            throw pollErr
+          }
+          await new Promise((resolve) => setTimeout(resolve, SEEDING_POLL_INTERVAL_MS))
+          continue
+        }
 
         if (status.status === 'success' || status.status === 'failed') {
           lastSeedResult.value = status
@@ -166,7 +212,8 @@ export const useHospitalsStore = defineStore('hospitals', () => {
       error.value = 'Seeding is taking longer than expected — check back shortly, it may still complete.'
       return { success: false as const }
     } catch (err: any) {
-      error.value = err?.response?.data?.message || 'Failed to seed reference data.'
+      error.value = err?.response?.data?.message
+        || 'Lost connection while checking seeding status — the run may still complete. Refresh in a moment to check.'
       return { success: false as const }
     } finally {
       seeding.value = false
@@ -266,6 +313,8 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     items, meta, current, loading, error, saving, retrying, deleting, fieldErrors,
     provisioningAdminId, lastAdminProvisionResult, updatingAdminId, lastAdminUpdateResult, addingAdmin, removingAdminId,
     lastCreateResult, lastRetryResult, seeding, lastSeedResult,
+    coreOrganizations, loadingCoreOrganizations,
     fetchList, fetchOne, create, update, retryProvisioning, seedReferenceData, provisionAdmin, updateAdmin, addAdmin, removeAdmin, remove,
+    fetchCoreOrganizations,
   }
 })

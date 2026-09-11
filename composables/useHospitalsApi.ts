@@ -1,5 +1,6 @@
 import { useNuxtApp } from '#app'
 import type {
+  CoreOrganization,
   CreateAdminPayload,
   CreateAdminResponse,
   CreateHospitalPayload,
@@ -105,5 +106,12 @@ export function useHospitalsApi() {
     }
   }
 
-  return { list, show, create, update, destroy, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, updateAdmin, addAdmin, removeAdmin, searchFacility }
+  // Powers the "use existing organization" picker on Step 1 of the
+  // register-hospital wizard. See HospitalController::coreOrganizations().
+  async function getCoreOrganizations(): Promise<CoreOrganization[]> {
+    const { data } = await $axios.get<{ data: CoreOrganization[] }>('/v1/platform/hospitals/core-organizations')
+    return data.data
+  }
+
+  return { list, show, create, update, destroy, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, updateAdmin, addAdmin, removeAdmin, searchFacility, getCoreOrganizations }
 }

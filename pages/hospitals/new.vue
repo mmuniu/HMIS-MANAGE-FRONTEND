@@ -40,6 +40,16 @@ const form = reactive<CreateHospitalPayload>({
   is_sandbox: false,
 })
 
+// Step 1's organization mode: create a brand-new one in core-service
+// (default, today's behaviour — unaffected by this toggle), or attach this
+// facility to one that already exists there. `name` above is always what
+// this NEW local hmis-manage Organization row is called either way — only
+// which core-service org id the facility/admin get provisioned into changes.
+const useExistingOrg = ref(false)
+const selectedCoreOrgId = ref<number | null>(null)
+
+store.fetchCoreOrganizations()
+
 const addFacility = ref(true)
 const facility = reactive<HospitalFacilityPayload>({
   name: '',
@@ -136,6 +146,8 @@ function restoreDraft() {
     dhaShaStatus.value = draft.dhaShaStatus ?? null
     dhaStatus.value = draft.dhaStatus || ''
     dhaStatusType.value = draft.dhaStatusType || 'info'
+    useExistingOrg.value = !!draft.useExistingOrg
+    selectedCoreOrgId.value = draft.selectedCoreOrgId ?? null
   } catch {
     sessionStorage.removeItem(DRAFT_KEY)
   }
@@ -148,7 +160,7 @@ function clearDraft() {
 restoreDraft()
 
 watch(
-  [step, form, addFacility, facility, addAdmin, admin, adminPasswordLocked, dhaIdentifier, dhaMatched, dhaShaStatus, dhaStatus, dhaStatusType],
+  [step, form, addFacility, facility, addAdmin, admin, adminPasswordLocked, dhaIdentifier, dhaMatched, dhaShaStatus, dhaStatus, dhaStatusType, useExistingOrg, selectedCoreOrgId],
   () => {
     if (typeof window === 'undefined' || submitted.value) return
     sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
@@ -163,6 +175,8 @@ watch(
       dhaMatched: dhaMatched.value,
       dhaShaStatus: dhaShaStatus.value,
       dhaStatus: dhaStatus.value,
+      useExistingOrg: useExistingOrg.value,
+      selectedCoreOrgId: selectedCoreOrgId.value,
       dhaStatusType: dhaStatusType.value,
     }))
   },
@@ -255,7 +269,9 @@ const fieldError = (key: string) => store.fieldErrors[key]?.[0]
 const allFieldErrors = computed(() => Object.values(store.fieldErrors).flat())
 
 // Per-step "can advance" gates (light client-side; backend still validates).
-const step1Valid = computed(() => form.name.trim().length > 0)
+const step1Valid = computed(() =>
+  form.name.trim().length > 0 && (!useExistingOrg.value || selectedCoreOrgId.value !== null),
+)
 const step4Valid = computed(() => {
   if (!addAdmin.value) return true
   return (
@@ -308,6 +324,7 @@ async function submit() {
   if (addFacility.value && facility.name) payload.facility = { ...cleaned(facility), name: facility.name }
   if (addAdmin.value) payload.admin = { ...admin }
   if (deploymentId) payload.deployment_id = deploymentId
+  if (useExistingOrg.value && selectedCoreOrgId.value) payload.existing_core_org_id = selectedCoreOrgId.value
 
   const res = await store.create(payload)
   if (res.success) {
@@ -425,8 +442,29 @@ function done() {
           <div class="pa-2">
             <h3 class="text-h6 mb-4"><v-icon icon="mdi-map-marker" class="mr-2" />Identity & Localization</h3>
 
+            <!-- Organization mode: create a brand-new core-service org
+                 (default — unchanged behaviour), or attach this facility to
+                 one that already exists there. `name` below is always what
+                 this hmis-manage hospital record is called, in either mode —
+                 selecting an existing organization only changes which
+                 core-service org the facility/admin get provisioned into. -->
+            <v-switch v-model="useExistingOrg" color="primary" hide-details inset density="compact"
+              label="Attach to an existing organization" class="mb-3" />
+
+            <v-autocomplete v-if="useExistingOrg" v-model="selectedCoreOrgId"
+              :items="store.coreOrganizations" item-title="name" item-value="id"
+              label="Organization *" variant="outlined" density="comfortable"
+              :loading="store.loadingCoreOrganizations" class="mb-3" hide-details="auto"
+              hint="This facility will be provisioned under the selected organization instead of a new one." persistent-hint>
+              <template #item="{ props, item }">
+                <v-list-item v-bind="props" :subtitle="item.raw.code" />
+              </template>
+            </v-autocomplete>
+
             <v-text-field v-model="form.name" label="Hospital name *" variant="outlined" density="comfortable"
-              :error-messages="fieldError('name')" class="mb-3" hide-details="auto" />
+              :error-messages="fieldError('name')" class="mb-3" hide-details="auto"
+              :hint="useExistingOrg ? 'The name for this hospital record in hmis-manage — independent of the organization selected above.' : undefined"
+              :persistent-hint="useExistingOrg" />
             <div class="d-flex ga-3 mb-3 flex-wrap">
               <v-text-field v-model="form.legal_name" label="Legal name" variant="outlined" density="comfortable" hide-details="auto" style="min-width:240px" />
               <v-text-field v-model="form.display_name" label="Display name" variant="outlined" density="comfortable" hide-details="auto" style="min-width:240px" />

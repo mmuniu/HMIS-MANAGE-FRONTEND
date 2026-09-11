@@ -221,9 +221,25 @@ export interface CreateHospitalPayload {
   is_sandbox?: boolean
   // set when the wizard was launched from a deployment's Stage 6
   deployment_id?: string
+  // Step 1's "Use existing organization" toggle — a core_organizations.id
+  // from GET /hospitals/core-organizations. hmis-manage still creates its
+  // own local Organization row from `name` above either way; this only
+  // tells core-service provisioning to attach the new facility/admin to an
+  // organization that already exists there instead of minting a new one.
+  existing_core_org_id?: number
   // optional first facility + admin
   facility?: HospitalFacilityPayload
   admin?: { name: string; username: string; email: string; password: string }
+}
+
+// One row from GET /hospitals/core-organizations — plain id/name/code/status,
+// not the full core-service Organization record (see
+// ServiceOrganizationController::index() in core-service for why).
+export interface CoreOrganization {
+  id: number
+  name: string
+  code: string
+  status: string
 }
 
 // Payload for PUT /v1/platform/hospitals/{id} (matches UpdateHospitalRequest).

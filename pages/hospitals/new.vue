@@ -117,7 +117,7 @@ watch(step, (s) => {
 const dhaIdentifier = ref('')
 const dhaSearching = ref(false)
 const dhaStatus = ref('')
-const dhaStatusType = ref<'success' | 'error' | 'info'>('info')
+const dhaStatusType = ref<'success' | 'error' | 'info' | 'warning'>('info')
 const dhaMatched = ref(false)
 const dhaShaStatus = ref<string | null>(null)
 
@@ -183,13 +183,14 @@ watch(
   { deep: true },
 )
 
-// Gate submission ONLY when a real search came back with a definitive
-// non-ACTIVE status — never when unsearched or when the registry isn't
-// configured (dhaShaStatus stays null in both those cases).
-const facilityGateOk = computed(() => {
-  if (!addFacility.value || !dhaMatched.value || dhaShaStatus.value === null) return true
-  return dhaShaStatus.value.toUpperCase() === 'ACTIVE'
-})
+// A non-ACTIVE SHA status is shown as a warning (see the alert and status
+// message below) but no longer blocks registration — a facility can be
+// found in the DHA registry and still legitimately be mid-onboarding on
+// SHA's side, and staff need to be able to register it regardless. Kept as
+// its own computed (always true) rather than deleted outright, so the call
+// site's intent — "is submission allowed" — stays readable, and so a future
+// business reason to gate again has a single place to do it.
+const facilityGateOk = computed(() => true)
 
 function applyFacility(f: FacilityRegistryResult) {
   if (f.officialName) facility.name = f.officialName
@@ -224,8 +225,8 @@ function applyFacility(f: FacilityRegistryResult) {
   const active = (dhaShaStatus.value || '').toUpperCase() === 'ACTIVE'
   dhaStatus.value = active
     ? 'Facility found — fields below have been filled in.'
-    : 'Facility found, but its SHA status is not ACTIVE — saving is disabled until it is.'
-  dhaStatusType.value = active ? 'success' : 'error'
+    : 'Facility found, but its SHA status is not ACTIVE — you can still register it.'
+  dhaStatusType.value = active ? 'success' : 'warning'
 }
 
 async function searchFacility() {
@@ -524,7 +525,7 @@ function done() {
               </v-btn>
             </div>
             <p v-if="dhaStatus" class="text-caption mt-1 mb-3"
-              :class="{ 'text-success': dhaStatusType === 'success', 'text-error': dhaStatusType === 'error', 'textSecondary': dhaStatusType === 'info' }">
+              :class="{ 'text-success': dhaStatusType === 'success', 'text-error': dhaStatusType === 'error', 'text-warning': dhaStatusType === 'warning', 'textSecondary': dhaStatusType === 'info' }">
               {{ dhaStatus }}
             </p>
 
@@ -557,8 +558,11 @@ function done() {
               <v-text-field v-model="facility.facility_administrator_identifier" :disabled="!addFacility" readonly label="Administrator identifier" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
             </div>
 
-            <v-alert v-if="addFacility && dhaMatched && !facilityGateOk" type="error" variant="tonal" density="compact" class="mb-3">
-              This facility's SHA status is not ACTIVE, so registration is disabled until it is.
+            <v-alert
+              v-if="addFacility && dhaMatched && dhaShaStatus !== null && dhaShaStatus.toUpperCase() !== 'ACTIVE'"
+              type="warning" variant="tonal" density="compact" class="mb-3"
+            >
+              This facility's SHA status is not ACTIVE. You can still register it — follow up with SHA to get it activated.
             </v-alert>
 
             <p class="text-caption textSecondary mt-2">The first hospital admin will be assigned to this facility.</p>

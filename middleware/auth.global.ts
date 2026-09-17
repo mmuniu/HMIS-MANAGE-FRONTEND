@@ -14,7 +14,10 @@ const ROLE_ROUTES: { prefix: string; roles: string[] }[] = [
   // deployment_contact: an invited external team member, scoped to their
   // assigned deployment(s) only — the API enforces that scoping, this just
   // lets them reach the page at all.
-  { prefix: '/deployments', roles: ['system_admin', 'deployment_contact'] },
+  // deployment_viewer: platform staff with read-only visibility into EVERY
+  // deployment (not scoped like deployment_contact) — every stage action
+  // stays disabled for them; see DeploymentAccess::canActOnStage().
+  { prefix: '/deployments', roles: ['system_admin', 'deployment_contact', 'deployment_viewer'] },
   // Integration config carries third-party credentials — restricted to the
   // roles that administer hospitals, matching the backend's
   // IntegrationController::authorizeOrgAccess check.

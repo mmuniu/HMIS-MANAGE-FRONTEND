@@ -105,9 +105,13 @@ export const useAuthStore = defineStore('auth', () => {
   const isQa = computed(() => platformRole.value === 'qa')
   // Provisioning admin = full tester access + may register/edit hospitals.
   const isProvisioningAdmin = computed(() => platformRole.value === 'provisioning_admin')
+  // Deployment viewer = read-only visibility into every hospital's
+  // implementation lifecycle. Never a stage owner, so every stage action
+  // stays disabled — matches DeploymentAccess::canActOnStage() on the backend.
+  const isDeploymentViewer = computed(() => platformRole.value === 'deployment_viewer')
   const isPlatformUser = computed(
     () => isSystemAdmin.value || isDeveloper.value || isTester.value || isQa.value
-      || isProvisioningAdmin.value,
+      || isProvisioningAdmin.value || isDeploymentViewer.value,
   )
   // Hospital admin: driven by the real tenant role_key returned in user.roles.
   const isHospitalAdmin = computed(
@@ -405,6 +409,7 @@ export const useAuthStore = defineStore('auth', () => {
     platformRole,
     isSystemAdmin,
     isProvisioningAdmin,
+    isDeploymentViewer,
     canRegisterHospitals,
     isDeveloper,
     isTester,

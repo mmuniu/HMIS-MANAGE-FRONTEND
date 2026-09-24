@@ -31,7 +31,10 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   const updatingAdminId = ref<number | null>(null)
   // Most recent updateAdmin() result, when it included a password reset —
   // carries the one-time credentials, same copy-once contract as provisionAdmin().
-  const lastAdminUpdateResult = ref<{ username: string; password: string } | null>(null)
+  // usableForCoreService: whether that password actually reached core-service
+  // — and even then it's a ONE-TIME key there (forced reset on first login),
+  // which the panel needs to say explicitly rather than imply otherwise.
+  const lastAdminUpdateResult = ref<{ username: string; password: string; usableForCoreService: boolean } | null>(null)
   // true while a new admin is being created (drives the "Add admin" dialog's save spinner).
   const addingAdmin = ref(false)
   // id of the admin currently being removed, if any (drives the confirm dialog's spinner).
@@ -250,7 +253,9 @@ export const useHospitalsStore = defineStore('hospitals', () => {
         if (index !== -1) current.value.admins[index] = res.data
       }
       lastAdminProvisionResult.value = null // only one one-time-credentials panel shown at a time
-      lastAdminUpdateResult.value = res.password ? { username: res.data.username, password: res.password } : null
+      lastAdminUpdateResult.value = res.password
+        ? { username: res.data.username, password: res.password, usableForCoreService: res.password_usable_for_core_service }
+        : null
       return { success: true as const, notified: res.notified }
     } catch (err: any) {
       error.value = err?.response?.data?.message || 'Failed to update admin.'

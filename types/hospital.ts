@@ -107,6 +107,10 @@ export interface UpdateAdminResponse {
   // Echoed back only when the edit included a password reset — never
   // persisted anywhere, shown once in a copy-once credentials panel.
   password: string | null
+  // True only when `password` actually reached core-service. Even then it's
+  // a ONE-TIME key there — core-service forces a password reset on first
+  // login with it — so the UI must say that, not imply it's an ongoing login.
+  password_usable_for_core_service: boolean
 }
 
 // GET /v1/platform/hospitals/{id} returns everything gathered during

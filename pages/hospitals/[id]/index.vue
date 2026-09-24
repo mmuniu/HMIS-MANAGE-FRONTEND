@@ -511,6 +511,11 @@ watch(
               <p class="text-caption textSecondary mt-2 mb-0">
                 Also emailed to the admin and won't be shown again — share it with them now.
               </p>
+              <p v-if="store.lastAdminUpdateResult.usableForCoreService" class="text-caption text-warning mt-2 mb-0">
+                <v-icon icon="mdi-alert-circle-outline" size="14" class="mr-1" />
+                One-time key for core-service — the admin will be asked to set a new password
+                immediately after signing in with it.
+              </p>
             </v-card-text>
           </v-card>
         </v-card-text>

@@ -54,6 +54,10 @@ function provisionAdmin(adminId: number) {
   store.provisionAdmin(id.value, adminId)
 }
 
+function linkAdmin() {
+  store.linkAdmin(id.value)
+}
+
 const PASSWORD_SYMBOLS = ['!', '@', '#', '$', '%', '^', '&', '*']
 
 const editAdminDialog = ref(false)
@@ -633,6 +637,46 @@ watch(
           <v-spacer />
           <v-btn variant="text" :disabled="store.removingAdminId === confirmDeleteAdmin?.id" @click="confirmDeleteAdmin = null">Cancel</v-btn>
           <v-btn color="error" variant="flat" :loading="store.removingAdminId === confirmDeleteAdmin?.id" @click="deleteAdmin">Remove</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Provisioning (or a password reset) found this email/username already
+         registered on core-service — offer to attach instead of retrying a
+         create that can only ever fail the same way again. -->
+    <v-dialog :model-value="!!store.pendingCoreAccountLink" max-width="480" persistent>
+      <v-card v-if="store.pendingCoreAccountLink" rounded="lg">
+        <v-card-title class="text-h6">Admin already exists in core-service</v-card-title>
+        <v-card-text>
+          <p class="mb-3">
+            Creating this admin failed because an account with this email or username already
+            exists in core-service. Connect to it instead?
+          </p>
+          <v-list density="compact" lines="two" class="mb-2" style="background: transparent;">
+            <v-list-item title="Name" :subtitle="store.pendingCoreAccountLink.existing.name || '—'" />
+            <v-list-item title="Email" :subtitle="store.pendingCoreAccountLink.existing.email" />
+            <v-list-item title="Username" :subtitle="store.pendingCoreAccountLink.existing.username" />
+            <v-list-item
+              title="Status"
+              :subtitle="store.pendingCoreAccountLink.existing.active ? 'Active' : 'Inactive'"
+            />
+            <v-list-item
+              v-if="store.pendingCoreAccountLink.existing.facilities.length"
+              title="Facilities"
+              :subtitle="store.pendingCoreAccountLink.existing.facilities.map(f => f.name).join(', ')"
+            />
+          </v-list>
+          <p class="text-caption textSecondary mb-0">
+            Connecting only links this admin to that existing account — it does not change its
+            password. Cancel to leave the admin unprovisioned instead.
+          </p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="store.linkingAdmin" @click="store.cancelCoreAccountLink">Cancel</v-btn>
+          <v-btn color="primary" variant="flat" :loading="store.linkingAdmin" @click="linkAdmin">
+            Connect this account
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

@@ -9,6 +9,7 @@ import type {
   HospitalDetail,
   HospitalListResponse,
   HospitalShowResponse,
+  LinkAdminResponse,
   ProvisionAdminResponse,
   RetryProvisioningResponse,
   SeedReferenceDataResponse,
@@ -81,6 +82,14 @@ export function useHospitalsApi() {
     return data
   }
 
+  // Attach to a core-service account that already exists — offered when
+  // provisionAdmin() (or a password reset attempting the same create)
+  // fails because the email/username is already taken there.
+  async function linkAdmin(id: string, userId: number, coreUserId: string): Promise<LinkAdminResponse> {
+    const { data } = await $axios.post<LinkAdminResponse>(`/v1/platform/hospitals/${id}/admins/${userId}/link`, { core_user_id: coreUserId })
+    return data
+  }
+
   async function updateAdmin(id: string, userId: number, payload: UpdateAdminPayload): Promise<UpdateAdminResponse> {
     const { data } = await $axios.patch<UpdateAdminResponse>(`/v1/platform/hospitals/${id}/admins/${userId}`, payload)
     return data
@@ -113,5 +122,5 @@ export function useHospitalsApi() {
     return data.data
   }
 
-  return { list, show, create, update, destroy, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, updateAdmin, addAdmin, removeAdmin, searchFacility, getCoreOrganizations }
+  return { list, show, create, update, destroy, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, linkAdmin, updateAdmin, addAdmin, removeAdmin, searchFacility, getCoreOrganizations }
 }

@@ -74,6 +74,23 @@ export interface ProvisionAdminResponse {
   password: string
 }
 
+// core-service's account for an admin found there under an email/username
+// hmis-manage tried to create — surfaced when provisioning (or a password
+// reset that tries to provision) fails as "already exists".
+export interface ExistingCoreAccount {
+  id: string
+  email: string
+  username: string
+  name: string | null
+  organization_id: number | null
+  active: boolean
+  facilities: { id: number; name: string; code: string | null }[]
+}
+
+export interface LinkAdminResponse {
+  data: { id: number; username: string; email: string; core_user_id: string }
+}
+
 export interface UpdateAdminPayload {
   name?: string
   username?: string
@@ -111,6 +128,11 @@ export interface UpdateAdminResponse {
   // a ONE-TIME key there — core-service forces a password reset on first
   // login with it — so the UI must say that, not imply it's an ongoing login.
   password_usable_for_core_service: boolean
+  // Present only when this admin had no core-service account yet AND the
+  // attempt to create one above failed as a duplicate — see ProvisionAdmin's
+  // matching failure shape (thrown as an axios error, not a 2xx body, since
+  // this only happens on the same 502 provisionAdmin() itself returns).
+  existing_core_account?: ExistingCoreAccount | null
 }
 
 // GET /v1/platform/hospitals/{id} returns everything gathered during

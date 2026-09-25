@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useHospitalsApi } from '~/composables/useHospitalsApi'
-import type { CoreOrganization, CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedingStatusResponse, UpdateAdminPayload, UpdateHospitalPayload } from '~/types/hospital'
+import type { CoreOrganization, CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, ExistingCoreAccount, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedingStatusResponse, UpdateAdminPayload, UpdateHospitalPayload } from '~/types/hospital'
 
 export const useHospitalsStore = defineStore('hospitals', () => {
   const api = useHospitalsApi()
@@ -27,6 +27,13 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   const provisioningAdminId = ref<number | null>(null)
   // Most recent provisionAdmin() result — carries the one-time temp password.
   const lastAdminProvisionResult = ref<ProvisionAdminResponse | null>(null)
+  // Set when provisionAdmin() (or a password reset on an unprovisioned
+  // admin) fails because that email/username already has a core-service
+  // account — the operator's confirm-or-cancel prompt reads this. Cleared
+  // on cancel, on a successful link, or when the dialog closes.
+  const pendingCoreAccountLink = ref<{ userId: number; existing: ExistingCoreAccount } | null>(null)
+  // true while linkAdmin() is in flight for the account above.
+  const linkingAdmin = ref(false)
   // id of the admin currently being edited/saved, if any (drives the dialog's save spinner).
   const updatingAdminId = ref<number | null>(null)
   // Most recent updateAdmin() result, when it included a password reset —
@@ -226,6 +233,7 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   async function provisionAdmin(orgId: string, userId: number) {
     provisioningAdminId.value = userId
     error.value = ''
+    pendingCoreAccountLink.value = null
     try {
       const res = await api.provisionAdmin(orgId, userId)
       lastAdminProvisionResult.value = res
@@ -236,16 +244,51 @@ export const useHospitalsStore = defineStore('hospitals', () => {
       }
       return { success: true as const, data: res }
     } catch (err: any) {
-      error.value = err?.response?.data?.message || 'Failed to provision admin.'
+      const existing = err?.response?.data?.existing_core_account
+      if (existing) {
+        // Don't surface this as a plain error — the confirm-link dialog IS
+        // the error handling for this specific failure.
+        pendingCoreAccountLink.value = { userId, existing }
+      } else {
+        error.value = err?.response?.data?.message || 'Failed to provision admin.'
+      }
       return { success: false as const }
     } finally {
       provisioningAdminId.value = null
     }
   }
 
+  /** Confirm response to pendingCoreAccountLink: attach the admin to that account. */
+  async function linkAdmin(orgId: string) {
+    if (!pendingCoreAccountLink.value) return { success: false as const }
+    const { userId, existing } = pendingCoreAccountLink.value
+    linkingAdmin.value = true
+    error.value = ''
+    try {
+      const res = await api.linkAdmin(orgId, userId, existing.id)
+      if (current.value) {
+        const admin = current.value.admins.find((a) => a.id === userId)
+        if (admin) admin.core_user_id = res.data.core_user_id
+      }
+      pendingCoreAccountLink.value = null
+      return { success: true as const, data: res }
+    } catch (err: any) {
+      error.value = err?.response?.data?.message || 'Failed to link admin.'
+      return { success: false as const }
+    } finally {
+      linkingAdmin.value = false
+    }
+  }
+
+  /** Cancel response to pendingCoreAccountLink: dismiss without linking. */
+  function cancelCoreAccountLink() {
+    pendingCoreAccountLink.value = null
+  }
+
   async function updateAdmin(orgId: string, userId: number, payload: UpdateAdminPayload) {
     updatingAdminId.value = userId
     error.value = ''
+    pendingCoreAccountLink.value = null
     try {
       const res = await api.updateAdmin(orgId, userId, payload)
       if (current.value) {
@@ -256,6 +299,13 @@ export const useHospitalsStore = defineStore('hospitals', () => {
       lastAdminUpdateResult.value = res.password
         ? { username: res.data.username, password: res.password, usableForCoreService: res.password_usable_for_core_service }
         : null
+      // A password reset can succeed locally (hmis-manage's own password IS
+      // updated — see the notification's doc comment) while still
+      // discovering the admin already has a core-service account under this
+      // email/username. Offer the link even though the overall call "succeeded".
+      if (res.existing_core_account) {
+        pendingCoreAccountLink.value = { userId, existing: res.existing_core_account }
+      }
       return { success: true as const, notified: res.notified }
     } catch (err: any) {
       error.value = err?.response?.data?.message || 'Failed to update admin.'
@@ -317,9 +367,10 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   return {
     items, meta, current, loading, error, saving, retrying, deleting, fieldErrors,
     provisioningAdminId, lastAdminProvisionResult, updatingAdminId, lastAdminUpdateResult, addingAdmin, removingAdminId,
+    pendingCoreAccountLink, linkingAdmin,
     lastCreateResult, lastRetryResult, seeding, lastSeedResult,
     coreOrganizations, loadingCoreOrganizations,
-    fetchList, fetchOne, create, update, retryProvisioning, seedReferenceData, provisionAdmin, updateAdmin, addAdmin, removeAdmin, remove,
+    fetchList, fetchOne, create, update, retryProvisioning, seedReferenceData, provisionAdmin, linkAdmin, cancelCoreAccountLink, updateAdmin, addAdmin, removeAdmin, remove,
     fetchCoreOrganizations,
   }
 })

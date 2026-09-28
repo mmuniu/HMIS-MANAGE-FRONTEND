@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHospitalsStore } from '@/stores/hospitals'
 import { useAuthStore } from '@/stores/auth'
@@ -19,6 +19,18 @@ const subtitle = computed(() =>
 const page = ref(1)
 const perPage = ref(25)
 
+// `searchInput` tracks the field as the user types; `search` is the debounced
+// value handed to the table. Changing it makes v-data-table-server reset to
+// page 1 and emit update:options, which triggers the server-side query.
+const searchInput = ref('')
+const search = ref('')
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+watch(searchInput, (value) => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => (search.value = (value ?? '').trim()), 350)
+})
+onBeforeUnmount(() => clearTimeout(searchTimer))
+
 const headers = [
   { title: 'Hospital', key: 'name', sortable: false },
   { title: 'Subdomain', key: 'subdomain', sortable: false },
@@ -30,7 +42,7 @@ const headers = [
 ]
 
 async function load() {
-  await store.fetchList(page.value, perPage.value)
+  await store.fetchList(page.value, perPage.value, search.value)
 }
 
 function onTableUpdate(opts: { page: number; itemsPerPage: number }) {
@@ -61,8 +73,21 @@ onMounted(load)
     <v-alert v-if="store.error" type="error" variant="tonal" class="mb-4" :text="store.error" />
 
     <v-card rounded="lg" elevation="10">
+      <div v-if="isPlatform" class="pa-4 pb-0">
+        <v-text-field
+          v-model="searchInput"
+          prepend-inner-icon="mdi-magnify"
+          placeholder="Search by name, subdomain, domain or ID"
+          variant="outlined"
+          density="compact"
+          hide-details
+          clearable
+          style="max-width: 420px"
+        />
+      </div>
       <v-data-table-server
         :headers="headers"
+        :search="search"
         :items="store.items"
         :items-length="store.meta?.total ?? 0"
         :loading="store.loading"
@@ -111,7 +136,9 @@ onMounted(load)
         </template>
 
         <template #no-data>
-          <div class="pa-8 text-center textSecondary">No hospitals yet.</div>
+          <div class="pa-8 text-center textSecondary">
+            {{ search ? `No hospitals match "${search}".` : 'No hospitals yet.' }}
+          </div>
         </template>
       </v-data-table-server>
     </v-card>

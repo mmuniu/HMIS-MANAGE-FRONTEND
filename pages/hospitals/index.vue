@@ -19,17 +19,32 @@ const subtitle = computed(() =>
 const page = ref(1)
 const perPage = ref(25)
 
-// `searchInput` tracks the field as the user types; `search` is the debounced
-// value handed to the table. Changing it makes v-data-table-server reset to
-// page 1 and emit update:options, which triggers the server-side query.
+// `searchInput` tracks the field as the user types and filters the rows
+// already loaded instantly. `search` follows it after a short pause and is
+// handed to the table — changing it makes v-data-table-server reset to page 1
+// and emit update:options, which fetches matches from all records server-side.
 const searchInput = ref('')
 const search = ref('')
+const term = computed(() => (searchInput.value ?? '').trim())
 let searchTimer: ReturnType<typeof setTimeout> | undefined
-watch(searchInput, (value) => {
+watch(term, (value) => {
   clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => (search.value = (value ?? '').trim()), 350)
+  searchTimer = setTimeout(() => (search.value = value), 150)
 })
 onBeforeUnmount(() => clearTimeout(searchTimer))
+
+// Same rules as the backend: text fields match anywhere, the ID only from its start.
+const rows = computed(() => {
+  const q = term.value.toLowerCase()
+  if (!q) return store.items
+  return store.items.filter(
+    (h) =>
+      [h.name, h.legal_name, h.display_name, h.subdomain, h.custom_domain].some((v) => v?.toLowerCase().includes(q)) ||
+      h.id.toLowerCase().startsWith(q),
+  )
+})
+// Until the server answers for the current term, count only the rows shown.
+const rowsLength = computed(() => (term.value === search.value ? store.meta?.total ?? 0 : rows.value.length))
 
 const headers = [
   { title: 'Hospital', key: 'name', sortable: false },
@@ -88,8 +103,8 @@ onMounted(load)
       <v-data-table-server
         :headers="headers"
         :search="search"
-        :items="store.items"
-        :items-length="store.meta?.total ?? 0"
+        :items="rows"
+        :items-length="rowsLength"
         :loading="store.loading"
         :items-per-page="perPage"
         :page="page"
@@ -137,7 +152,7 @@ onMounted(load)
 
         <template #no-data>
           <div class="pa-8 text-center textSecondary">
-            {{ search ? `No hospitals match "${search}".` : 'No hospitals yet.' }}
+            {{ term ? `No hospitals match "${term}".` : 'No hospitals yet.' }}
           </div>
         </template>
       </v-data-table-server>

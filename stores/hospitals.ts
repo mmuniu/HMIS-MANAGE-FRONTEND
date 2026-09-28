@@ -13,7 +13,8 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   const error = ref('')
   const saving = ref(false)
   const retrying = ref(false)
-  const deleting = ref(false)
+  // true while a hospital is being deactivated/reactivated.
+  const togglingStatus = ref(false)
   // Full response from the most recent create() call, kept around so the
   // caller can render provisioning outcome instead of only reading it once.
   const lastCreateResult = ref<CreateHospitalResponse | null>(null)
@@ -352,32 +353,36 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     }
   }
 
-  async function remove(id: string) {
-    deleting.value = true
+  // Hospitals are never deleted — deactivating archives them (status ARCHIVED)
+  // so they can be reactivated later with everything intact.
+  async function setActive(id: string, active: boolean) {
+    togglingStatus.value = true
     error.value = ''
     try {
-      await api.destroy(id)
-      items.value = items.value.filter((h) => h.id !== id)
-      if (current.value?.id === id) current.value = null
+      const res = await api.update(id, { status: active ? 'ACTIVE' : 'ARCHIVED' })
+      if (current.value?.id === id) Object.assign(current.value, res.data)
+      const inList = items.value.find((h) => h.id === id)
+      if (inList) Object.assign(inList, res.data)
       return { success: true as const }
     } catch (err: any) {
+      const action = active ? 'reactivate' : 'deactivate'
       error.value =
         err?.response?.status === 403
-          ? err.response.data?.message || 'You do not have permission to delete this hospital.'
-          : err?.response?.data?.message || 'Failed to delete hospital.'
+          ? err.response.data?.message || `You do not have permission to ${action} this hospital.`
+          : err?.response?.data?.message || `Failed to ${action} hospital.`
       return { success: false as const }
     } finally {
-      deleting.value = false
+      togglingStatus.value = false
     }
   }
 
   return {
-    items, meta, current, loading, error, saving, retrying, deleting, fieldErrors,
+    items, meta, current, loading, error, saving, retrying, togglingStatus, fieldErrors,
     provisioningAdminId, lastAdminProvisionResult, updatingAdminId, lastAdminUpdateResult, addingAdmin, removingAdminId,
     pendingCoreAccountLink, linkingAdmin,
     lastCreateResult, lastRetryResult, seeding, lastSeedResult,
     coreOrganizations, loadingCoreOrganizations,
-    fetchList, fetchOne, create, update, retryProvisioning, seedReferenceData, provisionAdmin, linkAdmin, cancelCoreAccountLink, updateAdmin, addAdmin, removeAdmin, remove,
+    fetchList, fetchOne, create, update, retryProvisioning, seedReferenceData, provisionAdmin, linkAdmin, cancelCoreAccountLink, updateAdmin, addAdmin, removeAdmin, setActive,
     fetchCoreOrganizations,
   }
 })

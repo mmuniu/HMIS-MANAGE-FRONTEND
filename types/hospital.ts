@@ -74,6 +74,23 @@ export interface ProvisionAdminResponse {
   password: string
 }
 
+// core-service's account for an admin found there under an email/username
+// hmis-manage tried to create — surfaced when provisioning (or a password
+// reset that tries to provision) fails as "already exists".
+export interface ExistingCoreAccount {
+  id: string
+  email: string
+  username: string
+  name: string | null
+  organization_id: number | null
+  active: boolean
+  facilities: { id: number; name: string; code: string | null }[]
+}
+
+export interface LinkAdminResponse {
+  data: { id: number; username: string; email: string; core_user_id: string }
+}
+
 export interface UpdateAdminPayload {
   name?: string
   username?: string
@@ -107,6 +124,15 @@ export interface UpdateAdminResponse {
   // Echoed back only when the edit included a password reset — never
   // persisted anywhere, shown once in a copy-once credentials panel.
   password: string | null
+  // True only when `password` actually reached core-service. Even then it's
+  // a ONE-TIME key there — core-service forces a password reset on first
+  // login with it — so the UI must say that, not imply it's an ongoing login.
+  password_usable_for_core_service: boolean
+  // Present only when this admin had no core-service account yet AND the
+  // attempt to create one above failed as a duplicate — see ProvisionAdmin's
+  // matching failure shape (thrown as an axios error, not a 2xx body, since
+  // this only happens on the same 502 provisionAdmin() itself returns).
+  existing_core_account?: ExistingCoreAccount | null
 }
 
 // GET /v1/platform/hospitals/{id} returns everything gathered during
@@ -221,9 +247,25 @@ export interface CreateHospitalPayload {
   is_sandbox?: boolean
   // set when the wizard was launched from a deployment's Stage 6
   deployment_id?: string
+  // Step 1's "Use existing organization" toggle — a core_organizations.id
+  // from GET /hospitals/core-organizations. hmis-manage still creates its
+  // own local Organization row from `name` above either way; this only
+  // tells core-service provisioning to attach the new facility/admin to an
+  // organization that already exists there instead of minting a new one.
+  existing_core_org_id?: number
   // optional first facility + admin
   facility?: HospitalFacilityPayload
   admin?: { name: string; username: string; email: string; password: string }
+}
+
+// One row from GET /hospitals/core-organizations — plain id/name/code/status,
+// not the full core-service Organization record (see
+// ServiceOrganizationController::index() in core-service for why).
+export interface CoreOrganization {
+  id: number
+  name: string
+  code: string
+  status: string
 }
 
 // Payload for PUT /v1/platform/hospitals/{id} (matches UpdateHospitalRequest).
@@ -267,11 +309,25 @@ export interface RetryProvisioningResponse {
   core_provisioning_error: string | null
 }
 
-// Response of POST /v1/platform/hospitals/{id}/seed-reference-data.
+// Response of POST /v1/platform/hospitals/{id}/seed-reference-data — the
+// seeders now run on the queue (a full run takes well over any reasonable
+// HTTP timeout), so this only confirms the run was queued; poll
+// GET .../seed-reference-data/{runId} (seedingStatus) for the outcome.
 export interface SeedReferenceDataResponse {
   message: string
+  seeding_run_id: number
+  status: SeedingRunStatus
+}
+
+export type SeedingRunStatus = 'pending' | 'running' | 'success' | 'failed'
+
+export interface SeedingStatusResponse {
+  seeding_run_id: number
+  status: SeedingRunStatus
   results: Record<string, { success: boolean; ms?: number; error?: string }> | null
   error: string | null
+  started_at: string | null
+  finished_at: string | null
 }
 
 // Vuetify chip colors per enum value (used in list + detail views).

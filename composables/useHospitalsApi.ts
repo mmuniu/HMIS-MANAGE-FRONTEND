@@ -1,5 +1,6 @@
 import { useNuxtApp } from '#app'
 import type {
+  CoreOrganization,
   CreateAdminPayload,
   CreateAdminResponse,
   CreateHospitalPayload,
@@ -8,9 +9,11 @@ import type {
   HospitalDetail,
   HospitalListResponse,
   HospitalShowResponse,
+  LinkAdminResponse,
   ProvisionAdminResponse,
   RetryProvisioningResponse,
   SeedReferenceDataResponse,
+  SeedingStatusResponse,
   UpdateAdminPayload,
   UpdateAdminResponse,
   UpdateHospitalPayload,
@@ -64,6 +67,11 @@ export function useHospitalsApi() {
     return data
   }
 
+  async function getSeedingStatus(id: string, runId: number): Promise<SeedingStatusResponse> {
+    const { data } = await $axios.get<SeedingStatusResponse>(`/v1/platform/hospitals/${id}/seed-reference-data/${runId}`)
+    return data
+  }
+
   async function addAdmin(id: string, payload: CreateAdminPayload): Promise<CreateAdminResponse> {
     const { data } = await $axios.post<CreateAdminResponse>(`/v1/platform/hospitals/${id}/admins`, payload)
     return data
@@ -71,6 +79,14 @@ export function useHospitalsApi() {
 
   async function provisionAdmin(id: string, userId: number): Promise<ProvisionAdminResponse> {
     const { data } = await $axios.post<ProvisionAdminResponse>(`/v1/platform/hospitals/${id}/admins/${userId}/provision`)
+    return data
+  }
+
+  // Attach to a core-service account that already exists — offered when
+  // provisionAdmin() (or a password reset attempting the same create)
+  // fails because the email/username is already taken there.
+  async function linkAdmin(id: string, userId: number, coreUserId: string): Promise<LinkAdminResponse> {
+    const { data } = await $axios.post<LinkAdminResponse>(`/v1/platform/hospitals/${id}/admins/${userId}/link`, { core_user_id: coreUserId })
     return data
   }
 
@@ -99,5 +115,12 @@ export function useHospitalsApi() {
     }
   }
 
-  return { list, show, create, update, destroy, retryProvisioning, seedReferenceData, provisionAdmin, updateAdmin, addAdmin, removeAdmin, searchFacility }
+  // Powers the "use existing organization" picker on Step 1 of the
+  // register-hospital wizard. See HospitalController::coreOrganizations().
+  async function getCoreOrganizations(): Promise<CoreOrganization[]> {
+    const { data } = await $axios.get<{ data: CoreOrganization[] }>('/v1/platform/hospitals/core-organizations')
+    return data.data
+  }
+
+  return { list, show, create, update, destroy, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, linkAdmin, updateAdmin, addAdmin, removeAdmin, searchFacility, getCoreOrganizations }
 }

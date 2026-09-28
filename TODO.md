@@ -16,3 +16,13 @@
 6. Implement fetchPrescriptions method.
 7. Implement prescriptionSelected method.
 8. Test the functionality.
+
+## Progress
+- [ ] Import PatientSearch component.
+- [ ] Add data properties: selectedPatient, prescriptions, selectedPrescription.
+- [ ] Add computed property for the setting check.
+- [ ] Add template sections for patient search and prescription select.
+- [ ] Implement patientSelected method.
+- [ ] Implement fetchPrescriptions method.
+- [ ] Implement prescriptionSelected method.
+- [ ] Test the functionality.

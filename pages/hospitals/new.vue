@@ -40,6 +40,16 @@ const form = reactive<CreateHospitalPayload>({
   is_sandbox: false,
 })
 
+// Step 1's organization mode: create a brand-new one in core-service
+// (default, today's behaviour — unaffected by this toggle), or attach this
+// facility to one that already exists there. `name` above is always what
+// this NEW local hmis-manage Organization row is called either way — only
+// which core-service org id the facility/admin get provisioned into changes.
+const useExistingOrg = ref(false)
+const selectedCoreOrgId = ref<number | null>(null)
+
+store.fetchCoreOrganizations()
+
 const addFacility = ref(true)
 const facility = reactive<HospitalFacilityPayload>({
   name: '',
@@ -107,7 +117,7 @@ watch(step, (s) => {
 const dhaIdentifier = ref('')
 const dhaSearching = ref(false)
 const dhaStatus = ref('')
-const dhaStatusType = ref<'success' | 'error' | 'info'>('info')
+const dhaStatusType = ref<'success' | 'error' | 'info' | 'warning'>('info')
 const dhaMatched = ref(false)
 const dhaShaStatus = ref<string | null>(null)
 
@@ -136,6 +146,8 @@ function restoreDraft() {
     dhaShaStatus.value = draft.dhaShaStatus ?? null
     dhaStatus.value = draft.dhaStatus || ''
     dhaStatusType.value = draft.dhaStatusType || 'info'
+    useExistingOrg.value = !!draft.useExistingOrg
+    selectedCoreOrgId.value = draft.selectedCoreOrgId ?? null
   } catch {
     sessionStorage.removeItem(DRAFT_KEY)
   }
@@ -148,7 +160,7 @@ function clearDraft() {
 restoreDraft()
 
 watch(
-  [step, form, addFacility, facility, addAdmin, admin, adminPasswordLocked, dhaIdentifier, dhaMatched, dhaShaStatus, dhaStatus, dhaStatusType],
+  [step, form, addFacility, facility, addAdmin, admin, adminPasswordLocked, dhaIdentifier, dhaMatched, dhaShaStatus, dhaStatus, dhaStatusType, useExistingOrg, selectedCoreOrgId],
   () => {
     if (typeof window === 'undefined' || submitted.value) return
     sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
@@ -163,19 +175,22 @@ watch(
       dhaMatched: dhaMatched.value,
       dhaShaStatus: dhaShaStatus.value,
       dhaStatus: dhaStatus.value,
+      useExistingOrg: useExistingOrg.value,
+      selectedCoreOrgId: selectedCoreOrgId.value,
       dhaStatusType: dhaStatusType.value,
     }))
   },
   { deep: true },
 )
 
-// Gate submission ONLY when a real search came back with a definitive
-// non-ACTIVE status — never when unsearched or when the registry isn't
-// configured (dhaShaStatus stays null in both those cases).
-const facilityGateOk = computed(() => {
-  if (!addFacility.value || !dhaMatched.value || dhaShaStatus.value === null) return true
-  return dhaShaStatus.value.toUpperCase() === 'ACTIVE'
-})
+// A non-ACTIVE SHA status is shown as a warning (see the alert and status
+// message below) but no longer blocks registration — a facility can be
+// found in the DHA registry and still legitimately be mid-onboarding on
+// SHA's side, and staff need to be able to register it regardless. Kept as
+// its own computed (always true) rather than deleted outright, so the call
+// site's intent — "is submission allowed" — stays readable, and so a future
+// business reason to gate again has a single place to do it.
+const facilityGateOk = computed(() => true)
 
 function applyFacility(f: FacilityRegistryResult) {
   if (f.officialName) facility.name = f.officialName
@@ -210,8 +225,8 @@ function applyFacility(f: FacilityRegistryResult) {
   const active = (dhaShaStatus.value || '').toUpperCase() === 'ACTIVE'
   dhaStatus.value = active
     ? 'Facility found — fields below have been filled in.'
-    : 'Facility found, but its SHA status is not ACTIVE — saving is disabled until it is.'
-  dhaStatusType.value = active ? 'success' : 'error'
+    : 'Facility found, but its SHA status is not ACTIVE — you can still register it.'
+  dhaStatusType.value = active ? 'success' : 'warning'
 }
 
 async function searchFacility() {
@@ -255,7 +270,9 @@ const fieldError = (key: string) => store.fieldErrors[key]?.[0]
 const allFieldErrors = computed(() => Object.values(store.fieldErrors).flat())
 
 // Per-step "can advance" gates (light client-side; backend still validates).
-const step1Valid = computed(() => form.name.trim().length > 0)
+const step1Valid = computed(() =>
+  form.name.trim().length > 0 && (!useExistingOrg.value || selectedCoreOrgId.value !== null),
+)
 const step4Valid = computed(() => {
   if (!addAdmin.value) return true
   return (
@@ -308,6 +325,7 @@ async function submit() {
   if (addFacility.value && facility.name) payload.facility = { ...cleaned(facility), name: facility.name }
   if (addAdmin.value) payload.admin = { ...admin }
   if (deploymentId) payload.deployment_id = deploymentId
+  if (useExistingOrg.value && selectedCoreOrgId.value) payload.existing_core_org_id = selectedCoreOrgId.value
 
   const res = await store.create(payload)
   if (res.success) {
@@ -425,8 +443,29 @@ function done() {
           <div class="pa-2">
             <h3 class="text-h6 mb-4"><v-icon icon="mdi-map-marker" class="mr-2" />Identity & Localization</h3>
 
+            <!-- Organization mode: create a brand-new core-service org
+                 (default — unchanged behaviour), or attach this facility to
+                 one that already exists there. `name` below is always what
+                 this hmis-manage hospital record is called, in either mode —
+                 selecting an existing organization only changes which
+                 core-service org the facility/admin get provisioned into. -->
+            <v-switch v-model="useExistingOrg" color="primary" hide-details inset density="compact"
+              label="Attach to an existing organization" class="mb-3" />
+
+            <v-autocomplete v-if="useExistingOrg" v-model="selectedCoreOrgId"
+              :items="store.coreOrganizations" item-title="name" item-value="id"
+              label="Organization *" variant="outlined" density="comfortable"
+              :loading="store.loadingCoreOrganizations" class="mb-3" hide-details="auto"
+              hint="This facility will be provisioned under the selected organization instead of a new one." persistent-hint>
+              <template #item="{ props, item }">
+                <v-list-item v-bind="props" :subtitle="item.raw.code" />
+              </template>
+            </v-autocomplete>
+
             <v-text-field v-model="form.name" label="Hospital name *" variant="outlined" density="comfortable"
-              :error-messages="fieldError('name')" class="mb-3" hide-details="auto" />
+              :error-messages="fieldError('name')" class="mb-3" hide-details="auto"
+              :hint="useExistingOrg ? 'The name for this hospital record in hmis-manage — independent of the organization selected above.' : undefined"
+              :persistent-hint="useExistingOrg" />
             <div class="d-flex ga-3 mb-3 flex-wrap">
               <v-text-field v-model="form.legal_name" label="Legal name" variant="outlined" density="comfortable" hide-details="auto" style="min-width:240px" />
               <v-text-field v-model="form.display_name" label="Display name" variant="outlined" density="comfortable" hide-details="auto" style="min-width:240px" />
@@ -486,7 +525,7 @@ function done() {
               </v-btn>
             </div>
             <p v-if="dhaStatus" class="text-caption mt-1 mb-3"
-              :class="{ 'text-success': dhaStatusType === 'success', 'text-error': dhaStatusType === 'error', 'textSecondary': dhaStatusType === 'info' }">
+              :class="{ 'text-success': dhaStatusType === 'success', 'text-error': dhaStatusType === 'error', 'text-warning': dhaStatusType === 'warning', 'textSecondary': dhaStatusType === 'info' }">
               {{ dhaStatus }}
             </p>
 
@@ -519,8 +558,11 @@ function done() {
               <v-text-field v-model="facility.facility_administrator_identifier" :disabled="!addFacility" readonly label="Administrator identifier" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
             </div>
 
-            <v-alert v-if="addFacility && dhaMatched && !facilityGateOk" type="error" variant="tonal" density="compact" class="mb-3">
-              This facility's SHA status is not ACTIVE, so registration is disabled until it is.
+            <v-alert
+              v-if="addFacility && dhaMatched && dhaShaStatus !== null && dhaShaStatus.toUpperCase() !== 'ACTIVE'"
+              type="warning" variant="tonal" density="compact" class="mb-3"
+            >
+              This facility's SHA status is not ACTIVE. You can still register it — follow up with SHA to get it activated.
             </v-alert>
 
             <p class="text-caption textSecondary mt-2">The first hospital admin will be assigned to this facility.</p>

@@ -44,13 +44,14 @@ const sidebarItem: menu[] = [
                 icon: 'checklist-minimalistic-line-duotone',
                 to: '/deployments',
                 // Platform staff track each hospital's implementation lifecycle.
-                roles: ['system_admin'],
+                // deployment_viewer: read-only visibility into every deployment.
+                roles: ['system_admin', 'deployment_viewer'],
             },
             {
                 title: 'Integrations',
                 icon: 'plug-circle-line-duotone',
                 to: '/integrations',
-                roles: ['system_admin', 'hospital_admin'],
+                roles: ['system_admin', 'hospital_admin', 'provisioning_admin'],
             },
             {
                 title: 'Users',

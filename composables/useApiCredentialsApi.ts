@@ -1,21 +1,23 @@
 import { useNuxtApp } from '#app'
 
-// A hospital's API credentials for external integrations (FieldMatch).
-// Held in core-service; hmis-manage proxies them at
-// /v1/platform/hospitals/{id}/api-credentials. app_secret is only ever present
-// on the create and rotate responses.
+// A hospital's FieldMatch sign-in (username + password). Held in core-service;
+// hmis-manage proxies it at /v1/platform/hospitals/{id}/api-credentials.
+// Signing in to FieldMatch with it yields a bearer token for this hospital's
+// API — no app secret is ever exposed. login_password is only present on the
+// create and reset-password responses.
 export interface ApiCredential {
   name: string
   app_id: string
   organization_id: number
   permissions: string[]
+  login_username: string | null
   is_active: boolean
   last_used_at: string | null
   created_at: string | null
 }
 
 export interface IssuedApiCredential extends ApiCredential {
-  app_secret: string
+  login_password: string
 }
 
 export function useApiCredentialsApi() {
@@ -27,13 +29,13 @@ export function useApiCredentialsApi() {
     return data
   }
 
-  async function create(hospitalId: string, payload: { name: string; permissions: string[] }): Promise<IssuedApiCredential> {
+  async function create(hospitalId: string, payload: { name: string; permissions: string[]; login_username?: string }): Promise<IssuedApiCredential> {
     const { data } = await $axios.post(base(hospitalId), payload)
     return data.data
   }
 
-  async function rotate(hospitalId: string, appId: string): Promise<IssuedApiCredential> {
-    const { data } = await $axios.post(`${base(hospitalId)}/${encodeURIComponent(appId)}/rotate`)
+  async function resetPassword(hospitalId: string, appId: string): Promise<IssuedApiCredential> {
+    const { data } = await $axios.post(`${base(hospitalId)}/${encodeURIComponent(appId)}/reset-password`)
     return data.data
   }
 
@@ -42,5 +44,5 @@ export function useApiCredentialsApi() {
     return data.data
   }
 
-  return { list, create, rotate, setActive }
+  return { list, create, resetPassword, setActive }
 }

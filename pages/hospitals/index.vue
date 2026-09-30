@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHospitalsStore } from '@/stores/hospitals'
 import { useAuthStore } from '@/stores/auth'
@@ -19,6 +19,33 @@ const subtitle = computed(() =>
 const page = ref(1)
 const perPage = ref(25)
 
+// `searchInput` tracks the field as the user types and filters the rows
+// already loaded instantly. `search` follows it after a short pause and is
+// handed to the table — changing it makes v-data-table-server reset to page 1
+// and emit update:options, which fetches matches from all records server-side.
+const searchInput = ref('')
+const search = ref('')
+const term = computed(() => (searchInput.value ?? '').trim())
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+watch(term, (value) => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => (search.value = value), 150)
+})
+onBeforeUnmount(() => clearTimeout(searchTimer))
+
+// Same rules as the backend: text fields match anywhere, the ID only from its start.
+const rows = computed(() => {
+  const q = term.value.toLowerCase()
+  if (!q) return store.items
+  return store.items.filter(
+    (h) =>
+      [h.name, h.legal_name, h.display_name, h.subdomain, h.custom_domain].some((v) => v?.toLowerCase().includes(q)) ||
+      h.id.toLowerCase().startsWith(q),
+  )
+})
+// Until the server answers for the current term, count only the rows shown.
+const rowsLength = computed(() => (term.value === search.value ? store.meta?.total ?? 0 : rows.value.length))
+
 const headers = [
   { title: 'Hospital', key: 'name', sortable: false },
   { title: 'Subdomain', key: 'subdomain', sortable: false },
@@ -30,7 +57,7 @@ const headers = [
 ]
 
 async function load() {
-  await store.fetchList(page.value, perPage.value)
+  await store.fetchList(page.value, perPage.value, search.value)
 }
 
 function onTableUpdate(opts: { page: number; itemsPerPage: number }) {
@@ -61,10 +88,23 @@ onMounted(load)
     <v-alert v-if="store.error" type="error" variant="tonal" class="mb-4" :text="store.error" />
 
     <v-card rounded="lg" elevation="10">
+      <div v-if="isPlatform" class="pa-4 pb-0">
+        <v-text-field
+          v-model="searchInput"
+          prepend-inner-icon="mdi-magnify"
+          placeholder="Search by name, subdomain, domain or ID"
+          variant="outlined"
+          density="compact"
+          hide-details
+          clearable
+          style="max-width: 420px"
+        />
+      </div>
       <v-data-table-server
         :headers="headers"
-        :items="store.items"
-        :items-length="store.meta?.total ?? 0"
+        :search="search"
+        :items="rows"
+        :items-length="rowsLength"
         :loading="store.loading"
         :items-per-page="perPage"
         :page="page"
@@ -111,7 +151,9 @@ onMounted(load)
         </template>
 
         <template #no-data>
-          <div class="pa-8 text-center textSecondary">No hospitals yet.</div>
+          <div class="pa-8 text-center textSecondary">
+            {{ term ? `No hospitals match "${term}".` : 'No hospitals yet.' }}
+          </div>
         </template>
       </v-data-table-server>
     </v-card>

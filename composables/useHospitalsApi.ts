@@ -25,15 +25,14 @@ import type {
  * Backend:
  *   GET    /v1/platform/hospitals       (paginated)
  *   GET    /v1/platform/hospitals/{id}
- *   PUT    /v1/platform/hospitals/{id}  (edit details, platform staff only)
- *   DELETE /v1/platform/hospitals/{id}  (soft-delete, system admin only)
+ *   PUT    /v1/platform/hospitals/{id}  (edit details incl. status — deactivate = ARCHIVED)
  *   GET    /v1/platform/hospitals/facility-search (DHA SHA HIE lookup)
  *   POST   /v1/platform/hospitals/{id}/provision (retry core-service sync)
  */
 export function useHospitalsApi() {
   const { $axios } = useNuxtApp()
 
-  async function list(params: { page?: number; per_page?: number } = {}): Promise<HospitalListResponse> {
+  async function list(params: { page?: number; per_page?: number; search?: string } = {}): Promise<HospitalListResponse> {
     const { data } = await $axios.get<HospitalListResponse>('/v1/platform/hospitals', { params })
     return data
   }
@@ -41,10 +40,6 @@ export function useHospitalsApi() {
   async function show(id: string): Promise<HospitalDetail> {
     const { data } = await $axios.get<HospitalShowResponse>(`/v1/platform/hospitals/${id}`)
     return data.data
-  }
-
-  async function destroy(id: string): Promise<void> {
-    await $axios.delete(`/v1/platform/hospitals/${id}`)
   }
 
   async function update(id: string, payload: UpdateHospitalPayload): Promise<UpdateHospitalResponse> {
@@ -122,5 +117,5 @@ export function useHospitalsApi() {
     return data.data
   }
 
-  return { list, show, create, update, destroy, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, linkAdmin, updateAdmin, addAdmin, removeAdmin, searchFacility, getCoreOrganizations }
+  return { list, show, create, update, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, linkAdmin, updateAdmin, addAdmin, removeAdmin, searchFacility, getCoreOrganizations }
 }

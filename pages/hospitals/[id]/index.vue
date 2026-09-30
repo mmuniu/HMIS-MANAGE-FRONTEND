@@ -33,12 +33,14 @@ const BED_FIELDS: { key: 'total_beds' | 'normal_beds' | 'icu_beds' | 'hdu_beds' 
   { key: 'number_of_cots', label: 'Number of cots' },
 ]
 
-const confirmDelete = ref(false)
+const isDeactivated = computed(() => h.value?.status === 'ARCHIVED')
+const confirmToggleStatus = ref(false)
 
-async function deleteHospital() {
-  const res = await store.remove(id.value)
-  confirmDelete.value = false
-  if (res.success) router.push('/hospitals')
+async function toggleHospitalStatus() {
+  const activate = isDeactivated.value
+  const res = await store.setActive(id.value, activate)
+  confirmToggleStatus.value = false
+  if (res.success) $showToast(activate ? 'Hospital reactivated.' : 'Hospital deactivated.')
 }
 
 const showAdminPassword = ref(false)
@@ -211,9 +213,10 @@ watch(
           :to="`/hospitals/${id}/edit`">
           Edit hospital
         </v-btn>
-        <v-btn v-if="auth.isSystemAdmin && h" color="error" variant="tonal" prepend-icon="mdi-delete"
-          @click="confirmDelete = true">
-          Delete hospital
+        <v-btn v-if="auth.isSystemAdmin && h" :color="isDeactivated ? 'success' : 'error'" variant="tonal"
+          :prepend-icon="isDeactivated ? 'mdi-check-circle-outline' : 'mdi-cancel'"
+          @click="confirmToggleStatus = true">
+          {{ isDeactivated ? 'Reactivate hospital' : 'Deactivate hospital' }}
         </v-btn>
       </div>
     </div>
@@ -540,19 +543,26 @@ watch(
       </v-card>
     </template>
 
-    <!-- Delete confirmation dialog -->
-    <v-dialog v-model="confirmDelete" max-width="440">
+    <!-- Deactivate / reactivate confirmation dialog -->
+    <v-dialog v-model="confirmToggleStatus" max-width="440">
       <v-card rounded="lg">
-        <v-card-title class="text-h6">Delete hospital?</v-card-title>
+        <v-card-title class="text-h6">{{ isDeactivated ? 'Reactivate hospital?' : 'Deactivate hospital?' }}</v-card-title>
         <v-card-text>
-          This will permanently remove <strong>{{ h?.display_name || h?.name }}</strong> from the platform's
-          active hospital list. Its facilities, admin accounts and integration config are kept and can be
-          restored if this was a mistake — contact platform engineering to reverse it.
+          <template v-if="isDeactivated">
+            <strong>{{ h?.display_name || h?.name }}</strong> will be set back to ACTIVE.
+          </template>
+          <template v-else>
+            <strong>{{ h?.display_name || h?.name }}</strong> will be marked ARCHIVED. Its facilities, admin
+            accounts and integration config are kept, and you can reactivate it at any time.
+          </template>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" :disabled="store.deleting" @click="confirmDelete = false">Cancel</v-btn>
-          <v-btn color="error" variant="flat" :loading="store.deleting" @click="deleteHospital">Delete</v-btn>
+          <v-btn variant="text" :disabled="store.togglingStatus" @click="confirmToggleStatus = false">Cancel</v-btn>
+          <v-btn :color="isDeactivated ? 'success' : 'error'" variant="flat" :loading="store.togglingStatus"
+            @click="toggleHospitalStatus">
+            {{ isDeactivated ? 'Reactivate' : 'Deactivate' }}
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

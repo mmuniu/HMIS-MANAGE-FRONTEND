@@ -204,6 +204,20 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // "Forgot password?" — generates a new password and emails it. Backend
+  // always returns the same generic message whether or not the identifier
+  // matched an account, so there is nothing to branch on here besides
+  // request success/failure.
+  const forgotPassword = async (identifier: string) => {
+    try {
+      const { data } = await $axios.post('/v1/platform/forgot-password', { identifier })
+      return { success: true, message: data.message as string }
+    } catch (err: any) {
+      const message = err?.response?.data?.message || 'Could not process that request. Try again shortly.'
+      return { success: false, message }
+    }
+  }
+
   // ── Choose system -> issue token (platform users) ─────────────────────
   const selectSystemAndLogin = async (chosenSystemId: string) => {
     apiError.value = ''
@@ -420,6 +434,7 @@ export const useAuthStore = defineStore('auth', () => {
     canAuthorTests,
     canApproveTests,
     login,
+    forgotPassword,
     selectSystemAndLogin,
     cancelSystemSelection,
     selectFacilityAndLogin,

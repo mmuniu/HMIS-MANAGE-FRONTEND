@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useDeploymentsStore } from '@/stores/deployments'
 import { STATUS_COLOR, TIER_COLOR, BILLING_COLOR, type HospitalAdminUser } from '@/types/hospital'
 import type { Deployment } from '@/types/deployment'
+import ApiCredentialsCard from '@/components/hospitals/ApiCredentialsCard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -529,6 +530,9 @@ watch(
           </v-btn>
         </v-card-text>
       </v-card>
+
+      <!-- API credentials (system admins only — the backend enforces the same) -->
+      <ApiCredentialsCard v-if="auth.isSystemAdmin" :hospital-id="id" :hospital-name="h.display_name || h.name" />
     </template>
 
     <!-- Delete confirmation dialog -->

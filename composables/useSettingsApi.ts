@@ -8,20 +8,20 @@ export interface PlatformSettings {
 
 /**
  * Global platform settings. Backend:
- *   GET   /settings  (any platform user)
- *   PATCH /settings  (system admin only)
- * i.e. api/settings — not under /v1/platform like the other endpoints.
+ *   GET   /v1/settings  (any platform user)
+ *   PATCH /v1/settings  (system admin only)
+ * i.e. api/v1/settings — not under /v1/platform like most other endpoints.
  */
 export function useSettingsApi() {
   const { $axios } = useNuxtApp()
 
   async function get(): Promise<PlatformSettings> {
-    const { data } = await $axios.get('/settings')
+    const { data } = await $axios.get('/v1/settings')
     return data.data
   }
 
   async function update(input: Partial<PlatformSettings>): Promise<PlatformSettings> {
-    const { data } = await $axios.patch('/settings', input)
+    const { data } = await $axios.patch('/v1/settings', input)
     return data.data
   }
 

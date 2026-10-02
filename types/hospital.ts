@@ -115,6 +115,14 @@ export interface CreateAdminResponse {
   data: HospitalAdminUser
 }
 
+// Response of POST /v1/platform/hospitals/{id}/facilities. Saved locally
+// even when core-service provisioning fails — the error says why.
+export interface CreateFacilityResponse {
+  data: HospitalFacility
+  core_provisioned: boolean
+  core_provisioning_error: string | null
+}
+
 // Response of PATCH /v1/platform/hospitals/{id}/admins/{userId}.
 // `notified` reports whether the "your details changed" email actually went
 // out — it can be false if nothing in the payload differed from before.

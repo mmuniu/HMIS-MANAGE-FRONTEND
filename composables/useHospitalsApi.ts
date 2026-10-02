@@ -3,10 +3,12 @@ import type {
   CoreOrganization,
   CreateAdminPayload,
   CreateAdminResponse,
+  CreateFacilityResponse,
   CreateHospitalPayload,
   CreateHospitalResponse,
   FacilityRegistrySearchResponse,
   HospitalDetail,
+  HospitalFacilityPayload,
   HospitalListResponse,
   HospitalShowResponse,
   LinkAdminResponse,
@@ -67,6 +69,11 @@ export function useHospitalsApi() {
     return data
   }
 
+  async function addFacility(id: string, payload: HospitalFacilityPayload): Promise<CreateFacilityResponse> {
+    const { data } = await $axios.post<CreateFacilityResponse>(`/v1/platform/hospitals/${id}/facilities`, payload)
+    return data
+  }
+
   async function addAdmin(id: string, payload: CreateAdminPayload): Promise<CreateAdminResponse> {
     const { data } = await $axios.post<CreateAdminResponse>(`/v1/platform/hospitals/${id}/admins`, payload)
     return data
@@ -117,5 +124,5 @@ export function useHospitalsApi() {
     return data.data
   }
 
-  return { list, show, create, update, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, linkAdmin, updateAdmin, addAdmin, removeAdmin, searchFacility, getCoreOrganizations }
+  return { list, show, create, update, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, linkAdmin, updateAdmin, addFacility, addAdmin, removeAdmin, searchFacility, getCoreOrganizations }
 }

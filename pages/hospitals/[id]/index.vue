@@ -8,6 +8,7 @@ import { useDeploymentsStore } from '@/stores/deployments'
 import { STATUS_COLOR, TIER_COLOR, BILLING_COLOR, type HospitalAdminUser } from '@/types/hospital'
 import type { Deployment } from '@/types/deployment'
 import ApiCredentialsCard from '@/components/hospitals/ApiCredentialsCard.vue'
+import AddFacilityDialog from '@/components/hospitals/AddFacilityDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -106,6 +107,8 @@ async function saveAdminEdit() {
   }
 }
 
+const addFacilityDialog = ref(false)
+
 const addAdminDialog = ref(false)
 const addAdminForm = reactive({ name: '', username: '', email: '', password: '' })
 const showAddAdminPassword = ref(false)
@@ -186,6 +189,7 @@ watch(
     editAdminDialog.value = false
     editingAdmin.value = null
     addAdminDialog.value = false
+    addFacilityDialog.value = false
     confirmDeleteAdmin.value = null
     deployment.value = null
     store.fetchOne(newId)
@@ -385,6 +389,12 @@ watch(
       </v-row>
 
       <!-- 6. Facilities (bed capacity + facility administrator, from provisioning) -->
+      <div class="d-flex align-center justify-space-between mt-6 mb-3">
+        <h3 class="text-h5 font-weight-semibold">Facilities</h3>
+        <v-btn v-if="auth.isPlatformUser" color="primary" variant="tonal" prepend-icon="mdi-plus" @click="addFacilityDialog = true">
+          Add facility
+        </v-btn>
+      </div>
       <v-row v-if="h.facilities?.length">
         <v-col v-for="f in h.facilities" :key="f.id" cols="12" md="6">
           <v-card rounded="lg" elevation="10" class="h-100">
@@ -423,7 +433,7 @@ watch(
           </v-card>
         </v-col>
       </v-row>
-      <v-alert v-else type="info" variant="tonal" class="mt-6">
+      <v-alert v-else type="info" variant="tonal">
         No facility has been added to this hospital yet.
       </v-alert>
 
@@ -607,6 +617,8 @@ watch(
     </v-dialog>
 
     <!-- Add admin dialog -->
+    <AddFacilityDialog v-model="addFacilityDialog" :org-id="id" />
+
     <v-dialog v-model="addAdminDialog" max-width="480">
       <v-card rounded="lg">
         <v-card-title class="text-h6">Add hospital admin</v-card-title>

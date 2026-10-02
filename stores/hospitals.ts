@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useHospitalsApi } from '~/composables/useHospitalsApi'
-import type { CoreOrganization, CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, ExistingCoreAccount, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedingStatusResponse, UpdateAdminPayload, UpdateHospitalPayload } from '~/types/hospital'
+import type { CoreOrganization, CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, ExistingCoreAccount, Hospital, HospitalDetail, HospitalFacilityPayload, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedingStatusResponse, UpdateAdminPayload, UpdateHospitalPayload } from '~/types/hospital'
 
 export const useHospitalsStore = defineStore('hospitals', () => {
   const api = useHospitalsApi()
@@ -45,6 +45,8 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   const lastAdminUpdateResult = ref<{ username: string; password: string; usableForCoreService: boolean } | null>(null)
   // true while a new admin is being created (drives the "Add admin" dialog's save spinner).
   const addingAdmin = ref(false)
+  // true while a facility is being added (drives the "Add facility" dialog's save spinner).
+  const addingFacility = ref(false)
   // id of the admin currently being removed, if any (drives the confirm dialog's spinner).
   const removingAdminId = ref<number | null>(null)
   // Field-level validation errors from the backend (422), keyed by field name.
@@ -323,6 +325,27 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     }
   }
 
+  async function addFacility(orgId: string, payload: HospitalFacilityPayload) {
+    addingFacility.value = true
+    error.value = ''
+    fieldErrors.value = {}
+    try {
+      const res = await api.addFacility(orgId, payload)
+      if (current.value?.id === orgId) current.value.facilities.push(res.data)
+      return { success: true as const, data: res }
+    } catch (err: any) {
+      if (err?.response?.status === 422) {
+        fieldErrors.value = err.response.data?.errors || {}
+        error.value = err.response.data?.message || 'Please fix the highlighted fields.'
+      } else {
+        error.value = err?.response?.data?.message || 'Failed to add facility.'
+      }
+      return { success: false as const }
+    } finally {
+      addingFacility.value = false
+    }
+  }
+
   async function addAdmin(orgId: string, payload: CreateAdminPayload) {
     addingAdmin.value = true
     error.value = ''
@@ -378,11 +401,11 @@ export const useHospitalsStore = defineStore('hospitals', () => {
 
   return {
     items, meta, current, loading, error, saving, retrying, togglingStatus, fieldErrors,
-    provisioningAdminId, lastAdminProvisionResult, updatingAdminId, lastAdminUpdateResult, addingAdmin, removingAdminId,
+    provisioningAdminId, lastAdminProvisionResult, updatingAdminId, lastAdminUpdateResult, addingAdmin, addingFacility, removingAdminId,
     pendingCoreAccountLink, linkingAdmin,
     lastCreateResult, lastRetryResult, seeding, lastSeedResult,
     coreOrganizations, loadingCoreOrganizations,
-    fetchList, fetchOne, create, update, retryProvisioning, seedReferenceData, provisionAdmin, linkAdmin, cancelCoreAccountLink, updateAdmin, addAdmin, removeAdmin, setActive,
+    fetchList, fetchOne, create, update, retryProvisioning, seedReferenceData, provisionAdmin, linkAdmin, cancelCoreAccountLink, updateAdmin, addFacility, addAdmin, removeAdmin, setActive,
     fetchCoreOrganizations,
   }
 })

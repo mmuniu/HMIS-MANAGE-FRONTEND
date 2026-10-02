@@ -69,9 +69,8 @@ const facility = reactive<HospitalFacilityPayload>({
 
 const addAdmin = ref(true)
 const admin = reactive({ name: '', username: '', email: '', password: '' })
-// True once a temporary password has been auto-generated — locks the field
-// so it can't be hand-edited into something weaker; use regeneratePassword()
-// to get a different one.
+// True once a temporary password has been auto-generated — shows it in plain
+// text with a regenerate button. The field stays editable either way.
 const adminPasswordLocked = ref(false)
 
 // Letter-heavy on purpose: a short random letter block plus the person's
@@ -529,33 +528,33 @@ function done() {
               {{ dhaStatus }}
             </p>
 
-            <v-text-field v-model="facility.name" :disabled="!addFacility" readonly label="Facility name" placeholder="e.g. Main Hospital"
+            <v-text-field v-model="facility.name" :disabled="!addFacility" label="Facility name" placeholder="e.g. Main Hospital"
               variant="outlined" density="comfortable" class="mb-3" hide-details="auto" />
             <div class="d-flex ga-3 mb-3 flex-wrap">
               <v-text-field v-model="facility.facility_code" :disabled="!addFacility" label="Master facility code" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
-              <v-text-field v-model="facility.keph_level" :disabled="!addFacility" readonly label="KEPH level" placeholder="e.g. Level 4" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.keph_level" :disabled="!addFacility" label="KEPH level" placeholder="e.g. Level 4" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
             </div>
 
             <h4 class="text-subtitle-1 font-weight-medium mt-4 mb-2">Bed Occupancy</h4>
             <div class="d-flex ga-3 mb-3 flex-wrap">
-              <v-text-field v-model.number="facility.total_beds" :disabled="!addFacility" readonly type="number" label="Total beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
-              <v-text-field v-model.number="facility.normal_beds" :disabled="!addFacility" readonly type="number" label="Normal beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
-              <v-text-field v-model.number="facility.icu_beds" :disabled="!addFacility" readonly type="number" label="ICU beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.total_beds" :disabled="!addFacility" type="number" label="Total beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.normal_beds" :disabled="!addFacility" type="number" label="Normal beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.icu_beds" :disabled="!addFacility" type="number" label="ICU beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
             </div>
             <div class="d-flex ga-3 mb-3 flex-wrap">
-              <v-text-field v-model.number="facility.hdu_beds" :disabled="!addFacility" readonly type="number" label="HDU beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
-              <v-text-field v-model.number="facility.dialysis_beds" :disabled="!addFacility" readonly type="number" label="Dialysis beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
-              <v-text-field v-model.number="facility.number_of_cots" :disabled="!addFacility" readonly type="number" label="Number of cots" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.hdu_beds" :disabled="!addFacility" type="number" label="HDU beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.dialysis_beds" :disabled="!addFacility" type="number" label="Dialysis beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.number_of_cots" :disabled="!addFacility" type="number" label="Number of cots" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
             </div>
 
             <h4 class="text-subtitle-1 font-weight-medium mt-4 mb-2">Facility Administrator</h4>
             <div class="d-flex ga-3 mb-3 flex-wrap">
-              <v-text-field v-model="facility.facility_administrator_name" :disabled="!addFacility" readonly label="Administrator name" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
-              <v-text-field v-model="facility.facility_administrator_email" :disabled="!addFacility" readonly label="Administrator email" type="email" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.facility_administrator_name" :disabled="!addFacility" label="Administrator name" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.facility_administrator_email" :disabled="!addFacility" label="Administrator email" type="email" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
             </div>
             <div class="d-flex ga-3 mb-3 flex-wrap">
-              <v-text-field v-model="facility.facility_administrator_phone" :disabled="!addFacility" readonly label="Administrator phone" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
-              <v-text-field v-model="facility.facility_administrator_identifier" :disabled="!addFacility" readonly label="Administrator identifier" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.facility_administrator_phone" :disabled="!addFacility" label="Administrator phone" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.facility_administrator_identifier" :disabled="!addFacility" label="Administrator identifier" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
             </div>
 
             <v-alert
@@ -582,10 +581,10 @@ function done() {
               :error-messages="fieldError('admin.username')" class="mb-3" hide-details="auto" />
             <v-text-field v-model="admin.email" :disabled="!addAdmin" label="Email" type="email" variant="outlined" density="comfortable"
               :error-messages="fieldError('admin.email')" class="mb-3" hide-details="auto" />
-            <v-text-field v-model="admin.password" :disabled="!addAdmin" :readonly="adminPasswordLocked"
+            <v-text-field v-model="admin.password" :disabled="!addAdmin"
               :type="adminPasswordLocked ? 'text' : 'password'" label="Temporary password" variant="outlined" density="comfortable"
               :error-messages="fieldError('admin.password')"
-              :hint="adminPasswordLocked ? 'Auto-generated. An invite email is sent to this admin.' : 'Min 8 characters. An invite email is sent to this admin.'"
+              :hint="adminPasswordLocked ? 'Auto-generated — edit or regenerate it (min 8 characters). An invite email is sent to this admin.' : 'Min 8 characters. An invite email is sent to this admin.'"
               persistent-hint hide-details="auto">
               <template v-if="adminPasswordLocked" #append-inner>
                 <v-btn icon="mdi-refresh" size="small" variant="text" :disabled="!addAdmin" @click="regeneratePassword" />

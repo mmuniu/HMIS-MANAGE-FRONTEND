@@ -46,6 +46,29 @@ const rows = computed(() => {
 // Until the server answers for the current term, count only the rows shown.
 const rowsLength = computed(() => (term.value === search.value ? store.meta?.total ?? 0 : rows.value.length))
 
+// "Terminal hospitals": tenants on the core platform with no hospital here
+// (never registered through hmis-manage). Platform staff only; the whole list
+// comes back in one call, so it is filtered in the browser. Loaded the first
+// time the tab is opened.
+const tab = ref<'registered' | 'terminal'>('registered')
+watch(tab, (t) => {
+  if (t === 'terminal' && !store.terminalItems.length && !store.loadingTerminal) store.fetchTerminal()
+})
+
+const terminalRows = computed(() => {
+  const q = term.value.toLowerCase()
+  if (!q) return store.terminalItems
+  return store.terminalItems.filter(
+    (t) => [t.name, t.code].some((v) => v?.toLowerCase().includes(q)) || String(t.id).startsWith(q),
+  )
+})
+
+const terminalHeaders = [
+  { title: 'Hospital', key: 'name', sortable: true },
+  { title: 'Code', key: 'code', sortable: true },
+  { title: 'Status', key: 'status', sortable: true },
+]
+
 const headers = [
   { title: 'Hospital', key: 'name', sortable: false },
   { title: 'Subdomain', key: 'subdomain', sortable: false },
@@ -88,11 +111,19 @@ onMounted(load)
     <v-alert v-if="store.error" type="error" variant="tonal" class="mb-4" :text="store.error" />
 
     <v-card rounded="lg" elevation="10">
+      <v-tabs v-if="isPlatform" v-model="tab" color="primary" class="px-2">
+        <v-tab value="registered">Registered</v-tab>
+        <v-tab value="terminal">
+          Terminal Hospitals
+          <v-chip v-if="store.terminalItems.length" size="x-small" class="ml-2" label>{{ store.terminalItems.length }}</v-chip>
+        </v-tab>
+      </v-tabs>
+      <v-divider v-if="isPlatform" />
       <div v-if="isPlatform" class="pa-4 pb-0">
         <v-text-field
           v-model="searchInput"
           prepend-inner-icon="mdi-magnify"
-          placeholder="Search by name, subdomain, domain or ID"
+          :placeholder="tab === 'terminal' ? 'Search by name, code or core ID' : 'Search by name, subdomain, domain or ID'"
           variant="outlined"
           density="compact"
           hide-details
@@ -101,6 +132,7 @@ onMounted(load)
         />
       </div>
       <v-data-table-server
+        v-show="tab === 'registered'"
         :headers="headers"
         :search="search"
         :items="rows"
@@ -156,6 +188,46 @@ onMounted(load)
           </div>
         </template>
       </v-data-table-server>
+
+      <template v-if="isPlatform && tab === 'terminal'">
+        <p class="text-caption textSecondary px-4 pt-3 mb-0">
+          Tenants on the core platform that have no hospital in this management platform.
+        </p>
+        <v-alert v-if="store.terminalError" type="error" variant="tonal" class="ma-4" :text="store.terminalError">
+          <template #append>
+            <v-btn variant="text" size="small" @click="store.fetchTerminal()">Retry</v-btn>
+          </template>
+        </v-alert>
+        <v-data-table
+          :headers="terminalHeaders"
+          :items="terminalRows"
+          :loading="store.loadingTerminal"
+          :items-per-page="25"
+          :items-per-page-options="[10, 25, 50, 100]"
+        >
+          <template #item.name="{ item }">
+            <div class="py-2">
+              <div class="font-weight-semibold">{{ item.name }}</div>
+              <div class="text-caption textSecondary">Core ID {{ item.id }}</div>
+            </div>
+          </template>
+          <template #item.code="{ item }">
+            <span v-if="item.code">{{ item.code }}</span>
+            <span v-else class="textSecondary">—</span>
+          </template>
+          <template #item.status="{ item }">
+            <v-chip v-if="item.status" :color="item.status === 'active' ? 'success' : 'grey'" size="small" variant="tonal" label>
+              {{ item.status }}
+            </v-chip>
+            <span v-else class="textSecondary">—</span>
+          </template>
+          <template #no-data>
+            <div class="pa-8 text-center textSecondary">
+              {{ term ? `No terminal hospitals match "${term}".` : 'Every core-platform tenant is registered here.' }}
+            </div>
+          </template>
+        </v-data-table>
+      </template>
     </v-card>
   </div>
 </template>

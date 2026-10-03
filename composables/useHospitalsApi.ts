@@ -16,6 +16,7 @@ import type {
   RetryProvisioningResponse,
   SeedReferenceDataResponse,
   SeedingStatusResponse,
+  TerminalHospitalListResponse,
   UpdateAdminPayload,
   UpdateAdminResponse,
   UpdateHospitalPayload,
@@ -36,6 +37,12 @@ export function useHospitalsApi() {
 
   async function list(params: { page?: number; per_page?: number; search?: string } = {}): Promise<HospitalListResponse> {
     const { data } = await $axios.get<HospitalListResponse>('/v1/platform/hospitals', { params })
+    return data
+  }
+
+  // Core-service tenants not registered here — the whole list in one call.
+  async function listTerminal(): Promise<TerminalHospitalListResponse> {
+    const { data } = await $axios.get<TerminalHospitalListResponse>('/v1/platform/hospitals/terminal')
     return data
   }
 
@@ -124,5 +131,5 @@ export function useHospitalsApi() {
     return data.data
   }
 
-  return { list, show, create, update, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, linkAdmin, updateAdmin, addFacility, addAdmin, removeAdmin, searchFacility, getCoreOrganizations }
+  return { list, listTerminal, show, create, update, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, linkAdmin, updateAdmin, addFacility, addAdmin, removeAdmin, searchFacility, getCoreOrganizations }
 }

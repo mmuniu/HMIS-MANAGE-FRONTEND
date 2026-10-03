@@ -150,6 +150,20 @@ export interface HospitalDetail extends Hospital {
   admins: HospitalAdminUser[]
 }
 
+// A core-service tenant with no hospital in hmis-manage — set up directly on
+// the core platform (GET /v1/platform/hospitals/terminal).
+export interface TerminalHospital {
+  id: number | string
+  name: string
+  code: string | null
+  status: string | null
+}
+
+export interface TerminalHospitalListResponse {
+  data: TerminalHospital[]
+  meta: { total: number }
+}
+
 export interface PaginationMeta {
   current_page: number
   last_page: number

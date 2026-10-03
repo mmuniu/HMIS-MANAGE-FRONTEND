@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useHospitalsApi } from '~/composables/useHospitalsApi'
-import type { CoreOrganization, CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, ExistingCoreAccount, Hospital, HospitalDetail, HospitalFacilityPayload, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedingStatusResponse, UpdateAdminPayload, UpdateHospitalPayload } from '~/types/hospital'
+import type { CoreOrganization, CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, ExistingCoreAccount, Hospital, HospitalDetail, HospitalFacilityPayload, TerminalHospital,PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedingStatusResponse, UpdateAdminPayload, UpdateHospitalPayload } from '~/types/hospital'
 
 export const useHospitalsStore = defineStore('hospitals', () => {
   const api = useHospitalsApi()
@@ -55,6 +55,23 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   // hospital wizard's "use existing organization" picker.
   const coreOrganizations = ref<CoreOrganization[]>([])
   const loadingCoreOrganizations = ref(false)
+
+  // "Terminal hospitals" tab: core-service tenants not registered here.
+  const terminalItems = ref<TerminalHospital[]>([])
+  const loadingTerminal = ref(false)
+  const terminalError = ref('')
+
+  async function fetchTerminal() {
+    loadingTerminal.value = true
+    terminalError.value = ''
+    try {
+      terminalItems.value = (await api.listTerminal()).data
+    } catch (err: any) {
+      terminalError.value = err?.response?.data?.message || 'Failed to load terminal hospitals.'
+    } finally {
+      loadingTerminal.value = false
+    }
+  }
 
   // Bumped on every fetchList() so a slow, stale response (e.g. an earlier
   // search keystroke) can't overwrite the results of a newer request.
@@ -405,6 +422,7 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     pendingCoreAccountLink, linkingAdmin,
     lastCreateResult, lastRetryResult, seeding, lastSeedResult,
     coreOrganizations, loadingCoreOrganizations,
+    terminalItems, loadingTerminal, terminalError, fetchTerminal,
     fetchList, fetchOne, create, update, retryProvisioning, seedReferenceData, provisionAdmin, linkAdmin, cancelCoreAccountLink, updateAdmin, addFacility, addAdmin, removeAdmin, setActive,
     fetchCoreOrganizations,
   }

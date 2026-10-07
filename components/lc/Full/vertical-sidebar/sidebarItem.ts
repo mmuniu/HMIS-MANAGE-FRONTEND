@@ -54,13 +54,6 @@ const sidebarItem: menu[] = [
                 roles: ['system_admin', 'hospital_admin', 'provisioning_admin'],
             },
             {
-                title: 'Tenant Integrations',
-                icon: 'code-square-line-duotone',
-                to: '/tenant-integrations',
-                // Per-environment variables for a tenant's integrations (V3 integration-service).
-                roles: ['system_admin', 'hospital_admin', 'provisioning_admin'],
-            },
-            {
                 title: 'Users',
                 icon: 'users-group-rounded-line-duotone',
                 to: '/users',

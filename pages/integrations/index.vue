@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNuxtApp } from '#app'
 import { useAuthStore } from '@/stores/auth'
@@ -21,6 +21,11 @@ const scopedHospitalId = computed(() => (route.query.hospitalId as string) || nu
 const scopedHospitalName = computed(() => (route.query.hospitalName as string) || null)
 const isCrossTenant = computed(() => !!scopedHospitalId.value)
 const orgId = computed(() => scopedHospitalId.value || tenant.organizationId)
+
+// Plain /integrations lists every master integration for platform staff;
+// only system admins can set them up, edit or delete them.
+const showMasters = computed(() => !isCrossTenant.value && auth.isPlatformUser)
+const canManageMasters = computed(() => auth.isSystemAdmin)
 
 // ── System admin: catalog management ─────────────────────────────────────────
 const catalog = ref<Integration[]>([])
@@ -91,6 +96,7 @@ async function removeCatalog(id: string) {
 async function loadCatalog() {
   loading.value = true
   try { catalog.value = await api.list() }
+  catch (e: any) { $showToast(e?.response?.data?.message || 'Failed to load integrations.') }
   finally { loading.value = false }
 }
 
@@ -250,30 +256,38 @@ async function loadTenant() {
   }
 }
 
-onMounted(async () => {
+async function load() {
   if (isCrossTenant.value) {
     loadTenant()
-  } else if (auth.isSystemAdmin) {
+  } else if (showMasters.value) {
     loadCatalog()
   } else {
     if (!tenant.organizationId) await tenant.loadContext()
     loadTenant()
   }
-})
+}
+
+onMounted(load)
+
+// /integrations and /integrations?hospitalId=… are the same page, so going
+// from a hospital's integrations back to the master list (or to another
+// hospital) reuses this component — reload for the new URL.
+watch(() => route.query.hospitalId, load)
 </script>
 
 <template>
   <div>
-    <!-- ── System admin view ───────────────────────────────────────────── -->
-    <template v-if="auth.isSystemAdmin && !isCrossTenant">
+    <!-- ── Master integrations (platform staff; managed by system admins) ── -->
+    <template v-if="showMasters">
       <div class="d-flex flex-wrap align-center justify-space-between mb-6 ga-3">
         <div>
           <h2 class="text-h4 font-weight-semibold">Integrations</h2>
           <p class="textSecondary mb-0">
-            Set up each integration's master connection once here — hospitals are then linked to it from their own page.
+            Every master integration on the platform. Each master connection is set up once here — hospitals are then
+            linked to it from their own page.
           </p>
         </div>
-        <v-btn color="primary" prepend-icon="mdi-plus" @click="openNew">Add Integration</v-btn>
+        <v-btn v-if="canManageMasters" color="primary" prepend-icon="mdi-plus" @click="openNew">Add Integration</v-btn>
       </div>
 
       <v-progress-linear v-if="loading" indeterminate color="primary" class="mb-4" />
@@ -307,7 +321,7 @@ onMounted(async () => {
                   </v-chip>
                 </div>
               </div>
-              <div class="d-flex flex-wrap ga-2">
+              <div v-if="canManageMasters" class="d-flex flex-wrap ga-2">
                 <v-btn size="small" color="primary" variant="flat" prepend-icon="mdi-link" @click="openMaster(i)">
                   {{ i.is_configured ? 'Update connection' : 'Set up connection' }}
                 </v-btn>
@@ -319,7 +333,9 @@ onMounted(async () => {
           </v-card>
         </v-col>
         <v-col v-if="!loading && !catalog.length" cols="12">
-          <v-alert type="info" variant="tonal">No integrations yet. Click "Add Integration" to create one.</v-alert>
+          <v-alert type="info" variant="tonal">
+            No integrations yet.<template v-if="canManageMasters"> Click "Add Integration" to create one.</template>
+          </v-alert>
         </v-col>
       </v-row>
 

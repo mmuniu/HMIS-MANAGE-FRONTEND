@@ -22,6 +22,9 @@ const ROLE_ROUTES: { prefix: string; roles: string[] }[] = [
   // roles that administer hospitals, matching the backend's
   // IntegrationController::authorizeOrgAccess check.
   { prefix: '/integrations', roles: ['system_admin', 'hospital_admin', 'provisioning_admin'] },
+  // Per-environment integration variables in the V3 integration-service —
+  // same roles as the backend's TenantIntegrationController::authorize.
+  { prefix: '/tenant-integrations', roles: ['system_admin', 'hospital_admin', 'provisioning_admin'] },
   { prefix: '/my-test-cases', roles: ['developer', 'tester', 'provisioning_admin'] }, // authors' own submissions
   { prefix: '/test-cases/new', roles: ['developer', 'tester', 'provisioning_admin'] }, // authoring only
   { prefix: '/test-cases', roles: ['developer', 'tester', 'qa', 'provisioning_admin'] },

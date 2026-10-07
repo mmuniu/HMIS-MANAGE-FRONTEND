@@ -13,9 +13,27 @@ export interface Integration {
   config?: Record<string, string>
   secrets_set?: string[]
 }
-// A hospital's link to the master connection — no values of its own.
-export interface TenantIntegration extends Integration {
-  tenant: { status: string; connected_at: string | null } | null
+// One defined field as a hospital sees it: set by the master connection
+// (value never shown), by this hospital, or still missing.
+export interface TenantField {
+  key: string; label: string; type: string
+  source: 'master' | 'hospital' | 'missing'
+  value: string | null // the hospital's own non-secret value
+  is_set: boolean
+}
+// An integration this hospital has added.
+export interface TenantIntegration {
+  id: string; name: string; category: string; description: string | null
+  fields: TenantField[]
+  // Extra KEY=value pairs the hospital added beyond the defined fields (.env style).
+  variables: Record<string, string>
+  missing: string[] // keys of fields nobody has filled yet
+  tenant: { status: string; connected_at: string | null }
+}
+// An integration the hospital can still add.
+export interface AvailableIntegration {
+  id: string; name: string; category: string; description: string | null
+  fields: TenantField[]
 }
 // Result of pushing a changed master to integration-service for every linked hospital.
 export interface MasterSyncSummary {
@@ -52,14 +70,17 @@ export function useIntegrationsApi() {
     await $axios.delete(`/v1/platform/integrations/${id}`)
   }
 
-  async function tenantList(orgId: string): Promise<TenantIntegration[]> {
+  // The hospital's own integrations, plus the ones it can still add.
+  async function tenantList(orgId: string): Promise<{ data: TenantIntegration[]; available: AvailableIntegration[] }> {
     const { data } = await $axios.get(`/v1/platform/hospitals/${orgId}/integrations`)
-    return data.data
+    return { data: data.data, available: data.available ?? [] }
   }
 
-  // Link a hospital to the integration's master connection (no values of its own).
-  async function tenantConnect(orgId: string, integrationId: string) {
-    const { data } = await $axios.post(`/v1/platform/hospitals/${orgId}/integrations/${integrationId}`)
+  // Add an integration to the hospital, or update its values: fields the
+  // master leaves empty plus extra variables. The whole set is sent each
+  // time; a blank secret keeps the stored one.
+  async function tenantConnect(orgId: string, integrationId: string, config: Record<string, string> = {}) {
+    const { data } = await $axios.post(`/v1/platform/hospitals/${orgId}/integrations/${integrationId}`, { config })
     return data.data
   }
 

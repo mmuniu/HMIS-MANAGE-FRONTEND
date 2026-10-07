@@ -547,14 +547,12 @@ watch(
             <p class="text-body-2 textSecondary mb-0">Connect this hospital to external systems like QuickBooks, Dynamics 365 and more.</p>
           </div>
           <div class="d-flex flex-wrap ga-2">
+            <!-- This tenant's integrations (and each environment's variables) in the
+                 V3 integration-service. A hospital not yet provisioned in core-service
+                 has no tenant there, so the page opens on its tenant picker instead. -->
             <v-btn color="primary" variant="tonal" prepend-icon="mdi-plug"
-              :to="{ path: '/integrations', query: { hospitalId: id, hospitalName: h.display_name || h.name } }">
+              :to="{ path: '/tenant-integrations', query: h.core_org_id ? { coreOrgId: String(h.core_org_id), name: h.display_name || h.name } : {} }">
               Manage integrations
-            </v-btn>
-            <!-- Per-environment variables in the V3 integration-service (needs the core-service tenant). -->
-            <v-btn color="primary" variant="flat" prepend-icon="mdi-variable" :disabled="!h.core_org_id"
-              :to="{ path: '/tenant-integrations', query: { coreOrgId: h.core_org_id ?? undefined, name: h.display_name || h.name } }">
-              Environment variables (V3)
             </v-btn>
           </div>
         </v-card-text>

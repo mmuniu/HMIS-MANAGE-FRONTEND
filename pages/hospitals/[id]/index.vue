@@ -549,9 +549,9 @@ watch(
           <div class="d-flex flex-wrap ga-2">
             <!-- This tenant's integrations (and each environment's variables) in the
                  V3 integration-service. A hospital not yet provisioned in core-service
-                 has no tenant there, so the page opens on its tenant picker instead. -->
+                 has no tenant there; the page says so. -->
             <v-btn color="primary" variant="tonal" prepend-icon="mdi-plug"
-              :to="{ path: '/tenant-integrations', query: h.core_org_id ? { coreOrgId: String(h.core_org_id), name: h.display_name || h.name } : {} }">
+              :to="{ path: '/tenant-integrations', query: { hospitalId: id, ...(h.core_org_id ? { coreOrgId: String(h.core_org_id), name: h.display_name || h.name } : {}) } }">
               Manage integrations
             </v-btn>
           </div>

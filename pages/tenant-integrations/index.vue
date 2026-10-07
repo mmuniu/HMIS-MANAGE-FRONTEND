@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useNuxtApp } from '#app'
 import { useAuthStore } from '@/stores/auth'
 import { useHospitalsApi } from '@/composables/useHospitalsApi'
@@ -19,7 +19,6 @@ import {
 
 const auth = useAuthStore()
 const route = useRoute()
-const router = useRouter()
 const hospitalsApi = useHospitalsApi()
 const api = useTenantIntegrationsApi()
 const { $showToast } = useNuxtApp()
@@ -30,45 +29,35 @@ const ENVIRONMENTS = [
   { value: 'test', title: 'Test' },
 ]
 
-// ── Tenant picker ────────────────────────────────────────────────────────────
-interface TenantOption { coreOrgId: string; name: string; kind: 'registered' | 'terminal' }
+// ── The current tenant ───────────────────────────────────────────────────────
+// This page only ever shows ONE tenant: the hospital it was opened from
+// (?coreOrgId=… from its "Manage integrations" button), or — for a hospital
+// admin — their own hospital. There is deliberately no way to switch tenants
+// here; the backend enforces the same scoping.
+const ownTenant = ref<{ coreOrgId: string | null; name: string } | null>(null)
+const resolvingTenant = ref(false)
 
-const tenants = ref<TenantOption[]>([])
-const loadingTenants = ref(false)
-const coreOrgId = computed(() => (route.query.coreOrgId as string) || null)
+const coreOrgId = computed(() =>
+  auth.isPlatformUser ? ((route.query.coreOrgId as string) || null) : (ownTenant.value?.coreOrgId ?? null),
+)
 const tenantName = computed(() =>
-  (route.query.name as string) || tenants.value.find(t => t.coreOrgId === coreOrgId.value)?.name || null,
+  auth.isPlatformUser ? ((route.query.name as string) || null) : (ownTenant.value?.name ?? null),
 )
 
-async function loadTenants() {
-  loadingTenants.value = true
+// A hospital admin's hospitals list holds just their own hospital.
+async function resolveOwnTenant() {
+  if (auth.isPlatformUser) return
+  resolvingTenant.value = true
   try {
-    const [registered, terminal] = await Promise.all([
-      hospitalsApi.list({ per_page: 500 }),
-      auth.isPlatformUser ? hospitalsApi.listTerminal().catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
-    ])
-    tenants.value = [
-      // Only hospitals provisioned in core-service have a tenant there.
-      ...registered.data
-        .filter(h => h.core_org_id)
-        .map(h => ({ coreOrgId: String(h.core_org_id), name: h.display_name || h.name, kind: 'registered' as const })),
-      ...terminal.data.map(t => ({ coreOrgId: String(t.id), name: t.name, kind: 'terminal' as const })),
-    ].sort((a, b) => a.name.localeCompare(b.name))
-
-    // A hospital admin manages exactly one tenant — open it straight away.
-    if (!coreOrgId.value && !auth.isPlatformUser && tenants.value.length === 1) {
-      pickTenant(tenants.value[0].coreOrgId)
-    }
+    const own = (await hospitalsApi.list({ per_page: 1 })).data[0]
+    ownTenant.value = own
+      ? { coreOrgId: own.core_org_id ? String(own.core_org_id) : null, name: own.display_name || own.name }
+      : null
   } catch (e: any) {
-    $showToast(e?.response?.data?.message || 'Failed to load hospitals.')
+    $showToast(e?.response?.data?.message || 'Failed to load your hospital.')
   } finally {
-    loadingTenants.value = false
+    resolvingTenant.value = false
   }
-}
-
-function pickTenant(id: string | null) {
-  const t = tenants.value.find(x => x.coreOrgId === id)
-  router.replace({ query: id ? { coreOrgId: id, name: t?.name } : {} })
 }
 
 // ── The tenant's integrations ────────────────────────────────────────────────
@@ -246,8 +235,8 @@ async function removeEnv(i: TenantIntegrationV3, f: EnvForm) {
   }
 }
 
-onMounted(() => {
-  loadTenants()
+onMounted(async () => {
+  await resolveOwnTenant()
   load()
 })
 watch(coreOrgId, load)
@@ -255,11 +244,19 @@ watch(coreOrgId, load)
 
 <template>
   <div>
+    <v-btn v-if="auth.isPlatformUser && route.query.hospitalId" variant="text" prepend-icon="mdi-arrow-left" class="mb-4"
+      :to="`/hospitals/${route.query.hospitalId}`">
+      Back to hospital
+    </v-btn>
+
     <div class="d-flex flex-wrap align-center justify-space-between mb-6 ga-3">
       <div>
-        <h2 class="text-h4 font-weight-semibold">Tenant Integrations</h2>
+        <h2 class="text-h4 font-weight-semibold">
+          Integrations<template v-if="tenantName"> — {{ tenantName }}</template>
+        </h2>
         <p class="textSecondary mb-0">
-          Environment variables for each of a tenant's integrations, per environment — saved in the V3 integration service.
+          This tenant's integrations and the environment variables for each environment — saved in the V3 integration service.
+          <template v-if="coreOrgId"> Core-service organization {{ coreOrgId }}.</template>
         </p>
       </div>
       <v-btn v-if="coreOrgId" color="primary" prepend-icon="mdi-plus" :disabled="!addable.length || loading" @click="openAdd">
@@ -267,37 +264,19 @@ watch(coreOrgId, load)
       </v-btn>
     </div>
 
-    <v-card rounded="lg" elevation="10" class="mb-6">
-      <v-card-text>
-        <v-autocomplete
-          :model-value="coreOrgId"
-          :items="tenants"
-          item-title="name"
-          item-value="coreOrgId"
-          :loading="loadingTenants"
-          label="Tenant"
-          placeholder="Search hospitals"
-          prepend-inner-icon="mdi-hospital-building"
-          variant="outlined" density="comfortable" hide-details clearable
-          @update:model-value="pickTenant"
-        >
-          <template #item="{ props: itemProps, item }">
-            <v-list-item v-bind="itemProps" :subtitle="`Core ID ${item.raw.coreOrgId}`">
-              <template #append>
-                <v-chip v-if="item.raw.kind === 'terminal'" size="x-small" color="warning" variant="tonal" label>Terminal</v-chip>
-              </template>
-            </v-list-item>
-          </template>
-        </v-autocomplete>
-        <p v-if="coreOrgId && tenantName" class="text-caption textSecondary mt-2 mb-0">
-          {{ tenantName }} · core-service organization {{ coreOrgId }}
-        </p>
-      </v-card-text>
-    </v-card>
+    <v-progress-linear v-if="resolvingTenant" indeterminate color="primary" class="mb-4" />
 
-    <v-alert v-if="!coreOrgId" type="info" variant="tonal">
-      Pick a tenant to see and edit its integrations. Hospitals not yet provisioned in core-service aren't listed — they
-      have no tenant in the integration service yet.
+    <v-alert v-if="!coreOrgId && !resolvingTenant" type="info" variant="tonal">
+      <template v-if="auth.isPlatformUser && route.query.hospitalId">
+        This hospital isn't provisioned in core-service yet, so it has no integrations in the integration service.
+      </template>
+      <template v-else-if="auth.isPlatformUser">
+        Open a hospital and click <strong>Manage integrations</strong> to manage its integrations.
+      </template>
+      <template v-else-if="ownTenant">
+        Your hospital isn't provisioned in core-service yet, so it has no integrations in the integration service.
+      </template>
+      <template v-else>No hospital found for your account.</template>
     </v-alert>
 
     <template v-else>

@@ -117,8 +117,15 @@ async function saveConnect() {
   if (!selected.value || !orgId.value) return
   connecting.value = true
   try {
-    await api.tenantConnect(orgId.value, selected.value.id, configForm.value)
-    $showToast(`${selected.value.name} connected.`)
+    const res = await api.tenantConnect(orgId.value, selected.value.id, configForm.value)
+    // Saved here either way; also say when the copy to the v3
+    // integration-service didn't go through, and why.
+    const sync = res?.integration_service
+    $showToast(
+      sync && !sync.synced
+        ? `${selected.value.name} connected, but not copied to the integration service: ${sync.error}`
+        : `${selected.value.name} connected.`,
+    )
     connectDialog.value = false
     await loadTenant()
   } catch (e: any) {

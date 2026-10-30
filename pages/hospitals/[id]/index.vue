@@ -8,6 +8,7 @@ import { useDeploymentsStore } from '@/stores/deployments'
 import { STATUS_COLOR, TIER_COLOR, BILLING_COLOR, type HospitalAdminUser } from '@/types/hospital'
 import type { Deployment } from '@/types/deployment'
 import ApiCredentialsCard from '@/components/hospitals/ApiCredentialsCard.vue'
+import AddFacilityDialog from '@/components/hospitals/AddFacilityDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -34,12 +35,14 @@ const BED_FIELDS: { key: 'total_beds' | 'normal_beds' | 'icu_beds' | 'hdu_beds' 
   { key: 'number_of_cots', label: 'Number of cots' },
 ]
 
-const confirmDelete = ref(false)
+const isDeactivated = computed(() => h.value?.status === 'ARCHIVED')
+const confirmToggleStatus = ref(false)
 
-async function deleteHospital() {
-  const res = await store.remove(id.value)
-  confirmDelete.value = false
-  if (res.success) router.push('/hospitals')
+async function toggleHospitalStatus() {
+  const activate = isDeactivated.value
+  const res = await store.setActive(id.value, activate)
+  confirmToggleStatus.value = false
+  if (res.success) $showToast(activate ? 'Hospital reactivated.' : 'Hospital deactivated.')
 }
 
 const showAdminPassword = ref(false)
@@ -51,8 +54,16 @@ async function copyAdminField(text: string, field: 'username' | 'password') {
   setTimeout(() => (copiedAdminField.value = null), 1500)
 }
 
+async function copyId(value: string | number) {
+  await navigator.clipboard.writeText(String(value))
+}
+
 function provisionAdmin(adminId: number) {
   store.provisionAdmin(id.value, adminId)
+}
+
+function linkAdmin() {
+  store.linkAdmin(id.value)
 }
 
 const PASSWORD_SYMBOLS = ['!', '@', '#', '$', '%', '^', '&', '*']
@@ -96,6 +107,18 @@ async function saveAdminEdit() {
         : res.notified
           ? 'Admin details updated — confirmation email sent.'
           : 'Admin details updated.',
+    )
+  }
+}
+
+const addFacilityDialog = ref(false)
+async function retryFacility(facilityId: string) {
+  const res = await store.provisionFacility(id.value, facilityId)
+  if (res.success) {
+    $showToast(
+      res.data.core_provisioned
+        ? 'Facility created in the v3 system.'
+        : 'Still not created in the v3 system: ' + (res.data.core_provisioning_error || 'unknown error'),
     )
   }
 }
@@ -180,6 +203,7 @@ watch(
     editAdminDialog.value = false
     editingAdmin.value = null
     addAdminDialog.value = false
+    addFacilityDialog.value = false
     confirmDeleteAdmin.value = null
     deployment.value = null
     store.fetchOne(newId)
@@ -208,9 +232,10 @@ watch(
           :to="`/hospitals/${id}/edit`">
           Edit hospital
         </v-btn>
-        <v-btn v-if="auth.isSystemAdmin && h" color="error" variant="tonal" prepend-icon="mdi-delete"
-          @click="confirmDelete = true">
-          Delete hospital
+        <v-btn v-if="auth.isSystemAdmin && h" :color="isDeactivated ? 'success' : 'error'" variant="tonal"
+          :prepend-icon="isDeactivated ? 'mdi-check-circle-outline' : 'mdi-cancel'"
+          @click="confirmToggleStatus = true">
+          {{ isDeactivated ? 'Reactivate hospital' : 'Deactivate hospital' }}
         </v-btn>
       </div>
     </div>
@@ -231,6 +256,31 @@ watch(
           <v-chip v-if="h.is_sandbox" color="warning" variant="tonal" label>SANDBOX</v-chip>
         </div>
       </div>
+
+      <!-- The ids the rest of the platform knows this hospital by — always visible, copyable. -->
+      <v-card variant="tonal" color="primary" rounded="lg" class="mb-6">
+        <v-card-text class="d-flex flex-wrap align-center ga-6">
+          <div>
+            <p class="text-caption textSecondary mb-0">System</p>
+            <p class="text-body-1 font-weight-medium mb-0">{{ h.v3_target_label }}</p>
+          </div>
+          <div>
+            <p class="text-caption textSecondary mb-0">Organization ID</p>
+            <p class="text-body-1 font-weight-medium font-mono mb-0">
+              {{ h.core_org_id || 'Not provisioned' }}
+              <v-btn v-if="h.core_org_id" icon="mdi-content-copy" size="x-small" variant="text" @click="copyId(h.core_org_id)" />
+            </p>
+          </div>
+          <div v-for="f in h.facilities" :key="f.id">
+            <p class="text-caption textSecondary mb-0">Facility ID — {{ f.name }}</p>
+            <p class="text-body-1 font-weight-medium font-mono mb-0">
+              {{ f.core_facility_id || 'Not provisioned' }}
+              <v-btn v-if="f.core_facility_id" icon="mdi-content-copy" size="x-small" variant="text" @click="copyId(f.core_facility_id)" />
+            </p>
+          </div>
+          <p v-if="!h.facilities?.length" class="text-body-2 mb-0">No facility yet — add one below to get a facility ID.</p>
+        </v-card-text>
+      </v-card>
 
       <v-row>
         <!-- 1. Isolation -->
@@ -330,6 +380,7 @@ watch(
               <template v-if="h.core_org_id">
                 <v-chip color="success" variant="flat" label class="mb-2">Provisioned</v-chip>
                 <v-list density="compact" lines="two">
+                  <v-list-item title="System" :subtitle="h.v3_target_label" />
                   <v-list-item title="Core org ID" :subtitle="h.core_org_id" />
                 </v-list>
 
@@ -378,6 +429,12 @@ watch(
       </v-row>
 
       <!-- 6. Facilities (bed capacity + facility administrator, from provisioning) -->
+      <div class="d-flex align-center justify-space-between mt-6 mb-3">
+        <h3 class="text-h5 font-weight-semibold">Facilities</h3>
+        <v-btn v-if="auth.isPlatformUser" color="primary" variant="tonal" prepend-icon="mdi-plus" @click="addFacilityDialog = true">
+          Add facility
+        </v-btn>
+      </div>
       <v-row v-if="h.facilities?.length">
         <v-col v-for="f in h.facilities" :key="f.id" cols="12" md="6">
           <v-card rounded="lg" elevation="10" class="h-100">
@@ -387,10 +444,17 @@ watch(
                 <v-chip :color="f.core_facility_id ? 'success' : 'warning'" size="small" variant="tonal" label>
                   {{ f.core_facility_id ? 'Provisioned' : 'Not in core-service' }}
                 </v-chip>
+                <v-btn
+                  v-if="!f.core_facility_id && h.core_org_id" size="small" color="primary" variant="tonal" class="ml-2"
+                  prepend-icon="mdi-cloud-sync" :loading="store.provisioningFacilityId === f.id" @click="retryFacility(f.id)"
+                >
+                  Retry
+                </v-btn>
               </template>
             </v-card-item>
             <v-card-text>
               <v-list density="compact" lines="two">
+                <v-list-item title="Core facility ID" :subtitle="f.core_facility_id || '—'" />
                 <v-list-item title="Facility code" :subtitle="f.facility_code || '—'" />
                 <v-list-item title="KEPH level" :subtitle="f.keph_level || '—'" />
               </v-list>
@@ -416,7 +480,7 @@ watch(
           </v-card>
         </v-col>
       </v-row>
-      <v-alert v-else type="info" variant="tonal" class="mt-6">
+      <v-alert v-else type="info" variant="tonal">
         No facility has been added to this hospital yet.
       </v-alert>
 
@@ -512,6 +576,11 @@ watch(
               <p class="text-caption textSecondary mt-2 mb-0">
                 Also emailed to the admin and won't be shown again — share it with them now.
               </p>
+              <p v-if="store.lastAdminUpdateResult.usableForCoreService" class="text-caption text-warning mt-2 mb-0">
+                <v-icon icon="mdi-alert-circle-outline" size="14" class="mr-1" />
+                One-time key for core-service — the admin will be asked to set a new password
+                immediately after signing in with it.
+              </p>
             </v-card-text>
           </v-card>
         </v-card-text>
@@ -524,10 +593,15 @@ watch(
             <p class="text-subtitle-1 font-weight-semibold mb-1">Integrations</p>
             <p class="text-body-2 textSecondary mb-0">Connect this hospital to external systems like QuickBooks, Dynamics 365 and more.</p>
           </div>
-          <v-btn color="primary" variant="tonal" prepend-icon="mdi-plug"
-            :to="{ path: '/integrations', query: { hospitalId: id, hospitalName: h.display_name || h.name } }">
-            Manage integrations
-          </v-btn>
+          <div class="d-flex flex-wrap ga-2">
+            <!-- This tenant's integrations (and each environment's variables) in the
+                 V3 integration-service. A hospital not yet provisioned in core-service
+                 has no tenant there; the page says so. -->
+            <v-btn color="primary" variant="tonal" prepend-icon="mdi-plug"
+              :to="{ path: '/tenant-integrations', query: { hospitalId: id, ...(h.core_org_id ? { coreOrgId: String(h.core_org_id), name: h.display_name || h.name } : {}) } }">
+              Manage integrations
+            </v-btn>
+          </div>
         </v-card-text>
       </v-card>
 
@@ -535,19 +609,26 @@ watch(
       <ApiCredentialsCard v-if="auth.isSystemAdmin" :hospital-id="id" :hospital-name="h.display_name || h.name" />
     </template>
 
-    <!-- Delete confirmation dialog -->
-    <v-dialog v-model="confirmDelete" max-width="440">
+    <!-- Deactivate / reactivate confirmation dialog -->
+    <v-dialog v-model="confirmToggleStatus" max-width="440">
       <v-card rounded="lg">
-        <v-card-title class="text-h6">Delete hospital?</v-card-title>
+        <v-card-title class="text-h6">{{ isDeactivated ? 'Reactivate hospital?' : 'Deactivate hospital?' }}</v-card-title>
         <v-card-text>
-          This will permanently remove <strong>{{ h?.display_name || h?.name }}</strong> from the platform's
-          active hospital list. Its facilities, admin accounts and integration config are kept and can be
-          restored if this was a mistake — contact platform engineering to reverse it.
+          <template v-if="isDeactivated">
+            <strong>{{ h?.display_name || h?.name }}</strong> will be set back to ACTIVE.
+          </template>
+          <template v-else>
+            <strong>{{ h?.display_name || h?.name }}</strong> will be marked ARCHIVED. Its facilities, admin
+            accounts and integration config are kept, and you can reactivate it at any time.
+          </template>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" :disabled="store.deleting" @click="confirmDelete = false">Cancel</v-btn>
-          <v-btn color="error" variant="flat" :loading="store.deleting" @click="deleteHospital">Delete</v-btn>
+          <v-btn variant="text" :disabled="store.togglingStatus" @click="confirmToggleStatus = false">Cancel</v-btn>
+          <v-btn :color="isDeactivated ? 'success' : 'error'" variant="flat" :loading="store.togglingStatus"
+            @click="toggleHospitalStatus">
+            {{ isDeactivated ? 'Reactivate' : 'Deactivate' }}
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -586,6 +667,9 @@ watch(
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Add facility dialog -->
+    <AddFacilityDialog v-model="addFacilityDialog" :org-id="id" />
 
     <!-- Add admin dialog -->
     <v-dialog v-model="addAdminDialog" max-width="480">
@@ -632,6 +716,46 @@ watch(
           <v-spacer />
           <v-btn variant="text" :disabled="store.removingAdminId === confirmDeleteAdmin?.id" @click="confirmDeleteAdmin = null">Cancel</v-btn>
           <v-btn color="error" variant="flat" :loading="store.removingAdminId === confirmDeleteAdmin?.id" @click="deleteAdmin">Remove</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Provisioning (or a password reset) found this email/username already
+         registered on core-service — offer to attach instead of retrying a
+         create that can only ever fail the same way again. -->
+    <v-dialog :model-value="!!store.pendingCoreAccountLink" max-width="480" persistent>
+      <v-card v-if="store.pendingCoreAccountLink" rounded="lg">
+        <v-card-title class="text-h6">Admin already exists in core-service</v-card-title>
+        <v-card-text>
+          <p class="mb-3">
+            Creating this admin failed because an account with this email or username already
+            exists in core-service. Connect to it instead?
+          </p>
+          <v-list density="compact" lines="two" class="mb-2" style="background: transparent;">
+            <v-list-item title="Name" :subtitle="store.pendingCoreAccountLink.existing.name || '—'" />
+            <v-list-item title="Email" :subtitle="store.pendingCoreAccountLink.existing.email" />
+            <v-list-item title="Username" :subtitle="store.pendingCoreAccountLink.existing.username" />
+            <v-list-item
+              title="Status"
+              :subtitle="store.pendingCoreAccountLink.existing.active ? 'Active' : 'Inactive'"
+            />
+            <v-list-item
+              v-if="store.pendingCoreAccountLink.existing.facilities.length"
+              title="Facilities"
+              :subtitle="store.pendingCoreAccountLink.existing.facilities.map(f => f.name).join(', ')"
+            />
+          </v-list>
+          <p class="text-caption textSecondary mb-0">
+            Connecting only links this admin to that existing account — it does not change its
+            password. Cancel to leave the admin unprovisioned instead.
+          </p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="store.linkingAdmin" @click="store.cancelCoreAccountLink">Cancel</v-btn>
+          <v-btn color="primary" variant="flat" :loading="store.linkingAdmin" @click="linkAdmin">
+            Connect this account
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

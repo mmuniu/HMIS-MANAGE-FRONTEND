@@ -29,6 +29,9 @@ export interface Hospital {
   status: HospitalStatus
   is_sandbox: boolean
   core_org_id: string | null
+  // Which v3 system this hospital was provisioned into (key + display label).
+  v3_target: string
+  v3_target_label: string
   created_at: string | null
   updated_at: string | null
 }
@@ -74,6 +77,23 @@ export interface ProvisionAdminResponse {
   password: string
 }
 
+// core-service's account for an admin found there under an email/username
+// hmis-manage tried to create — surfaced when provisioning (or a password
+// reset that tries to provision) fails as "already exists".
+export interface ExistingCoreAccount {
+  id: string
+  email: string
+  username: string
+  name: string | null
+  organization_id: number | null
+  active: boolean
+  facilities: { id: number; name: string; code: string | null }[]
+}
+
+export interface LinkAdminResponse {
+  data: { id: number; username: string; email: string; core_user_id: string }
+}
+
 export interface UpdateAdminPayload {
   name?: string
   username?: string
@@ -98,6 +118,14 @@ export interface CreateAdminResponse {
   data: HospitalAdminUser
 }
 
+// Response of POST /v1/platform/hospitals/{id}/facilities. Saved locally
+// even when core-service provisioning fails — the error says why.
+export interface CreateFacilityResponse {
+  data: HospitalFacility
+  core_provisioned: boolean
+  core_provisioning_error: string | null
+}
+
 // Response of PATCH /v1/platform/hospitals/{id}/admins/{userId}.
 // `notified` reports whether the "your details changed" email actually went
 // out — it can be false if nothing in the payload differed from before.
@@ -107,6 +135,15 @@ export interface UpdateAdminResponse {
   // Echoed back only when the edit included a password reset — never
   // persisted anywhere, shown once in a copy-once credentials panel.
   password: string | null
+  // True only when `password` actually reached core-service. Even then it's
+  // a ONE-TIME key there — core-service forces a password reset on first
+  // login with it — so the UI must say that, not imply it's an ongoing login.
+  password_usable_for_core_service: boolean
+  // Present only when this admin had no core-service account yet AND the
+  // attempt to create one above failed as a duplicate — see ProvisionAdmin's
+  // matching failure shape (thrown as an axios error, not a 2xx body, since
+  // this only happens on the same 502 provisionAdmin() itself returns).
+  existing_core_account?: ExistingCoreAccount | null
 }
 
 // GET /v1/platform/hospitals/{id} returns everything gathered during
@@ -114,6 +151,20 @@ export interface UpdateAdminResponse {
 export interface HospitalDetail extends Hospital {
   facilities: HospitalFacility[]
   admins: HospitalAdminUser[]
+}
+
+// A core-service tenant with no hospital in hmis-manage — set up directly on
+// the core platform (GET /v1/platform/hospitals/terminal).
+export interface TerminalHospital {
+  id: number | string
+  name: string
+  code: string | null
+  status: string | null
+}
+
+export interface TerminalHospitalListResponse {
+  data: TerminalHospital[]
+  meta: { total: number }
 }
 
 export interface PaginationMeta {
@@ -229,9 +280,20 @@ export interface CreateHospitalPayload {
   existing_core_org_id?: number
   // Sent after the user saw the similar-name suggestions and chose to continue.
   confirm_similar?: boolean
+  // Key of the v3 system to provision into (GET /hospitals/v3-targets).
+  // Omitted = the default (production) system.
+  v3_target?: string
   // optional first facility + admin
   facility?: HospitalFacilityPayload
   admin?: { name: string; username: string; email: string; password: string }
+}
+
+// One row from GET /hospitals/v3-targets — a v3 system a hospital can be
+// provisioned into. `default` is the production system.
+export interface V3Target {
+  key: string
+  label: string
+  default: boolean
 }
 
 // One row from GET /hospitals/core-organizations — plain id/name/code/status,
@@ -274,6 +336,9 @@ export interface CreateHospitalResponse {
   facility: { id: string; name: string; core_facility_id: string | null } | null
   admin: { id: number; username: string; email: string } | null
   core_provisioned: boolean
+  // Whether the admin account exists in the v3 system (null = no admin was
+  // created). false = they can't log in there yet.
+  admin_core_provisioned: boolean | null
   core_provisioning_error: string | null
 }
 

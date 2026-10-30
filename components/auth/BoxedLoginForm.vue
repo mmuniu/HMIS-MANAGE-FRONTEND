@@ -180,6 +180,12 @@
         Sign In
       </v-btn>
 
+      <div class="text-center mb-4">
+        <a href="#" class="text-body-2 text-primary" @click.prevent="openForgotPassword">
+          Forgot password?
+        </a>
+      </div>
+
       <v-alert
         v-if="auth.apiError"
         type="error"
@@ -191,6 +197,54 @@
       </v-alert>
     </Form>
   </div>
+
+  <!-- Forgot password -->
+  <v-dialog v-model="showForgotPassword" max-width="440">
+    <v-card rounded="lg">
+      <v-card-title class="text-h6 pt-5 px-5">Forgot password?</v-card-title>
+      <v-card-text class="px-5">
+        <template v-if="!forgotPasswordResult">
+          <p class="text-body-2 textSecondary mb-4">
+            Enter your username or email. If an account matches, we'll email a new password to it.
+          </p>
+          <VTextField
+            v-model="forgotPasswordIdentifier"
+            label="Username or email"
+            variant="outlined"
+            hide-details="auto"
+            autofocus
+            :disabled="forgotPasswordLoading"
+            @keyup.enter="submitForgotPassword"
+          />
+        </template>
+        <v-alert
+          v-else
+          :type="forgotPasswordResult.success ? 'success' : 'error'"
+          variant="tonal"
+          density="compact"
+          rounded="lg"
+        >
+          {{ forgotPasswordResult.message }}
+        </v-alert>
+      </v-card-text>
+      <v-card-actions class="px-5 pb-5">
+        <v-spacer />
+        <v-btn variant="text" @click="closeForgotPassword">
+          {{ forgotPasswordResult ? 'Close' : 'Cancel' }}
+        </v-btn>
+        <v-btn
+          v-if="!forgotPasswordResult"
+          color="primary"
+          flat
+          :loading="forgotPasswordLoading"
+          :disabled="!forgotPasswordIdentifier"
+          @click="submitForgotPassword"
+        >
+          Send new password
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup lang="ts">
@@ -207,12 +261,40 @@ const isLoading = ref(false);
 const loadingFacilityId = ref<string | null>(null);
 const loadingSystemId = ref<string | null>(null);
 
+const showForgotPassword = ref(false);
+const forgotPasswordIdentifier = ref("");
+const forgotPasswordLoading = ref(false);
+const forgotPasswordResult = ref<{ success: boolean; message: string } | null>(null);
+
 const requiredRule = (v: string) => (!!v ? true : "This field is required");
 
 const onSubmit = async () => {
   isLoading.value = true;
   await auth.login({ username: form.username, password: form.password });
   isLoading.value = false;
+};
+
+const openForgotPassword = () => {
+  forgotPasswordIdentifier.value = form.username;
+  forgotPasswordResult.value = null;
+  showForgotPassword.value = true;
+};
+
+const closeForgotPassword = () => {
+  showForgotPassword.value = false;
+  forgotPasswordIdentifier.value = "";
+  forgotPasswordResult.value = null;
+};
+
+const submitForgotPassword = async () => {
+  if (!forgotPasswordIdentifier.value || forgotPasswordLoading.value) return;
+  forgotPasswordLoading.value = true;
+  const result = await auth.forgotPassword(forgotPasswordIdentifier.value);
+  forgotPasswordResult.value = {
+    success: result.success,
+    message: result.message || "If that account exists, we've emailed a new password to it.",
+  };
+  forgotPasswordLoading.value = false;
 };
 
 const selectFacility = async (facilityId: string) => {

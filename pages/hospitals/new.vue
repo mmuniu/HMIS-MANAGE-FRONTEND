@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useHospitalsStore } from '@/stores/hospitals'
 import { useHospitalsApi } from '@/composables/useHospitalsApi'
 import type { CreateHospitalPayload, FacilityRegistryResult, HospitalFacilityPayload, SimilarOrganization } from '@/types/hospital'
+import { useSettingsApi } from '@/composables/useSettingsApi'
 
 const router = useRouter()
 const route = useRoute()
@@ -48,7 +49,15 @@ const form = reactive<CreateHospitalPayload>({
 const useExistingOrg = ref(false)
 const selectedCoreOrgId = ref<number | null>(null)
 
-store.fetchCoreOrganizations()
+// Which v3 system this hospital is provisioned into. '' until the list of
+// systems loads, then the default (production) one; only offered at all when
+// the server has more than one configured.
+const selectedTarget = ref('')
+const isDefaultTarget = computed(() => {
+  const t = store.v3Targets.find((x) => x.key === selectedTarget.value)
+  return !t || t.default
+})
+const selectedTargetLabel = computed(() => store.v3Targets.find((x) => x.key === selectedTarget.value)?.label ?? '')
 
 const addFacility = ref(true)
 const facility = reactive<HospitalFacilityPayload>({
@@ -110,7 +119,22 @@ function onAdminNameInput() {
 
 watch(step, (s) => {
   if (s === 4 && addAdmin.value && !admin.password) regeneratePassword()
+  // Most hospitals have one facility named after the hospital — start there
+  // (still editable). A facility is what the admin is assigned to, and without
+  // one the admin is never created in the v3 system.
+  if (s === 3 && addFacility.value && !facility.name.trim()) facility.name = form.name.trim()
 })
+
+// The "SHA integration" platform setting (Settings page, system admin). On:
+// the DHA lookup below is offered and the facility fields it fills are locked
+// (as is the auto-generated admin password). Off: no lookup, everything is
+// typed by hand. Assumed on until loaded, and if it can't be loaded — that
+// was the behaviour before the setting existed.
+const shaEnabled = ref(true)
+useSettingsApi()
+  .get()
+  .then((s) => (shaEnabled.value = s.sha_integration_enabled))
+  .catch(() => {})
 
 // DHA SHA HIE facility registry lookup — see ShaHieClient / HospitalController::searchFacility.
 // Never blocks: an unconfigured/unreachable registry just falls back to manual entry below.
@@ -148,6 +172,7 @@ function restoreDraft() {
     dhaStatusType.value = draft.dhaStatusType || 'info'
     useExistingOrg.value = !!draft.useExistingOrg
     selectedCoreOrgId.value = draft.selectedCoreOrgId ?? null
+    selectedTarget.value = draft.selectedTarget || ''
   } catch {
     sessionStorage.removeItem(DRAFT_KEY)
   }
@@ -159,8 +184,24 @@ function clearDraft() {
 
 restoreDraft()
 
+// Load the systems, then the existing-organization list for whichever one is
+// selected (a restored draft may already point at a non-default system).
+store.fetchV3Targets().then(() => {
+  if (!selectedTarget.value) selectedTarget.value = store.v3Targets.find((t) => t.default)?.key ?? ''
+})
+store.fetchCoreOrganizations(selectedTarget.value || undefined)
+
+// Organizations belong to one system: switching it clears the pick and
+// reloads the list. The first assignment ('' -> default, once the systems
+// load) isn't a switch — that list is already loaded.
+watch(selectedTarget, (target, previous) => {
+  if (!previous) return
+  selectedCoreOrgId.value = null
+  store.fetchCoreOrganizations(target || undefined)
+})
+
 watch(
-  [step, form, addFacility, facility, addAdmin, admin, adminPasswordLocked, dhaIdentifier, dhaMatched, dhaShaStatus, dhaStatus, dhaStatusType, useExistingOrg, selectedCoreOrgId],
+  [step, form, addFacility, facility, addAdmin, admin, adminPasswordLocked, dhaIdentifier, dhaMatched, dhaShaStatus, dhaStatus, dhaStatusType, useExistingOrg, selectedCoreOrgId, selectedTarget],
   () => {
     if (typeof window === 'undefined' || submitted.value) return
     sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
@@ -177,6 +218,7 @@ watch(
       dhaStatus: dhaStatus.value,
       useExistingOrg: useExistingOrg.value,
       selectedCoreOrgId: selectedCoreOrgId.value,
+      selectedTarget: selectedTarget.value,
       dhaStatusType: dhaStatusType.value,
     }))
   },
@@ -273,8 +315,11 @@ const allFieldErrors = computed(() => Object.values(store.fieldErrors).flat())
 const step1Valid = computed(() =>
   form.name.trim().length > 0 && (!useExistingOrg.value || selectedCoreOrgId.value !== null),
 )
+// An admin is assigned to the facility; no facility = no admin in the v3 system.
+const adminNeedsFacility = computed(() => addAdmin.value && !(addFacility.value && facility.name.trim()))
 const step4Valid = computed(() => {
   if (!addAdmin.value) return true
+  if (adminNeedsFacility.value) return false
   return (
     admin.name.trim() &&
     admin.username.trim() &&
@@ -334,6 +379,7 @@ async function submit(confirmedSimilar = false) {
   if (addAdmin.value) payload.admin = { ...admin }
   if (deploymentId) payload.deployment_id = deploymentId
   if (useExistingOrg.value && selectedCoreOrgId.value) payload.existing_core_org_id = selectedCoreOrgId.value
+  if (selectedTarget.value && !isDefaultTarget.value) payload.v3_target = selectedTarget.value
 
   if (confirmedSimilar) payload.confirm_similar = true
 
@@ -348,7 +394,8 @@ async function submit(confirmedSimilar = false) {
   } else {
     // Jump back to the step that has the first error.
     const errs = Object.keys(store.fieldErrors)
-    if (errs.some((e) => e.startsWith('admin'))) step.value = 4
+    if (errs.some((e) => e.startsWith('facility'))) step.value = 3
+    else if (errs.some((e) => e.startsWith('admin'))) step.value = 4
     else if (errs.some((e) => ['subdomain', 'custom_domain', 'subscription_tier', 'billing_status', 'max_user_slots', 'max_patient_records', 'status'].includes(e))) step.value = 2
     else step.value = 1
   }
@@ -422,12 +469,32 @@ function done() {
       <div class="pa-6">
         <h3 class="text-h5 mb-4"><v-icon icon="mdi-check-circle" color="success" class="mr-2" />Hospital created</h3>
 
+        <!-- The core-service ids the rest of the platform knows this hospital by -->
+        <!-- (e.g. what a data load or integration needs) — shown here so they can be copied. -->
+        <v-card variant="tonal" color="success" rounded="lg" class="mb-4">
+          <v-card-text>
+            <p class="text-subtitle-2 font-weight-medium mb-3">
+              Created in {{ store.lastCreateResult.data.v3_target_label }}
+            </p>
+            <div class="d-flex align-center ga-2 mb-1">
+              <span class="text-body-2">Organization ID:</span>
+              <span class="font-mono font-weight-medium">{{ store.lastCreateResult.data.core_org_id || '—' }}</span>
+              <v-btn v-if="store.lastCreateResult.data.core_org_id" icon="mdi-content-copy" size="x-small" variant="text"
+                @click="copy(String(store.lastCreateResult.data.core_org_id))" />
+            </div>
+            <div class="d-flex align-center ga-2">
+              <span class="text-body-2">Facility ID:</span>
+              <span class="font-mono font-weight-medium">{{ store.lastCreateResult.facility?.core_facility_id || '—' }}</span>
+              <v-btn v-if="store.lastCreateResult.facility?.core_facility_id" icon="mdi-content-copy" size="x-small" variant="text"
+                @click="copy(String(store.lastCreateResult.facility.core_facility_id))" />
+            </div>
+          </v-card-text>
+        </v-card>
+
         <v-list density="comfortable" lines="two" class="mb-4">
           <v-list-item title="Facility">
             <template #subtitle>
-              {{ store.lastCreateResult.facility
-                ? `${store.lastCreateResult.facility.name} (core: ${store.lastCreateResult.facility.core_facility_id || '—'})`
-                : 'No facility created' }}
+              {{ store.lastCreateResult.facility ? store.lastCreateResult.facility.name : 'No facility created' }}
             </template>
           </v-list-item>
           <v-list-item title="Admin">
@@ -461,6 +528,15 @@ function done() {
             </p>
           </v-card-text>
         </v-card>
+
+        <!-- Hospital synced, but the admin account isn't in the v3 system: the login above won't work there yet. -->
+        <v-alert v-if="store.lastCreateResult.admin && store.lastCreateResult.admin_core_provisioned === false"
+          type="warning" variant="tonal" class="mb-2">
+          <p class="font-weight-medium mb-1">This admin can't log in to {{ store.lastCreateResult.data.v3_target_label }} yet.</p>
+          <p class="text-body-2 mb-0">
+            Their account exists in hmis-manage only. Open the hospital and provision the admin from its Admins section.
+          </p>
+        </v-alert>
 
         <v-alert v-if="provisioningState === 'success'" type="success" variant="tonal" class="mb-2">
           Synced to core-service.
@@ -496,6 +572,13 @@ function done() {
                  this hmis-manage hospital record is called, in either mode —
                  selecting an existing organization only changes which
                  core-service org the facility/admin get provisioned into. -->
+            <!-- Which v3 system to provision into — only shown when the server
+                 has more than one configured (production + e.g. data migration). -->
+            <v-select v-if="store.v3Targets.length > 1" v-model="selectedTarget"
+              :items="store.v3Targets" item-title="label" item-value="key"
+              label="System *" variant="outlined" density="comfortable" class="mb-3" hide-details="auto"
+              hint="The v3 system this hospital's organization, facility and admin are created in." persistent-hint />
+
             <v-switch v-model="useExistingOrg" color="primary" hide-details inset density="compact"
               label="Attach to an existing organization" class="mb-3" />
 
@@ -563,46 +646,54 @@ function done() {
               <v-switch v-model="addFacility" color="primary" hide-details inset density="compact" label="Add a facility" />
             </div>
 
-            <div class="d-flex ga-2 mb-1" :class="{ 'opacity-50': !addFacility }">
-              <v-text-field v-model="dhaIdentifier" :disabled="!addFacility || dhaSearching" label="Find Facility (DHA Registry)"
+            <v-alert v-if="!isDefaultTarget" type="info" variant="tonal" density="compact" class="mb-3">
+              The facility ID (DHA registry lookup and master facility code) is optional for {{ selectedTargetLabel }} —
+              just enter the facility name.
+            </v-alert>
+
+            <p v-if="!shaEnabled" class="text-caption textSecondary mb-3">
+              SHA integration is turned off in Settings — enter the facility details below by hand.
+            </p>
+            <div v-if="shaEnabled" class="d-flex ga-2 mb-1" :class="{ 'opacity-50': !addFacility }">
+              <v-text-field v-model="dhaIdentifier" :disabled="!addFacility || dhaSearching" :label="isDefaultTarget ? 'Find Facility (DHA Registry)' : 'Find Facility (DHA Registry) — optional'"
                 placeholder="Facility ID / fr-code, e.g. FID-47-105963-0" variant="outlined" density="comfortable" hide-details="auto"
                 @keydown.enter.prevent="searchFacility" />
               <v-btn color="primary" variant="tonal" :disabled="!addFacility" :loading="dhaSearching" @click="searchFacility">
                 <v-icon icon="mdi-magnify" />
               </v-btn>
             </div>
-            <p v-if="dhaStatus" class="text-caption mt-1 mb-3"
+            <p v-if="shaEnabled && dhaStatus" class="text-caption mt-1 mb-3"
               :class="{ 'text-success': dhaStatusType === 'success', 'text-error': dhaStatusType === 'error', 'text-warning': dhaStatusType === 'warning', 'textSecondary': dhaStatusType === 'info' }">
               {{ dhaStatus }}
             </p>
 
-            <v-text-field v-model="facility.name" :disabled="!addFacility" readonly label="Facility name" placeholder="e.g. Main Hospital"
+            <v-text-field v-model="facility.name" :disabled="!addFacility" :readonly="shaEnabled" label="Facility name" placeholder="e.g. Main Hospital"
               variant="outlined" density="comfortable" class="mb-3" hide-details="auto" />
             <div class="d-flex ga-3 mb-3 flex-wrap">
-              <v-text-field v-model="facility.facility_code" :disabled="!addFacility" label="Master facility code" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
-              <v-text-field v-model="facility.keph_level" :disabled="!addFacility" readonly label="KEPH level" placeholder="e.g. Level 4" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.facility_code" :disabled="!addFacility" :label="isDefaultTarget ? 'Master facility code' : 'Master facility code (optional)'" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.keph_level" :disabled="!addFacility" :readonly="shaEnabled" label="KEPH level" placeholder="e.g. Level 4" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
             </div>
 
             <h4 class="text-subtitle-1 font-weight-medium mt-4 mb-2">Bed Occupancy</h4>
             <div class="d-flex ga-3 mb-3 flex-wrap">
-              <v-text-field v-model.number="facility.total_beds" :disabled="!addFacility" readonly type="number" label="Total beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
-              <v-text-field v-model.number="facility.normal_beds" :disabled="!addFacility" readonly type="number" label="Normal beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
-              <v-text-field v-model.number="facility.icu_beds" :disabled="!addFacility" readonly type="number" label="ICU beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.total_beds" :disabled="!addFacility" :readonly="shaEnabled" type="number" label="Total beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.normal_beds" :disabled="!addFacility" :readonly="shaEnabled" type="number" label="Normal beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.icu_beds" :disabled="!addFacility" :readonly="shaEnabled" type="number" label="ICU beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
             </div>
             <div class="d-flex ga-3 mb-3 flex-wrap">
-              <v-text-field v-model.number="facility.hdu_beds" :disabled="!addFacility" readonly type="number" label="HDU beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
-              <v-text-field v-model.number="facility.dialysis_beds" :disabled="!addFacility" readonly type="number" label="Dialysis beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
-              <v-text-field v-model.number="facility.number_of_cots" :disabled="!addFacility" readonly type="number" label="Number of cots" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.hdu_beds" :disabled="!addFacility" :readonly="shaEnabled" type="number" label="HDU beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.dialysis_beds" :disabled="!addFacility" :readonly="shaEnabled" type="number" label="Dialysis beds" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
+              <v-text-field v-model.number="facility.number_of_cots" :disabled="!addFacility" :readonly="shaEnabled" type="number" label="Number of cots" variant="outlined" density="comfortable" hide-details="auto" style="min-width:150px" />
             </div>
 
             <h4 class="text-subtitle-1 font-weight-medium mt-4 mb-2">Facility Administrator</h4>
             <div class="d-flex ga-3 mb-3 flex-wrap">
-              <v-text-field v-model="facility.facility_administrator_name" :disabled="!addFacility" readonly label="Administrator name" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
-              <v-text-field v-model="facility.facility_administrator_email" :disabled="!addFacility" readonly label="Administrator email" type="email" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.facility_administrator_name" :disabled="!addFacility" :readonly="shaEnabled" label="Administrator name" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.facility_administrator_email" :disabled="!addFacility" :readonly="shaEnabled" label="Administrator email" type="email" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
             </div>
             <div class="d-flex ga-3 mb-3 flex-wrap">
-              <v-text-field v-model="facility.facility_administrator_phone" :disabled="!addFacility" readonly label="Administrator phone" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
-              <v-text-field v-model="facility.facility_administrator_identifier" :disabled="!addFacility" readonly label="Administrator identifier" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.facility_administrator_phone" :disabled="!addFacility" :readonly="shaEnabled" label="Administrator phone" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
+              <v-text-field v-model="facility.facility_administrator_identifier" :disabled="!addFacility" :readonly="shaEnabled" label="Administrator identifier" variant="outlined" density="comfortable" hide-details="auto" style="min-width:220px" />
             </div>
 
             <v-alert
@@ -623,13 +714,17 @@ function done() {
               <h3 class="text-h6"><v-icon icon="mdi-account-tie" class="mr-2" />Hospital Admin</h3>
               <v-switch v-model="addAdmin" color="primary" hide-details inset density="compact" label="Create admin" />
             </div>
+            <v-alert v-if="adminNeedsFacility" type="warning" variant="tonal" density="compact" class="mb-3">
+              The admin is assigned to a facility, so one is needed. Go back to the Facility step and add a facility name —
+              or turn off "Create admin" and add both later from the hospital page.
+            </v-alert>
             <v-text-field v-model="admin.name" :disabled="!addAdmin" label="Full name" variant="outlined" density="comfortable"
               :error-messages="fieldError('admin.name')" class="mb-3" hide-details="auto" @blur="onAdminNameInput" />
             <v-text-field v-model="admin.username" :disabled="!addAdmin" label="Username" variant="outlined" density="comfortable"
               :error-messages="fieldError('admin.username')" class="mb-3" hide-details="auto" />
             <v-text-field v-model="admin.email" :disabled="!addAdmin" label="Email" type="email" variant="outlined" density="comfortable"
               :error-messages="fieldError('admin.email')" class="mb-3" hide-details="auto" />
-            <v-text-field v-model="admin.password" :disabled="!addAdmin" :readonly="adminPasswordLocked"
+            <v-text-field v-model="admin.password" :disabled="!addAdmin" :readonly="shaEnabled && adminPasswordLocked"
               :type="adminPasswordLocked ? 'text' : 'password'" label="Temporary password" variant="outlined" density="comfortable"
               :error-messages="fieldError('admin.password')"
               :hint="adminPasswordLocked ? 'Auto-generated. An invite email is sent to this admin.' : 'Min 8 characters. An invite email is sent to this admin.'"

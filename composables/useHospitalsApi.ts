@@ -2,21 +2,27 @@ import { useNuxtApp } from '#app'
 import type {
   CoreOrganization,
   CreateAdminPayload,
+  HospitalFacilityPayload,
   CreateAdminResponse,
+  CreateFacilityResponse,
   CreateHospitalPayload,
   CreateHospitalResponse,
   FacilityRegistrySearchResponse,
   HospitalDetail,
+  HospitalFacilityPayload,
   HospitalListResponse,
   HospitalShowResponse,
+  LinkAdminResponse,
   ProvisionAdminResponse,
   RetryProvisioningResponse,
   SeedReferenceDataResponse,
   SeedingStatusResponse,
+  TerminalHospitalListResponse,
   UpdateAdminPayload,
   UpdateAdminResponse,
   UpdateHospitalPayload,
   UpdateHospitalResponse,
+  V3Target,
 } from '~/types/hospital'
 
 /**
@@ -24,26 +30,27 @@ import type {
  * Backend:
  *   GET    /v1/platform/hospitals       (paginated)
  *   GET    /v1/platform/hospitals/{id}
- *   PUT    /v1/platform/hospitals/{id}  (edit details, platform staff only)
- *   DELETE /v1/platform/hospitals/{id}  (soft-delete, system admin only)
+ *   PUT    /v1/platform/hospitals/{id}  (edit details incl. status — deactivate = ARCHIVED)
  *   GET    /v1/platform/hospitals/facility-search (DHA SHA HIE lookup)
  *   POST   /v1/platform/hospitals/{id}/provision (retry core-service sync)
  */
 export function useHospitalsApi() {
   const { $axios } = useNuxtApp()
 
-  async function list(params: { page?: number; per_page?: number } = {}): Promise<HospitalListResponse> {
+  async function list(params: { page?: number; per_page?: number; search?: string } = {}): Promise<HospitalListResponse> {
     const { data } = await $axios.get<HospitalListResponse>('/v1/platform/hospitals', { params })
+    return data
+  }
+
+  // Core-service tenants not registered here — the whole list in one call.
+  async function listTerminal(): Promise<TerminalHospitalListResponse> {
+    const { data } = await $axios.get<TerminalHospitalListResponse>('/v1/platform/hospitals/terminal')
     return data
   }
 
   async function show(id: string): Promise<HospitalDetail> {
     const { data } = await $axios.get<HospitalShowResponse>(`/v1/platform/hospitals/${id}`)
     return data.data
-  }
-
-  async function destroy(id: string): Promise<void> {
-    await $axios.delete(`/v1/platform/hospitals/${id}`)
   }
 
   async function update(id: string, payload: UpdateHospitalPayload): Promise<UpdateHospitalResponse> {
@@ -71,6 +78,16 @@ export function useHospitalsApi() {
     return data
   }
 
+  async function addFacility(id: string, payload: HospitalFacilityPayload): Promise<CreateFacilityResponse> {
+    const { data } = await $axios.post<CreateFacilityResponse>(`/v1/platform/hospitals/${id}/facilities`, payload)
+    return data
+  }
+
+  async function provisionFacility(id: string, facilityId: string): Promise<CreateFacilityResponse> {
+    const { data } = await $axios.post<CreateFacilityResponse>(`/v1/platform/hospitals/${id}/facilities/${facilityId}/provision`)
+    return data
+  }
+
   async function addAdmin(id: string, payload: CreateAdminPayload): Promise<CreateAdminResponse> {
     const { data } = await $axios.post<CreateAdminResponse>(`/v1/platform/hospitals/${id}/admins`, payload)
     return data
@@ -78,6 +95,14 @@ export function useHospitalsApi() {
 
   async function provisionAdmin(id: string, userId: number): Promise<ProvisionAdminResponse> {
     const { data } = await $axios.post<ProvisionAdminResponse>(`/v1/platform/hospitals/${id}/admins/${userId}/provision`)
+    return data
+  }
+
+  // Attach to a core-service account that already exists — offered when
+  // provisionAdmin() (or a password reset attempting the same create)
+  // fails because the email/username is already taken there.
+  async function linkAdmin(id: string, userId: number, coreUserId: string): Promise<LinkAdminResponse> {
+    const { data } = await $axios.post<LinkAdminResponse>(`/v1/platform/hospitals/${id}/admins/${userId}/link`, { core_user_id: coreUserId })
     return data
   }
 
@@ -108,10 +133,19 @@ export function useHospitalsApi() {
 
   // Powers the "use existing organization" picker on Step 1 of the
   // register-hospital wizard. See HospitalController::coreOrganizations().
-  async function getCoreOrganizations(): Promise<CoreOrganization[]> {
-    const { data } = await $axios.get<{ data: CoreOrganization[] }>('/v1/platform/hospitals/core-organizations')
+  async function getCoreOrganizations(target?: string): Promise<CoreOrganization[]> {
+    const { data } = await $axios.get<{ data: CoreOrganization[] }>('/v1/platform/hospitals/core-organizations', {
+      params: target ? { target } : undefined,
+    })
     return data.data
   }
 
-  return { list, show, create, update, destroy, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, updateAdmin, addAdmin, removeAdmin, searchFacility, getCoreOrganizations }
+  // The v3 systems (production, data-migration, ...) a hospital can be
+  // provisioned into — feeds the "System" picker on the register wizard.
+  async function getV3Targets(): Promise<V3Target[]> {
+    const { data } = await $axios.get<{ data: V3Target[] }>('/v1/platform/hospitals/v3-targets')
+    return data.data
+  }
+
+  return { list, listTerminal, show, create, update, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, linkAdmin, updateAdmin, addAdmin, addFacility, provisionFacility, removeAdmin, searchFacility, getCoreOrganizations, getV3Targets }
 }

@@ -3,7 +3,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useReportsApi } from '@/composables/useReportsApi'
 import { useAuthStore } from '@/stores/auth'
-import { SEVERITIES, type ReportSummary, type Severity } from '~/types/report'
+import { SEVERITIES, STATUS_LABELS, STATUS_FLOW, type ReportSummary, type ReportStatus, type Severity } from '~/types/report'
 
 const api = useReportsApi()
 const router = useRouter()
@@ -20,10 +20,20 @@ const filters = reactive({
   assigned_to: null as number | null,
   type: null as string | null,
   severity: null as Severity | null,
+  // 'unresolved' isn't a real status — it's the "haven't finished this yet"
+  // view (everything before resolved) the Assigned Bugs list otherwise has
+  // no way to ask for directly.
+  status: null as ReportStatus | 'unresolved' | null,
   sort: 'newest' as 'newest' | 'oldest',
   date_from: '' as string,
   date_to: '' as string,
 })
+
+// Statuses that count as "not yet dealt with" for the Unresolved quick
+// filter — everything up to and including in_progress. resolved/delivered
+// mean the work is done even if the ticket hasn't been formally closed yet,
+// so they're deliberately excluded from "what haven't I tackled".
+const UNRESOLVED_STATUSES: ReportStatus[] = ['new', 'under_review', 'assigned', 'in_progress']
 
 // Severity options for the filter, ordered most-urgent first so "critical" is
 // the first thing reachable in the dropdown.
@@ -31,6 +41,14 @@ const SEVERITY_OPTIONS = [...SEVERITIES].reverse().map((s) => ({
   title: s.charAt(0).toUpperCase() + s.slice(1),
   value: s,
 }))
+
+// Status options: the synthetic "Unresolved" view first (the common case),
+// then every real status in lifecycle order. /work already excludes closed
+// by default, so "Closed" isn't offered here — there's nothing to filter to.
+const STATUS_OPTIONS = [
+  { title: 'Unresolved (not resolved/delivered)', value: 'unresolved' as const },
+  ...STATUS_FLOW.filter((s) => s !== 'closed').map((s) => ({ title: STATUS_LABELS[s], value: s })),
+]
 
 function clearRange() {
   filters.date_from = ''
@@ -59,6 +77,7 @@ async function load() {
     const params: Record<string, any> = { sort: filters.sort }
     if (filters.type) params.type = filters.type
     if (filters.severity) params.severity = filters.severity
+    if (filters.status) params.status = filters.status
     if (filters.assigned_to) params.assigned_to = filters.assigned_to
     if (filters.date_from) params.date_from = filters.date_from
     if (filters.date_to) params.date_to = filters.date_to
@@ -78,6 +97,7 @@ function clearFilters() {
   filters.assigned_to = null
   filters.type = null
   filters.severity = null
+  filters.status = null
   filters.sort = 'newest'
   filters.date_from = ''
   filters.date_to = ''
@@ -148,6 +168,14 @@ onMounted(load)
             label="Severity" clearable
             variant="outlined" density="compact" hide-details
             style="max-width: 180px"
+            @update:model-value="load"
+          />
+          <v-select
+            v-model="filters.status"
+            :items="STATUS_OPTIONS"
+            label="Status" clearable
+            variant="outlined" density="compact" hide-details
+            style="max-width: 240px"
             @update:model-value="load"
           />
           <v-select

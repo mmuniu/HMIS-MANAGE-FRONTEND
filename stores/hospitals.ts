@@ -1,8 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useHospitalsApi } from '~/composables/useHospitalsApi'
-import type { CoreOrganization, CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, Hospital, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedingStatusResponse, SimilarOrganization, UpdateAdminPayload, UpdateHospitalPayload } from '~/types/hospital'
-
+import type { CoreOrganization, CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, ExistingCoreAccount, Hospital, HospitalDetail, HospitalFacilityPayload, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedingStatusResponse, SimilarOrganization, TerminalHospital, UpdateAdminPayload, UpdateHospitalPayload, V3Target } from '~/types/hospital'
 export const useHospitalsStore = defineStore('hospitals', () => {
   const api = useHospitalsApi()
 
@@ -13,7 +12,8 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   const error = ref('')
   const saving = ref(false)
   const retrying = ref(false)
-  const deleting = ref(false)
+  // true while a hospital is being deactivated/reactivated.
+  const togglingStatus = ref(false)
   // Full response from the most recent create() call, kept around so the
   // caller can render provisioning outcome instead of only reading it once.
   const lastCreateResult = ref<CreateHospitalResponse | null>(null)
@@ -27,13 +27,25 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   const provisioningAdminId = ref<number | null>(null)
   // Most recent provisionAdmin() result — carries the one-time temp password.
   const lastAdminProvisionResult = ref<ProvisionAdminResponse | null>(null)
+  // Set when provisionAdmin() (or a password reset on an unprovisioned
+  // admin) fails because that email/username already has a core-service
+  // account — the operator's confirm-or-cancel prompt reads this. Cleared
+  // on cancel, on a successful link, or when the dialog closes.
+  const pendingCoreAccountLink = ref<{ userId: number; existing: ExistingCoreAccount } | null>(null)
+  // true while linkAdmin() is in flight for the account above.
+  const linkingAdmin = ref(false)
   // id of the admin currently being edited/saved, if any (drives the dialog's save spinner).
   const updatingAdminId = ref<number | null>(null)
   // Most recent updateAdmin() result, when it included a password reset —
   // carries the one-time credentials, same copy-once contract as provisionAdmin().
-  const lastAdminUpdateResult = ref<{ username: string; password: string } | null>(null)
+  // usableForCoreService: whether that password actually reached core-service
+  // — and even then it's a ONE-TIME key there (forced reset on first login),
+  // which the panel needs to say explicitly rather than imply otherwise.
+  const lastAdminUpdateResult = ref<{ username: string; password: string; usableForCoreService: boolean } | null>(null)
   // true while a new admin is being created (drives the "Add admin" dialog's save spinner).
   const addingAdmin = ref(false)
+  // true while a facility is being added (drives the "Add facility" dialog's save spinner).
+  const addingFacility = ref(false)
   // id of the admin currently being removed, if any (drives the confirm dialog's spinner).
   const removingAdminId = ref<number | null>(null)
   // Field-level validation errors from the backend (422), keyed by field name.
@@ -42,18 +54,45 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   // hospital wizard's "use existing organization" picker.
   const coreOrganizations = ref<CoreOrganization[]>([])
   const loadingCoreOrganizations = ref(false)
+  // The v3 systems a hospital can be provisioned into (production + any
+  // extra configured on the server) — drives the wizard's "System" picker.
+  const v3Targets = ref<V3Target[]>([])
 
-  async function fetchList(page = 1, perPage = 25) {
+  // "Terminal hospitals" tab: core-service tenants not registered here.
+  const terminalItems = ref<TerminalHospital[]>([])
+  const loadingTerminal = ref(false)
+  const terminalError = ref('')
+
+  async function fetchTerminal() {
+    loadingTerminal.value = true
+    terminalError.value = ''
+    try {
+      terminalItems.value = (await api.listTerminal()).data
+    } catch (err: any) {
+      terminalError.value = err?.response?.data?.message || 'Failed to load terminal hospitals.'
+    } finally {
+      loadingTerminal.value = false
+    }
+  }
+
+  // Bumped on every fetchList() so a slow, stale response (e.g. an earlier
+  // search keystroke) can't overwrite the results of a newer request.
+  let listRequestId = 0
+
+  async function fetchList(page = 1, perPage = 25, search = '') {
+    const requestId = ++listRequestId
     loading.value = true
     error.value = ''
     try {
-      const res = await api.list({ page, per_page: perPage })
+      const res = await api.list({ page, per_page: perPage, search: search.trim() || undefined })
+      if (requestId !== listRequestId) return
       items.value = res.data
       meta.value = res.meta
     } catch (err: any) {
+      if (requestId !== listRequestId) return
       error.value = err?.response?.data?.message || 'Failed to load hospitals.'
     } finally {
-      loading.value = false
+      if (requestId === listRequestId) loading.value = false
     }
   }
 
@@ -73,14 +112,26 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     }
   }
 
-  async function fetchCoreOrganizations() {
+  async function fetchCoreOrganizations(target?: string) {
     loadingCoreOrganizations.value = true
+    // Organizations belong to one system — never show another system's list
+    // while this one loads (or if it fails).
+    coreOrganizations.value = []
     try {
-      coreOrganizations.value = await api.getCoreOrganizations()
+      coreOrganizations.value = await api.getCoreOrganizations(target)
     } catch (err: any) {
       error.value = err?.response?.data?.message || 'Failed to load organizations.'
     } finally {
       loadingCoreOrganizations.value = false
+    }
+  }
+
+  async function fetchV3Targets() {
+    try {
+      v3Targets.value = await api.getV3Targets()
+    } catch {
+      // Not fatal: without the list the wizard just offers the default system.
+      v3Targets.value = []
     }
   }
 
@@ -228,6 +279,7 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   async function provisionAdmin(orgId: string, userId: number) {
     provisioningAdminId.value = userId
     error.value = ''
+    pendingCoreAccountLink.value = null
     try {
       const res = await api.provisionAdmin(orgId, userId)
       lastAdminProvisionResult.value = res
@@ -238,16 +290,51 @@ export const useHospitalsStore = defineStore('hospitals', () => {
       }
       return { success: true as const, data: res }
     } catch (err: any) {
-      error.value = err?.response?.data?.message || 'Failed to provision admin.'
+      const existing = err?.response?.data?.existing_core_account
+      if (existing) {
+        // Don't surface this as a plain error — the confirm-link dialog IS
+        // the error handling for this specific failure.
+        pendingCoreAccountLink.value = { userId, existing }
+      } else {
+        error.value = err?.response?.data?.message || 'Failed to provision admin.'
+      }
       return { success: false as const }
     } finally {
       provisioningAdminId.value = null
     }
   }
 
+  /** Confirm response to pendingCoreAccountLink: attach the admin to that account. */
+  async function linkAdmin(orgId: string) {
+    if (!pendingCoreAccountLink.value) return { success: false as const }
+    const { userId, existing } = pendingCoreAccountLink.value
+    linkingAdmin.value = true
+    error.value = ''
+    try {
+      const res = await api.linkAdmin(orgId, userId, existing.id)
+      if (current.value) {
+        const admin = current.value.admins.find((a) => a.id === userId)
+        if (admin) admin.core_user_id = res.data.core_user_id
+      }
+      pendingCoreAccountLink.value = null
+      return { success: true as const, data: res }
+    } catch (err: any) {
+      error.value = err?.response?.data?.message || 'Failed to link admin.'
+      return { success: false as const }
+    } finally {
+      linkingAdmin.value = false
+    }
+  }
+
+  /** Cancel response to pendingCoreAccountLink: dismiss without linking. */
+  function cancelCoreAccountLink() {
+    pendingCoreAccountLink.value = null
+  }
+
   async function updateAdmin(orgId: string, userId: number, payload: UpdateAdminPayload) {
     updatingAdminId.value = userId
     error.value = ''
+    pendingCoreAccountLink.value = null
     try {
       const res = await api.updateAdmin(orgId, userId, payload)
       if (current.value) {
@@ -255,13 +342,62 @@ export const useHospitalsStore = defineStore('hospitals', () => {
         if (index !== -1) current.value.admins[index] = res.data
       }
       lastAdminProvisionResult.value = null // only one one-time-credentials panel shown at a time
-      lastAdminUpdateResult.value = res.password ? { username: res.data.username, password: res.password } : null
+      lastAdminUpdateResult.value = res.password
+        ? { username: res.data.username, password: res.password, usableForCoreService: res.password_usable_for_core_service }
+        : null
+      // A password reset can succeed locally (hmis-manage's own password IS
+      // updated — see the notification's doc comment) while still
+      // discovering the admin already has a core-service account under this
+      // email/username. Offer the link even though the overall call "succeeded".
+      if (res.existing_core_account) {
+        pendingCoreAccountLink.value = { userId, existing: res.existing_core_account }
+      }
       return { success: true as const, notified: res.notified }
     } catch (err: any) {
       error.value = err?.response?.data?.message || 'Failed to update admin.'
       return { success: false as const, notified: false }
     } finally {
       updatingAdminId.value = null
+    }
+  }
+
+  async function addFacility(orgId: string, payload: HospitalFacilityPayload) {
+    addingFacility.value = true
+    error.value = ''
+    fieldErrors.value = {}
+    try {
+      const res = await api.addFacility(orgId, payload)
+      if (current.value?.id === orgId) current.value.facilities.push(res.data)
+      return { success: true as const, data: res }
+    } catch (err: any) {
+      if (err?.response?.status === 422) {
+        fieldErrors.value = err.response.data?.errors || {}
+        error.value = err.response.data?.message || 'Please fix the highlighted fields.'
+      } else {
+        error.value = err?.response?.data?.message || 'Failed to add facility.'
+      }
+      return { success: false as const }
+    } finally {
+      addingFacility.value = false
+    }
+  }
+
+  const provisioningFacilityId = ref<string | null>(null)
+  async function provisionFacility(orgId: string, facilityId: string) {
+    provisioningFacilityId.value = facilityId
+    error.value = ''
+    try {
+      const res = await api.provisionFacility(orgId, facilityId)
+      if (current.value) {
+        const i = current.value.facilities.findIndex((f) => f.id === facilityId)
+        if (i !== -1) current.value.facilities[i] = res.data
+      }
+      return { success: true as const, data: res }
+    } catch (err: any) {
+      error.value = err?.response?.data?.message || 'Failed to provision facility.'
+      return { success: false as const }
+    } finally {
+      provisioningFacilityId.value = null
     }
   }
 
@@ -295,31 +431,37 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     }
   }
 
-  async function remove(id: string) {
-    deleting.value = true
+  // Hospitals are never deleted — deactivating archives them (status ARCHIVED)
+  // so they can be reactivated later with everything intact.
+  async function setActive(id: string, active: boolean) {
+    togglingStatus.value = true
     error.value = ''
     try {
-      await api.destroy(id)
-      items.value = items.value.filter((h) => h.id !== id)
-      if (current.value?.id === id) current.value = null
+      const res = await api.update(id, { status: active ? 'ACTIVE' : 'ARCHIVED' })
+      if (current.value?.id === id) Object.assign(current.value, res.data)
+      const inList = items.value.find((h) => h.id === id)
+      if (inList) Object.assign(inList, res.data)
       return { success: true as const }
     } catch (err: any) {
+      const action = active ? 'reactivate' : 'deactivate'
       error.value =
         err?.response?.status === 403
-          ? err.response.data?.message || 'You do not have permission to delete this hospital.'
-          : err?.response?.data?.message || 'Failed to delete hospital.'
+          ? err.response.data?.message || `You do not have permission to ${action} this hospital.`
+          : err?.response?.data?.message || `Failed to ${action} hospital.`
       return { success: false as const }
     } finally {
-      deleting.value = false
+      togglingStatus.value = false
     }
   }
 
   return {
-    items, meta, current, loading, error, saving, retrying, deleting, fieldErrors,
-    provisioningAdminId, lastAdminProvisionResult, updatingAdminId, lastAdminUpdateResult, addingAdmin, removingAdminId,
+    items, meta, current, loading, error, saving, retrying, togglingStatus, fieldErrors,
+    provisioningAdminId, lastAdminProvisionResult, updatingAdminId, lastAdminUpdateResult, addingAdmin, addingFacility, provisioningFacilityId, removingAdminId,
+    pendingCoreAccountLink, linkingAdmin,
     lastCreateResult, lastRetryResult, seeding, lastSeedResult,
-    coreOrganizations, loadingCoreOrganizations,
-    fetchList, fetchOne, create, update, retryProvisioning, seedReferenceData, provisionAdmin, updateAdmin, addAdmin, removeAdmin, remove,
-    fetchCoreOrganizations,
+    coreOrganizations, loadingCoreOrganizations, v3Targets,
+    terminalItems, loadingTerminal, terminalError, fetchTerminal,
+    fetchList, fetchOne, create, update, retryProvisioning, seedReferenceData, provisionAdmin, linkAdmin, cancelCoreAccountLink, updateAdmin, addAdmin, addFacility, provisionFacility, removeAdmin, setActive,
+    fetchCoreOrganizations, fetchV3Targets,
   }
 })

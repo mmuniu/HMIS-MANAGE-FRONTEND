@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useHospitalsApi } from '~/composables/useHospitalsApi'
-import type { CoreOrganization, CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, ExistingCoreAccount, Hospital, HospitalDetail, HospitalFacilityPayload, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedingStatusResponse, SimilarOrganization, TerminalHospital, UpdateAdminPayload, UpdateHospitalPayload, V3Target } from '~/types/hospital'
+import type { CoreOrganization, CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, ExistingCoreAccount, Hospital, HospitalDetail, HospitalFacilityPayload, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedingStatusResponse, SimilarOrganization, TerminalHospital, UpdateAdminPayload, UpdateHospitalPayload, V3Target, LinkCorePayload } from '~/types/hospital'
 export const useHospitalsStore = defineStore('hospitals', () => {
   const api = useHospitalsApi()
 
@@ -382,6 +382,24 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     }
   }
 
+  // Connect this hospital to an organization/facility that already exist in v3.
+  const linkingCore = ref(false)
+  async function linkCore(orgId: string, payload: LinkCorePayload) {
+    linkingCore.value = true
+    error.value = ''
+    try {
+      const res = await api.linkCore(orgId, payload)
+      await fetchOne(orgId)
+      return { success: true as const, data: res }
+    } catch (err: any) {
+      const body = err?.response?.data
+      error.value = body?.message || 'Failed to connect to core-service.'
+      return { success: false as const, code: body?.code as string | undefined, coreFacilityName: body?.core_facility_name as string | undefined, message: error.value }
+    } finally {
+      linkingCore.value = false
+    }
+  }
+
   const provisioningFacilityId = ref<string | null>(null)
   async function provisionFacility(orgId: string, facilityId: string) {
     provisioningFacilityId.value = facilityId
@@ -456,12 +474,12 @@ export const useHospitalsStore = defineStore('hospitals', () => {
 
   return {
     items, meta, current, loading, error, saving, retrying, togglingStatus, fieldErrors,
-    provisioningAdminId, lastAdminProvisionResult, updatingAdminId, lastAdminUpdateResult, addingAdmin, addingFacility, provisioningFacilityId, removingAdminId,
+    provisioningAdminId, lastAdminProvisionResult, updatingAdminId, lastAdminUpdateResult, addingAdmin, addingFacility, linkingCore, provisioningFacilityId, removingAdminId,
     pendingCoreAccountLink, linkingAdmin,
     lastCreateResult, lastRetryResult, seeding, lastSeedResult,
     coreOrganizations, loadingCoreOrganizations, v3Targets,
     terminalItems, loadingTerminal, terminalError, fetchTerminal,
-    fetchList, fetchOne, create, update, retryProvisioning, seedReferenceData, provisionAdmin, linkAdmin, cancelCoreAccountLink, updateAdmin, addAdmin, addFacility, provisionFacility, removeAdmin, setActive,
+    fetchList, fetchOne, create, update, retryProvisioning, seedReferenceData, provisionAdmin, linkAdmin, cancelCoreAccountLink, updateAdmin, addAdmin, addFacility, provisionFacility, linkCore, removeAdmin, setActive,
     fetchCoreOrganizations, fetchV3Targets,
   }
 })

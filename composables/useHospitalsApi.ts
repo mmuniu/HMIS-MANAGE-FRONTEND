@@ -5,6 +5,8 @@ import type {
   HospitalFacilityPayload,
   CreateAdminResponse,
   CreateFacilityResponse,
+  LinkCorePayload,
+  LinkCoreResponse,
   CreateHospitalPayload,
   CreateHospitalResponse,
   FacilityRegistrySearchResponse,
@@ -83,6 +85,11 @@ export function useHospitalsApi() {
     return data
   }
 
+  async function linkCore(id: string, payload: LinkCorePayload): Promise<LinkCoreResponse> {
+    const { data } = await $axios.post<LinkCoreResponse>(`/v1/platform/hospitals/${id}/link-core`, payload)
+    return data
+  }
+
   async function provisionFacility(id: string, facilityId: string): Promise<CreateFacilityResponse> {
     const { data } = await $axios.post<CreateFacilityResponse>(`/v1/platform/hospitals/${id}/facilities/${facilityId}/provision`)
     return data
@@ -147,5 +154,5 @@ export function useHospitalsApi() {
     return data.data
   }
 
-  return { list, listTerminal, show, create, update, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, linkAdmin, updateAdmin, addAdmin, addFacility, provisionFacility, removeAdmin, searchFacility, getCoreOrganizations, getV3Targets }
+  return { list, listTerminal, show, create, update, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, linkAdmin, updateAdmin, addAdmin, addFacility, provisionFacility, linkCore, removeAdmin, searchFacility, getCoreOrganizations, getV3Targets }
 }

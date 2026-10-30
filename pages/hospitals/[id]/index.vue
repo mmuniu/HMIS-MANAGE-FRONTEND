@@ -123,6 +123,49 @@ async function retryFacility(facilityId: string) {
   }
 }
 
+const linkCoreDialog = ref(false)
+const linkCoreForm = reactive({ core_org_id: undefined as number | undefined, core_facility_id: undefined as number | undefined })
+const linkCoreError = ref('')
+const linkCoreMismatch = ref<string | null>(null)
+
+function openLinkCore() {
+  linkCoreForm.core_org_id = undefined
+  linkCoreForm.core_facility_id = undefined
+  linkCoreError.value = ''
+  linkCoreMismatch.value = null
+  linkCoreDialog.value = true
+}
+
+const FID_MESSAGES: Record<string, string> = {
+  updated: 'FID sent to core-service.',
+  unchanged: 'core-service already had this FID.',
+  skipped_has_code: 'core-service already has a different FID for this facility, so it was left alone.',
+  skipped_code_in_use: 'That FID is already used by another facility in core-service, so it was not sent.',
+  skipped_name_mismatch: 'FID not sent: the facility name in core-service differs.',
+  no_fid_here: 'This facility has no FID here to send.',
+}
+
+async function saveLinkCore(confirmMismatch = false) {
+  if (typeof linkCoreForm.core_org_id !== 'number' || typeof linkCoreForm.core_facility_id !== 'number') return
+  linkCoreError.value = ''
+  const res = await store.linkCore(id.value, {
+    core_org_id: linkCoreForm.core_org_id,
+    core_facility_id: linkCoreForm.core_facility_id,
+    ...(confirmMismatch ? { confirm_name_mismatch: true } : {}),
+  })
+  if (res.success) {
+    linkCoreDialog.value = false
+    $showToast('Connected to core-service. ' + (FID_MESSAGES[res.data.fid_status] || 'FID not sent: ' + (res.data.fid_error || res.data.fid_status)))
+    return
+  }
+  if (res.code === 'HOSPITAL_LINK_NAME_MISMATCH') {
+    linkCoreMismatch.value = res.coreFacilityName ?? ''
+    return
+  }
+  linkCoreMismatch.value = null
+  linkCoreError.value = res.message
+}
+
 const addAdminDialog = ref(false)
 const addAdminForm = reactive({ name: '', username: '', email: '', password: '' })
 const showAddAdminPassword = ref(false)
@@ -422,6 +465,9 @@ watch(
                   :loading="store.retrying" @click="store.retryProvisioning(id)">
                   Retry provisioning
                 </v-btn>
+                <v-btn v-if="auth.isPlatformUser" class="ml-2" variant="text" prepend-icon="mdi-link-variant" @click="openLinkCore">
+                  Connect to existing
+                </v-btn>
               </template>
             </v-card-text>
           </v-card>
@@ -663,6 +709,36 @@ watch(
           <v-btn color="primary" variant="flat" :loading="store.updatingAdminId === editingAdmin?.id"
             :disabled="!!editAdminForm.password && editAdminForm.password.length < 8" @click="saveAdminEdit">
             Save
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Connect to an existing core-service organization + facility -->
+    <v-dialog v-model="linkCoreDialog" max-width="520">
+      <v-card rounded="lg">
+        <v-card-title class="text-h6">Connect to existing in core-service</v-card-title>
+        <v-card-text>
+          <p class="text-body-2 textSecondary mb-4">
+            Use this when the organization and facility are already in core-service but this hospital never got linked to them.
+            Nothing is created there. The ids are checked, saved here, and this facility's FID is written into core-service.
+          </p>
+          <v-text-field v-model.number="linkCoreForm.core_org_id" type="number" label="Core organization id" variant="outlined" density="comfortable" class="mb-3" hide-details="auto" autofocus />
+          <v-text-field v-model.number="linkCoreForm.core_facility_id" type="number" label="Core facility id" variant="outlined" density="comfortable" hide-details="auto" />
+          <v-alert v-if="linkCoreMismatch !== null" type="warning" variant="tonal" density="compact" class="mt-4">
+            core-service calls this facility "{{ linkCoreMismatch }}", which differs from the name here. Only connect if it is the same facility.
+          </v-alert>
+          <v-alert v-if="linkCoreError" type="error" variant="tonal" density="compact" class="mt-4">{{ linkCoreError }}</v-alert>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="store.linkingCore" @click="linkCoreDialog = false">Cancel</v-btn>
+          <v-btn
+            :color="linkCoreMismatch !== null ? 'warning' : 'primary'" variant="flat" :loading="store.linkingCore"
+            :disabled="typeof linkCoreForm.core_org_id !== 'number' || typeof linkCoreForm.core_facility_id !== 'number'"
+            @click="saveLinkCore(linkCoreMismatch !== null)"
+          >
+            {{ linkCoreMismatch !== null ? 'Connect anyway' : 'Connect' }}
           </v-btn>
         </v-card-actions>
       </v-card>

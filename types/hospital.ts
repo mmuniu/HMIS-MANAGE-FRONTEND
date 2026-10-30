@@ -342,6 +342,21 @@ export interface CreateHospitalResponse {
   core_provisioning_error: string | null
 }
 
+// POST /v1/platform/hospitals/{id}/link-core: connect a hospital to an
+// organization + facility that already exist in the v3 system.
+export interface LinkCorePayload {
+  core_org_id: number
+  core_facility_id: number
+  confirm_name_mismatch?: boolean
+}
+export interface LinkCoreResponse {
+  data: Hospital
+  facility: HospitalFacility
+  // updated | unchanged | skipped_has_code | skipped_code_in_use | skipped_name_mismatch | no_fid_here | error
+  fid_status: string
+  fid_error: string | null
+}
+
 // Response of POST /v1/platform/hospitals/{id}/provision (retry).
 export interface RetryProvisioningResponse {
   data: Hospital

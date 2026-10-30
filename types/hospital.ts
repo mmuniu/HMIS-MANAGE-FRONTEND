@@ -278,6 +278,8 @@ export interface CreateHospitalPayload {
   // tells core-service provisioning to attach the new facility/admin to an
   // organization that already exists there instead of minting a new one.
   existing_core_org_id?: number
+  // Sent after the user saw the similar-name suggestions and chose to continue.
+  confirm_similar?: boolean
   // Key of the v3 system to provision into (GET /hospitals/v3-targets).
   // Omitted = the default (production) system.
   v3_target?: string
@@ -387,4 +389,16 @@ export const BILLING_COLOR: Record<BillingStatus, string> = {
   ACTIVE: 'success',
   PAST_DUE: 'warning',
   SUSPENDED: 'error',
+}
+
+/** A hospital/organization whose name resembles the one being registered. */
+export interface SimilarOrganization {
+  id: number | string | null
+  name: string
+  code?: string | null
+  status?: string | null
+  /** Where it was found: this app, or core-service. */
+  source?: 'hmis-manage' | 'core-service'
+  match: 'likely_same' | 'similar'
+  similarity: number
 }

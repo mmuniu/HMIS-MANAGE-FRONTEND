@@ -3,8 +3,8 @@ import { reactive, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useHospitalsStore } from '@/stores/hospitals'
 import { useHospitalsApi } from '@/composables/useHospitalsApi'
+import type { CreateHospitalPayload, FacilityRegistryResult, HospitalFacilityPayload, SimilarOrganization } from '@/types/hospital'
 import { useSettingsApi } from '@/composables/useSettingsApi'
-import type { CreateHospitalPayload, FacilityRegistryResult, HospitalFacilityPayload } from '@/types/hospital'
 
 const router = useRouter()
 const route = useRoute()
@@ -361,7 +361,15 @@ const provisioningState = computed(() => {
   return res.core_provisioned ? 'success' : 'warning'
 })
 
-async function submit() {
+const similarDialog = ref(false)
+const similarList = ref<SimilarOrganization[]>([])
+
+function continueDespiteSimilar() {
+  similarDialog.value = false
+  submit(true)
+}
+
+async function submit(confirmedSimilar = false) {
   const payload: CreateHospitalPayload = {
     ...cleaned(form),
     name: form.name,
@@ -373,10 +381,16 @@ async function submit() {
   if (useExistingOrg.value && selectedCoreOrgId.value) payload.existing_core_org_id = selectedCoreOrgId.value
   if (selectedTarget.value && !isDefaultTarget.value) payload.v3_target = selectedTarget.value
 
+  if (confirmedSimilar) payload.confirm_similar = true
+
   const res = await store.create(payload)
   if (res.success) {
     submitted.value = true
     clearDraft()
+  } else if ('similar' in res && res.similar) {
+    // Similar hospitals exist: stay on the form and let the user decide.
+    similarList.value = res.similar
+    similarDialog.value = true
   } else {
     // Jump back to the step that has the first error.
     const errs = Object.keys(store.fieldErrors)
@@ -415,6 +429,39 @@ function done() {
         <li v-for="(e, i) in allFieldErrors" :key="i" class="text-body-2">{{ e }}</li>
       </ul>
     </v-alert>
+
+    <v-dialog v-model="similarDialog" max-width="560" persistent>
+      <v-card rounded="lg" data-testid="similar-dialog">
+        <v-card-title class="d-flex align-center ga-2 pa-4">
+          <v-icon color="warning">mdi-alert-outline</v-icon>
+          Similar hospital already exists
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+          <p class="mb-3">
+            “{{ form.name }}” is close to {{ similarList.length === 1 ? 'a hospital' : 'hospitals' }} already registered.
+            If one of these is the same hospital, cancel and use it instead — a duplicate splits its data.
+          </p>
+          <v-list density="compact" lines="two">
+            <v-list-item v-for="s in similarList" :key="`${s.source}-${s.id}`" data-testid="similar-item">
+              <v-list-item-title class="font-weight-medium">{{ s.name }}</v-list-item-title>
+              <v-list-item-subtitle>
+                {{ s.match === 'likely_same' ? 'Looks like the same hospital' : `Similar name · ${Math.round(s.similarity)}% match` }}
+                · {{ s.source === 'core-service' ? 'in core-service' : 'registered here' }}{{ s.code ? ` · ${s.code}` : '' }}
+              </v-list-item-subtitle>
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" data-testid="similar-cancel" @click="similarDialog = false">Cancel</v-btn>
+          <v-btn color="warning" variant="flat" data-testid="similar-continue" @click="continueDespiteSimilar">
+            This is different — continue
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- Result panel: shown after a successful create() instead of redirecting away immediately, -->
     <!-- so a core-service provisioning failure (partial success) is visible before leaving the page. -->
@@ -702,7 +749,7 @@ function done() {
             :disabled="step === 1 && !step1Valid" @click="next">
             Next
           </v-btn>
-          <v-btn v-else color="primary" prepend-icon="mdi-check" :loading="store.saving" :disabled="!step4Valid || !facilityGateOk" @click="submit">
+          <v-btn v-else color="primary" prepend-icon="mdi-check" :loading="store.saving" :disabled="!step4Valid || !facilityGateOk" @click="submit()">
             Register Hospital
           </v-btn>
         </div>

@@ -1,14 +1,15 @@
 import { useNuxtApp } from '#app'
 import type {
   CoreOrganization,
-  AddFacilityResponse,
   CreateAdminPayload,
   HospitalFacilityPayload,
   CreateAdminResponse,
+  CreateFacilityResponse,
   CreateHospitalPayload,
   CreateHospitalResponse,
   FacilityRegistrySearchResponse,
   HospitalDetail,
+  HospitalFacilityPayload,
   HospitalListResponse,
   HospitalShowResponse,
   LinkAdminResponse,
@@ -16,6 +17,7 @@ import type {
   RetryProvisioningResponse,
   SeedReferenceDataResponse,
   SeedingStatusResponse,
+  TerminalHospitalListResponse,
   UpdateAdminPayload,
   UpdateAdminResponse,
   UpdateHospitalPayload,
@@ -37,6 +39,12 @@ export function useHospitalsApi() {
 
   async function list(params: { page?: number; per_page?: number; search?: string } = {}): Promise<HospitalListResponse> {
     const { data } = await $axios.get<HospitalListResponse>('/v1/platform/hospitals', { params })
+    return data
+  }
+
+  // Core-service tenants not registered here — the whole list in one call.
+  async function listTerminal(): Promise<TerminalHospitalListResponse> {
+    const { data } = await $axios.get<TerminalHospitalListResponse>('/v1/platform/hospitals/terminal')
     return data
   }
 
@@ -70,13 +78,13 @@ export function useHospitalsApi() {
     return data
   }
 
-  async function addFacility(id: string, payload: HospitalFacilityPayload): Promise<AddFacilityResponse> {
-    const { data } = await $axios.post<AddFacilityResponse>(`/v1/platform/hospitals/${id}/facilities`, payload)
+  async function addFacility(id: string, payload: HospitalFacilityPayload): Promise<CreateFacilityResponse> {
+    const { data } = await $axios.post<CreateFacilityResponse>(`/v1/platform/hospitals/${id}/facilities`, payload)
     return data
   }
 
-  async function provisionFacility(id: string, facilityId: string): Promise<AddFacilityResponse> {
-    const { data } = await $axios.post<AddFacilityResponse>(`/v1/platform/hospitals/${id}/facilities/${facilityId}/provision`)
+  async function provisionFacility(id: string, facilityId: string): Promise<CreateFacilityResponse> {
+    const { data } = await $axios.post<CreateFacilityResponse>(`/v1/platform/hospitals/${id}/facilities/${facilityId}/provision`)
     return data
   }
 
@@ -139,5 +147,5 @@ export function useHospitalsApi() {
     return data.data
   }
 
-  return { list, show, create, update, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, linkAdmin, updateAdmin, addAdmin, addFacility, provisionFacility, removeAdmin, searchFacility, getCoreOrganizations, getV3Targets }
+  return { list, listTerminal, show, create, update, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, linkAdmin, updateAdmin, addAdmin, addFacility, provisionFacility, removeAdmin, searchFacility, getCoreOrganizations, getV3Targets }
 }

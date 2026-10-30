@@ -118,6 +118,14 @@ export interface CreateAdminResponse {
   data: HospitalAdminUser
 }
 
+// Response of POST /v1/platform/hospitals/{id}/facilities. Saved locally
+// even when core-service provisioning fails — the error says why.
+export interface CreateFacilityResponse {
+  data: HospitalFacility
+  core_provisioned: boolean
+  core_provisioning_error: string | null
+}
+
 // Response of PATCH /v1/platform/hospitals/{id}/admins/{userId}.
 // `notified` reports whether the "your details changed" email actually went
 // out — it can be false if nothing in the payload differed from before.
@@ -143,6 +151,20 @@ export interface UpdateAdminResponse {
 export interface HospitalDetail extends Hospital {
   facilities: HospitalFacility[]
   admins: HospitalAdminUser[]
+}
+
+// A core-service tenant with no hospital in hmis-manage — set up directly on
+// the core platform (GET /v1/platform/hospitals/terminal).
+export interface TerminalHospital {
+  id: number | string
+  name: string
+  code: string | null
+  status: string | null
+}
+
+export interface TerminalHospitalListResponse {
+  data: TerminalHospital[]
+  meta: { total: number }
 }
 
 export interface PaginationMeta {
@@ -315,14 +337,6 @@ export interface CreateHospitalResponse {
   // Whether the admin account exists in the v3 system (null = no admin was
   // created). false = they can't log in there yet.
   admin_core_provisioned: boolean | null
-  core_provisioning_error: string | null
-}
-
-// Response of POST /v1/platform/hospitals/{id}/facilities (add a facility to
-// an existing hospital).
-export interface AddFacilityResponse {
-  data: HospitalFacility
-  core_provisioned: boolean
   core_provisioning_error: string | null
 }
 

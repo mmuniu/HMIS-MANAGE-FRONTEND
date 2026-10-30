@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useHospitalsApi } from '~/composables/useHospitalsApi'
-import type { CoreOrganization, CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, ExistingCoreAccount, Hospital, HospitalFacilityPayload, HospitalDetail, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedingStatusResponse, UpdateAdminPayload, UpdateHospitalPayload, V3Target } from '~/types/hospital'
+import type { CoreOrganization, CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, ExistingCoreAccount, Hospital, HospitalDetail, HospitalFacilityPayload, TerminalHospital,PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedingStatusResponse, UpdateAdminPayload, UpdateHospitalPayload, V3Target } from '~/types/hospital'
 
 export const useHospitalsStore = defineStore('hospitals', () => {
   const api = useHospitalsApi()
@@ -45,6 +45,8 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   const lastAdminUpdateResult = ref<{ username: string; password: string; usableForCoreService: boolean } | null>(null)
   // true while a new admin is being created (drives the "Add admin" dialog's save spinner).
   const addingAdmin = ref(false)
+  // true while a facility is being added (drives the "Add facility" dialog's save spinner).
+  const addingFacility = ref(false)
   // id of the admin currently being removed, if any (drives the confirm dialog's spinner).
   const removingAdminId = ref<number | null>(null)
   // Field-level validation errors from the backend (422), keyed by field name.
@@ -56,6 +58,23 @@ export const useHospitalsStore = defineStore('hospitals', () => {
   // The v3 systems a hospital can be provisioned into (production + any
   // extra configured on the server) — drives the wizard's "System" picker.
   const v3Targets = ref<V3Target[]>([])
+
+  // "Terminal hospitals" tab: core-service tenants not registered here.
+  const terminalItems = ref<TerminalHospital[]>([])
+  const loadingTerminal = ref(false)
+  const terminalError = ref('')
+
+  async function fetchTerminal() {
+    loadingTerminal.value = true
+    terminalError.value = ''
+    try {
+      terminalItems.value = (await api.listTerminal()).data
+    } catch (err: any) {
+      terminalError.value = err?.response?.data?.message || 'Failed to load terminal hospitals.'
+    } finally {
+      loadingTerminal.value = false
+    }
+  }
 
   // Bumped on every fetchList() so a slow, stale response (e.g. an earlier
   // search keystroke) can't overwrite the results of a newer request.
@@ -338,16 +357,21 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     }
   }
 
-  const addingFacility = ref(false)
   async function addFacility(orgId: string, payload: HospitalFacilityPayload) {
     addingFacility.value = true
     error.value = ''
+    fieldErrors.value = {}
     try {
       const res = await api.addFacility(orgId, payload)
-      if (current.value) current.value.facilities.push(res.data)
+      if (current.value?.id === orgId) current.value.facilities.push(res.data)
       return { success: true as const, data: res }
     } catch (err: any) {
-      error.value = err?.response?.data?.message || 'Failed to add facility.'
+      if (err?.response?.status === 422) {
+        fieldErrors.value = err.response.data?.errors || {}
+        error.value = err.response.data?.message || 'Please fix the highlighted fields.'
+      } else {
+        error.value = err?.response?.data?.message || 'Failed to add facility.'
+      }
       return { success: false as const }
     } finally {
       addingFacility.value = false
@@ -432,6 +456,7 @@ export const useHospitalsStore = defineStore('hospitals', () => {
     pendingCoreAccountLink, linkingAdmin,
     lastCreateResult, lastRetryResult, seeding, lastSeedResult,
     coreOrganizations, loadingCoreOrganizations, v3Targets,
+    terminalItems, loadingTerminal, terminalError, fetchTerminal,
     fetchList, fetchOne, create, update, retryProvisioning, seedReferenceData, provisionAdmin, linkAdmin, cancelCoreAccountLink, updateAdmin, addAdmin, addFacility, provisionFacility, removeAdmin, setActive,
     fetchCoreOrganizations, fetchV3Targets,
   }

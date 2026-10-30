@@ -89,6 +89,13 @@ const sidebarItem: menu[] = [
                 roles: ['system_admin'],
             },
             {
+                title: 'Settings',
+                icon: 'settings-line-duotone',
+                to: '/settings',
+                // System admin toggles platform-wide settings (e.g. SHA integration).
+                roles: ['system_admin'],
+            },
+            {
                 title: 'Tester Activity',
                 icon: 'chart-2-line-duotone',
                 to: '/tester-activity',

@@ -28,6 +28,7 @@ const ROLE_ROUTES: { prefix: string; roles: string[] }[] = [
   { prefix: '/test-approvals', roles: ['developer', 'system_admin'] }, // devs approve too
   { prefix: '/systems', roles: ['system_admin'] },
   { prefix: '/tester-activity', roles: ['system_admin'] },
+  { prefix: '/sha-claims', roles: ['system_admin'] }, // cross-tenant claim visibility
   // /run-history is open to all platform users — no rule needed.
   { prefix: '/feedback-admin', roles: ['system_admin'] },
   { prefix: '/users', roles: ['system_admin'] },

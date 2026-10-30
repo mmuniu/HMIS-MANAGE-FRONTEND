@@ -96,6 +96,14 @@ const sidebarItem: menu[] = [
                 roles: ['system_admin'],
             },
             {
+                title: 'SHA Claims',
+                icon: 'bill-list-line-duotone',
+                to: '/sha-claims',
+                // Cross-tenant read of every hospital's SHA claims — system
+                // admin only, per docs/standards/multitenancy-standards.md §3.
+                roles: ['system_admin'],
+            },
+            {
                 title: 'Run History',
                 icon: 'history-line-duotone',
                 to: '/run-history',

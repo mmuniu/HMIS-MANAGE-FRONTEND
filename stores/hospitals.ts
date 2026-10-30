@@ -1,8 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useHospitalsApi } from '~/composables/useHospitalsApi'
-import type { CoreOrganization, CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, ExistingCoreAccount, Hospital, HospitalDetail, HospitalFacilityPayload, TerminalHospital,PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedingStatusResponse, UpdateAdminPayload, UpdateHospitalPayload, V3Target } from '~/types/hospital'
-
+import type { CoreOrganization, CreateAdminPayload, CreateHospitalPayload, CreateHospitalResponse, ExistingCoreAccount, Hospital, HospitalDetail, HospitalFacilityPayload, PaginationMeta, ProvisionAdminResponse, RetryProvisioningResponse, SeedingStatusResponse, SimilarOrganization, TerminalHospital, UpdateAdminPayload, UpdateHospitalPayload, V3Target } from '~/types/hospital'
 export const useHospitalsStore = defineStore('hospitals', () => {
   const api = useHospitalsApi()
 
@@ -145,6 +144,11 @@ export const useHospitalsStore = defineStore('hospitals', () => {
       lastCreateResult.value = res
       return { success: true as const, data: res }
     } catch (err: any) {
+      // Not a failure yet: similar names exist and the user decides. The
+      // caller shows them and calls create() again with confirm_similar.
+      if (err?.response?.status === 409 && err.response.data?.code === 'SIMILAR_ORGANIZATION_EXISTS') {
+        return { success: false as const, similar: (err.response.data.similar_organizations ?? []) as SimilarOrganization[] }
+      }
       if (err?.response?.status === 422) {
         fieldErrors.value = err.response.data?.errors || {}
         error.value = err.response.data?.message || 'Please fix the highlighted fields.'

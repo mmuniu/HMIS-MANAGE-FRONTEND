@@ -44,5 +44,10 @@ export function useApiCredentialsApi() {
     return data.data
   }
 
-  return { list, create, resetPassword, setActive }
+  async function setPermissions(hospitalId: string, appId: string, permissions: string[]): Promise<ApiCredential> {
+    const { data } = await $axios.patch(`${base(hospitalId)}/${encodeURIComponent(appId)}`, { permissions })
+    return data.data
+  }
+
+  return { list, create, resetPassword, setActive, setPermissions }
 }

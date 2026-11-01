@@ -5,7 +5,7 @@ import { useApiCredentialsApi, type ApiCredential, type IssuedApiCredential } fr
 
 // FieldMatch sign-ins for this hospital. The username + password are what its
 // people sign in to FieldMatch with; signing in gives FieldMatch a bearer
-// token for this hospital's catalogue and price endpoints (erp-platform-3.0
+// token for this hospital's catalogue, price and stock endpoints (erp-platform-3.0
 // docs/FIELDMATCH_INTEGRATION.md). The password is shown once, right after it
 // is created or reset, and is never retrievable again.
 const props = defineProps<{ hospitalId: string; hospitalName: string }>()
@@ -16,6 +16,7 @@ const { $showToast } = useNuxtApp()
 const PERMISSION_LABELS: Record<string, string> = {
   read_products: 'Read products & stores',
   write_product_prices: 'Update prices / create products',
+  write_stock: 'Update stock (quantity, batch, expiry)',
 }
 
 const credentials = ref<ApiCredential[]>([])
@@ -105,6 +106,31 @@ async function toggleActive(cred: ApiCredential) {
   }
 }
 
+// ── Edit access ─────────────────────────────────────────────────────────
+const editAccess = ref<ApiCredential | null>(null)
+const editPermissions = ref<string[]>([])
+const savingAccess = ref(false)
+
+function openEditAccess(cred: ApiCredential) {
+  editAccess.value = cred
+  editPermissions.value = [...cred.permissions]
+}
+
+async function saveAccess() {
+  const cred = editAccess.value
+  if (!cred) return
+  savingAccess.value = true
+  try {
+    const updated = await api.setPermissions(props.hospitalId, cred.app_id, editPermissions.value)
+    Object.assign(cred, updated)
+    editAccess.value = null
+  } catch (err: any) {
+    $showToast?.error?.(err?.response?.data?.message || 'Failed to update access.')
+  } finally {
+    savingAccess.value = false
+  }
+}
+
 // ── One-time password display ───────────────────────────────────────────
 const issued = ref<IssuedApiCredential | null>(null)
 const showPassword = ref(false)
@@ -141,7 +167,7 @@ function formatDate(d: string | null) {
         <div>
           <p class="text-subtitle-1 font-weight-semibold mb-1">FieldMatch sign-in</p>
           <p class="text-body-2 textSecondary mb-0">
-            Username and password this hospital's team signs in to FieldMatch with — it lets FieldMatch read the product catalogue and update prices.
+            Username and password this hospital's team signs in to FieldMatch with — it lets FieldMatch read the product catalogue, update prices and send stock counts.
           </p>
         </div>
         <v-btn color="primary" variant="tonal" prepend-icon="mdi-account-key" :disabled="loading || !!loadError" @click="openCreate">
@@ -182,6 +208,9 @@ function formatDate(d: string | null) {
               </v-chip>
             </td>
             <td class="text-right">
+              <v-btn size="small" variant="text" prepend-icon="mdi-shield-edit" :disabled="busyAppId === c.app_id" @click="openEditAccess(c)">
+                Access
+              </v-btn>
               <v-btn size="small" variant="text" prepend-icon="mdi-lock-reset" :disabled="busyAppId === c.app_id" @click="confirmReset = c">
                 Reset password
               </v-btn>
@@ -228,6 +257,24 @@ function formatDate(d: string | null) {
     </v-card>
   </v-dialog>
 
+  <!-- Edit access -->
+  <v-dialog :model-value="!!editAccess" max-width="480" @update:model-value="(v: boolean) => !v && (editAccess = null)">
+    <v-card rounded="lg">
+      <v-card-title class="text-h6">Access for {{ editAccess?.login_username }}</v-card-title>
+      <v-card-text>
+        <v-checkbox
+          v-for="p in issuable" :key="p" v-model="editPermissions" :value="p"
+          :label="PERMISSION_LABELS[p] || p" density="compact" hide-details />
+        <p class="text-caption textSecondary mt-3 mb-0">Takes effect on the next FieldMatch request; nobody is signed out.</p>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="text" :disabled="savingAccess" @click="editAccess = null">Cancel</v-btn>
+        <v-btn color="primary" variant="flat" :loading="savingAccess" :disabled="!editPermissions.length" @click="saveAccess">Save</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
   <!-- Reset password confirmation -->
   <v-dialog :model-value="!!confirmReset" max-width="440" @update:model-value="(v: boolean) => !v && (confirmReset = null)">
     <v-card rounded="lg">
@@ -250,7 +297,7 @@ function formatDate(d: string | null) {
       <v-card-title class="text-h6">Copy the sign-in now</v-card-title>
       <v-card-text>
         <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
-          The password will not be shown again. Anyone holding it can read and change this hospital's product prices through FieldMatch.
+          The password will not be shown again. Anyone holding it can read and change this hospital's product prices and stock through FieldMatch.
         </v-alert>
 
         <div class="d-flex align-center ga-2 mb-2">

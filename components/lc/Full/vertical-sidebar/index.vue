@@ -15,9 +15,12 @@ const auth = useAuthStore();
 // The current account's role key for menu gating.
 const currentRole = computed<string>(() => auth.platformRole ?? 'hospital_admin');
 
-// System admin is a superuser — every menu item is visible.
-const canSee = (item: menu): boolean =>
-  auth.isSystemAdmin || !item.roles || item.roles.includes(currentRole.value);
+// System admin is a superuser — every menu item is visible, except the
+// root-admin-only ones.
+const canSee = (item: menu): boolean => {
+  if (item.rootOnly) return auth.isRootAdmin;
+  return auth.isSystemAdmin || !item.roles || item.roles.includes(currentRole.value);
+};
 
 // Filter children by role, then drop any group/header left with no children.
 const sidebarMenu = computed<menu[]>(() =>

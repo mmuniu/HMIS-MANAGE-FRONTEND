@@ -17,6 +17,8 @@ export interface menu {
     // Account types allowed to see this item. Omit = visible to everyone.
     // Values: 'developer' | 'tester' | 'qa' | 'provisioning_admin' | 'hospital_admin'
     roles?: string[];
+    // Root admin only — hidden from everyone else, system admins included.
+    rootOnly?: boolean;
 }
 
 // HMIS Tenant Management Platform navigation.
@@ -128,6 +130,13 @@ const sidebarItem: menu[] = [
                 to: '/work',
                 // Developers see their own assigned work; system admin sees all.
                 roles: ['developer', 'system_admin'],
+            },
+            {
+                title: 'Admin',
+                icon: 'shield-user-line-duotone',
+                to: '/admin',
+                // Root admin's console: admins, issue statistics, audit log.
+                rootOnly: true,
             },
         ],
     },

@@ -72,6 +72,12 @@ export default defineNuxtRouteMiddleware(async (to) => {
     // them to /dashboard. The API enforces permissions on every request anyway.
     if (!auth.user) return
 
+    // The Admin console is root-admin only — the one area a system admin's
+    // bypass below does not open.
+    if ((to.path === '/admin' || to.path.startsWith('/admin/')) && !auth.isRootAdmin) {
+      return navigateTo('/dashboard')
+    }
+
     // System admin is a superuser — every route is allowed.
     if (!auth.isSystemAdmin) {
       const role = auth.platformRole ?? 'hospital_admin'

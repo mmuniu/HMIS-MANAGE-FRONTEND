@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useUsersStore } from '@/stores/users'
 import { useAuthStore } from '@/stores/auth'
-import { PLATFORM_ROLE_COLOR, type PlatformUser } from '@/types/user'
+import { PLATFORM_ROLE_COLOR, displayPlatformRole, type PlatformUser } from '@/types/user'
 
 const store = useUsersStore()
 const auth = useAuthStore()
@@ -89,7 +89,7 @@ onMounted(load)
         <template #item.role="{ item }">
           <v-chip v-if="item.platform_role" :color="PLATFORM_ROLE_COLOR[item.platform_role] || 'grey'"
             size="small" variant="tonal" label class="text-capitalize">
-            {{ item.platform_role.replace('_', ' ') }}
+            {{ displayPlatformRole(item.platform_role)?.replace('_', ' ') }}
           </v-chip>
           <div v-else-if="item.tenant_roles.length" class="d-flex flex-wrap ga-1">
             <v-chip v-for="r in item.tenant_roles" :key="r.organization_id" size="small" variant="outlined" label>

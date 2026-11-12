@@ -97,8 +97,11 @@ export const useAuthStore = defineStore('auth', () => {
   // Platform account type (system_admin/developer/tester/qa/provisioning_admin)
   // or null for tenant users.
   const platformRole = computed(() => user.value?.platform_role ?? null)
-  // System admin = top-level superuser with access to everything.
-  const isSystemAdmin = computed(() => platformRole.value === 'system_admin')
+  // Root admin = above every other admin: everything a system admin can do,
+  // plus the Admin console. Displayed exactly like a system admin.
+  const isRootAdmin = computed(() => platformRole.value === 'root_admin')
+  // System admin = superuser with access to everything (root admin included).
+  const isSystemAdmin = computed(() => platformRole.value === 'system_admin' || isRootAdmin.value)
   const isDeveloper = computed(() => platformRole.value === 'developer')
   const isTester = computed(() => platformRole.value === 'tester')
   // QA = run-only tester: works with existing tests but cannot author them.
@@ -421,6 +424,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     roles,
     platformRole,
+    isRootAdmin,
     isSystemAdmin,
     isProvisioningAdmin,
     isDeploymentViewer,

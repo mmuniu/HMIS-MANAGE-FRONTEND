@@ -32,7 +32,13 @@ export interface UserListResponse {
   meta: UserListMeta
 }
 
+// A root admin is shown exactly like a system admin everywhere.
+export function displayPlatformRole(role: string | null): string | null {
+  return role === 'root_admin' ? 'system_admin' : role
+}
+
 export const PLATFORM_ROLE_COLOR: Record<string, string> = {
+  root_admin: 'secondary',
   system_admin: 'secondary',
   developer: 'primary',
   tester: 'info',

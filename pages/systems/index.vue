@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useSystemsApi, type PlatformSystem } from '@/composables/useSystemsApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNuxtApp } from '#app'
+import V3StacksCard from '@/components/systems/V3StacksCard.vue'
 
 const api = useSystemsApi()
 const auth = useAuthStore()
@@ -117,6 +118,9 @@ onMounted(load)
         </template>
       </v-data-table>
     </v-card>
+
+    <!-- The v3 stacks hospitals are provisioned into, and their connections -->
+    <V3StacksCard />
 
     <!-- Create dialog -->
     <v-dialog v-model="dialog" max-width="480">

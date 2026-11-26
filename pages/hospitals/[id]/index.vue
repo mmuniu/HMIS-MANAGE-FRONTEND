@@ -5,9 +5,12 @@ import { useNuxtApp } from '#app'
 import { useHospitalsStore } from '@/stores/hospitals'
 import { useAuthStore } from '@/stores/auth'
 import { useDeploymentsStore } from '@/stores/deployments'
-import { STATUS_COLOR, TIER_COLOR, BILLING_COLOR, type HospitalAdminUser } from '@/types/hospital'
+import { useHospitalsApi } from '@/composables/useHospitalsApi'
+import { STATUS_COLOR, TIER_COLOR, BILLING_COLOR, type HospitalAdminUser, type HospitalFacility, type TerminalFacility } from '@/types/hospital'
 import type { Deployment } from '@/types/deployment'
 import ApiCredentialsCard from '@/components/hospitals/ApiCredentialsCard.vue'
+import AddFacilityDialog from '@/components/hospitals/AddFacilityDialog.vue'
+import MoveStackDialog from '@/components/hospitals/MoveStackDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,6 +21,131 @@ const { $showToast } = useNuxtApp()
 
 const id = computed(() => String(route.params.id))
 const h = computed(() => store.current)
+// A facility's release as named on its hospital's system (Systems page).
+const releaseLabel = (key?: string) =>
+  store.releases.find((r) => r.key === (key || 'regular') && r.v3_target === h.value?.v3_target)?.label ?? (key || 'regular')
+if (auth.isPlatformUser && !store.releases.length) store.fetchReleases()
+
+// Each facility's release switch. The value shown is read live from
+// core-service after the hospital loads (the stored one can be stale: a
+// release changed with the server command); changing it updates core-service.
+const hospitalsApi = useHospitalsApi()
+// null = still checking, true = from core-service, false = stored values only.
+const releasesLive = ref<boolean | null>(null)
+const releasesMessage = ref('')
+const savingReleaseFor = ref<string | null>(null)
+// The organization's facilities in core-service that are not registered here
+// (added in the HMIS itself). They come with the releases, from core-service.
+const coreOnlyFacilities = ref<TerminalFacility[]>([])
+const RELEASE_HINT = 'Which build of the HMIS this facility gets. It can be moved from the default release once; that takes effect at the next sign-in.'
+
+// Only a facility on the system's default release (regular) can be moved,
+// and only to a release marked selectable on the Systems page.
+const defaultRelease = computed(() =>
+  store.releases.find((r) => r.default && r.v3_target === h.value?.v3_target)?.key ?? 'regular')
+type OnRelease = { release_mode?: string | null }
+const releaseLocked = (f: OnRelease) => (f.release_mode || 'regular') !== defaultRelease.value
+const lockedHint = (f: OnRelease) =>
+  `On the ${releaseLabel(f.release_mode || undefined)} release. Only a facility on the default release (${releaseLabel(defaultRelease.value)}) can be moved.`
+
+// The releases a facility can be moved to, plus its current one (so the
+// switch can still show it).
+function releaseItemsFor(f: OnRelease) {
+  const current = f.release_mode || 'regular'
+  const items = store.releases
+    .filter((r) => r.v3_target === h.value?.v3_target && (r.key === current || (r.active && r.selectable !== false && !r.default)))
+    .map((r) => ({ key: r.key, label: r.active ? r.label : `${r.label} (retired)` }))
+  if (!items.some((r) => r.key === current)) items.push({ key: current, label: current })
+  return items
+}
+
+async function syncFacilityReleases(orgId: string) {
+  releasesLive.value = null
+  releasesMessage.value = ''
+  coreOnlyFacilities.value = []
+  try {
+    const res = await hospitalsApi.getFacilityReleases(orgId)
+    if (id.value !== orgId || !store.current) return
+    for (const row of res.data) {
+      const f = store.current.facilities.find((x) => x.id === row.facility_id)
+      if (f) {
+        f.release_mode = row.release_mode
+        f.core_code = row.core_code
+      }
+    }
+    coreOnlyFacilities.value = res.unregistered ?? []
+    releasesLive.value = res.live
+    releasesMessage.value = res.message ?? ''
+  } catch {
+    if (id.value !== orgId) return
+    releasesLive.value = false
+    releasesMessage.value = 'Could not check the releases with core-service.'
+  }
+}
+
+// Choosing another release opens a confirmation: for a facility that is in
+// core-service the operator must type its code there (checked by the API
+// against core-service), so the wrong facility isn't moved by a slip.
+const releaseDialog = ref(false)
+// facility: one registered here; coreOnly: one that is only in core-service.
+const releaseTarget = ref<{ name: string; mode: string; facility?: HospitalFacility; coreOnly?: TerminalFacility } | null>(null)
+const releaseCode = ref('')
+const releaseCodeError = ref('')
+const releaseError = ref('')
+
+const releaseNeedsCode = computed(() => !!(releaseTarget.value?.coreOnly || releaseTarget.value?.facility?.core_facility_id))
+
+function changeRelease(f: HospitalFacility | TerminalFacility, mode: string, coreOnly = false) {
+  if (!mode || mode === (f.release_mode || 'regular') || releaseLocked(f)) return
+  releaseTarget.value = coreOnly
+    ? { name: f.name, mode, coreOnly: f as TerminalFacility }
+    : { name: f.name, mode, facility: f as HospitalFacility }
+  releaseCode.value = ''
+  releaseCodeError.value = ''
+  releaseError.value = ''
+  releaseDialog.value = true
+}
+
+async function confirmRelease() {
+  const target = releaseTarget.value
+  if (!target || savingReleaseFor.value) return
+  const { facility: f, coreOnly, mode } = target
+
+  const code = releaseCode.value.trim()
+  if (releaseNeedsCode.value && !code) {
+    releaseCodeError.value = 'Enter the facility code to confirm the change.'
+    return
+  }
+
+  savingReleaseFor.value = coreOnly ? `core:${coreOnly.id}` : f!.id
+  releaseCodeError.value = ''
+  releaseError.value = ''
+  try {
+    if (coreOnly) {
+      // Not registered here: changed straight in core-service, as for a terminal hospital.
+      const res = await hospitalsApi.setTerminalFacilityRelease(h.value!.v3_target, h.value!.core_org_id!, coreOnly.id, mode, code)
+      coreOnly.release_mode = res.data.release_mode
+      releaseDialog.value = false
+      $showToast(`"${target.name}" is now on the ${releaseLabel(mode)} release.`)
+      return
+    }
+
+    const res = await hospitalsApi.setFacilityRelease(id.value, f!.id, mode, releaseNeedsCode.value ? code : null)
+    f!.release_mode = res.data.release_mode
+    releaseDialog.value = false
+    $showToast(res.core_updated
+      ? `"${target.name}" is now on the ${releaseLabel(mode)} release.`
+      : `"${target.name}" will be on the ${releaseLabel(mode)} release once it is in core-service.`)
+  } catch (e: any) {
+    const errors = e?.response?.data?.errors ?? {}
+    releaseCodeError.value = errors.facility_code?.[0] ?? ''
+    releaseError.value = releaseCodeError.value
+      ? ''
+      : errors.release_mode?.[0] || e?.response?.data?.message || 'The release was not changed.'
+  } finally {
+    savingReleaseFor.value = null
+  }
+}
 
 const addressLines = computed(() => {
   const a = h.value?.address
@@ -34,12 +162,14 @@ const BED_FIELDS: { key: 'total_beds' | 'normal_beds' | 'icu_beds' | 'hdu_beds' 
   { key: 'number_of_cots', label: 'Number of cots' },
 ]
 
-const confirmDelete = ref(false)
+const isDeactivated = computed(() => h.value?.status === 'ARCHIVED')
+const confirmToggleStatus = ref(false)
 
-async function deleteHospital() {
-  const res = await store.remove(id.value)
-  confirmDelete.value = false
-  if (res.success) router.push('/hospitals')
+async function toggleHospitalStatus() {
+  const activate = isDeactivated.value
+  const res = await store.setActive(id.value, activate)
+  confirmToggleStatus.value = false
+  if (res.success) $showToast(activate ? 'Hospital reactivated.' : 'Hospital deactivated.')
 }
 
 const showAdminPassword = ref(false)
@@ -51,8 +181,16 @@ async function copyAdminField(text: string, field: 'username' | 'password') {
   setTimeout(() => (copiedAdminField.value = null), 1500)
 }
 
+async function copyId(value: string | number) {
+  await navigator.clipboard.writeText(String(value))
+}
+
 function provisionAdmin(adminId: number) {
   store.provisionAdmin(id.value, adminId)
+}
+
+function linkAdmin() {
+  store.linkAdmin(id.value)
 }
 
 const PASSWORD_SYMBOLS = ['!', '@', '#', '$', '%', '^', '&', '*']
@@ -98,6 +236,64 @@ async function saveAdminEdit() {
           : 'Admin details updated.',
     )
   }
+}
+
+// "Move to another stack" — system admins only (the API enforces it too).
+const moveStackDialog = ref(false)
+
+const addFacilityDialog = ref(false)
+async function retryFacility(facilityId: string) {
+  const res = await store.provisionFacility(id.value, facilityId)
+  if (res.success) {
+    $showToast(
+      res.data.core_provisioned
+        ? 'Facility created in the v3 system.'
+        : 'Still not created in the v3 system: ' + (res.data.core_provisioning_error || 'unknown error'),
+    )
+  }
+}
+
+const linkCoreDialog = ref(false)
+const linkCoreForm = reactive({ core_org_id: undefined as number | undefined, core_facility_id: undefined as number | undefined })
+const linkCoreError = ref('')
+const linkCoreMismatch = ref<string | null>(null)
+
+function openLinkCore() {
+  linkCoreForm.core_org_id = undefined
+  linkCoreForm.core_facility_id = undefined
+  linkCoreError.value = ''
+  linkCoreMismatch.value = null
+  linkCoreDialog.value = true
+}
+
+const FID_MESSAGES: Record<string, string> = {
+  updated: 'FID sent to core-service.',
+  unchanged: 'core-service already had this FID.',
+  skipped_has_code: 'core-service already has a different FID for this facility, so it was left alone.',
+  skipped_code_in_use: 'That FID is already used by another facility in core-service, so it was not sent.',
+  skipped_name_mismatch: 'FID not sent: the facility name in core-service differs.',
+  no_fid_here: 'This facility has no FID here to send.',
+}
+
+async function saveLinkCore(confirmMismatch = false) {
+  if (typeof linkCoreForm.core_org_id !== 'number' || typeof linkCoreForm.core_facility_id !== 'number') return
+  linkCoreError.value = ''
+  const res = await store.linkCore(id.value, {
+    core_org_id: linkCoreForm.core_org_id,
+    core_facility_id: linkCoreForm.core_facility_id,
+    ...(confirmMismatch ? { confirm_name_mismatch: true } : {}),
+  })
+  if (res.success) {
+    linkCoreDialog.value = false
+    $showToast('Connected to core-service. ' + (FID_MESSAGES[res.data.fid_status] || 'FID not sent: ' + (res.data.fid_error || res.data.fid_status)))
+    return
+  }
+  if (res.code === 'HOSPITAL_LINK_NAME_MISMATCH') {
+    linkCoreMismatch.value = res.coreFacilityName ?? ''
+    return
+  }
+  linkCoreMismatch.value = null
+  linkCoreError.value = res.message
 }
 
 const addAdminDialog = ref(false)
@@ -180,9 +376,13 @@ watch(
     editAdminDialog.value = false
     editingAdmin.value = null
     addAdminDialog.value = false
+    addFacilityDialog.value = false
     confirmDeleteAdmin.value = null
     deployment.value = null
-    store.fetchOne(newId)
+    releasesLive.value = null
+    store.fetchOne(newId).then(() => {
+      if (auth.isPlatformUser && id.value === newId) syncFacilityReleases(newId)
+    })
     checkDeployment()
   },
   { immediate: true },
@@ -208,9 +408,10 @@ watch(
           :to="`/hospitals/${id}/edit`">
           Edit hospital
         </v-btn>
-        <v-btn v-if="auth.isSystemAdmin && h" color="error" variant="tonal" prepend-icon="mdi-delete"
-          @click="confirmDelete = true">
-          Delete hospital
+        <v-btn v-if="auth.isSystemAdmin && h" :color="isDeactivated ? 'success' : 'error'" variant="tonal"
+          :prepend-icon="isDeactivated ? 'mdi-check-circle-outline' : 'mdi-cancel'"
+          @click="confirmToggleStatus = true">
+          {{ isDeactivated ? 'Reactivate hospital' : 'Deactivate hospital' }}
         </v-btn>
       </div>
     </div>
@@ -231,6 +432,35 @@ watch(
           <v-chip v-if="h.is_sandbox" color="warning" variant="tonal" label>SANDBOX</v-chip>
         </div>
       </div>
+
+      <!-- The ids the rest of the platform knows this hospital by — always visible, copyable. -->
+      <v-card variant="tonal" color="primary" rounded="lg" class="mb-6">
+        <v-card-text class="d-flex flex-wrap align-center ga-6">
+          <div>
+            <p class="text-caption textSecondary mb-0">System</p>
+            <p class="text-body-1 font-weight-medium mb-0">
+              {{ h.v3_target_label }}
+              <v-btn v-if="auth.isSystemAdmin" size="x-small" variant="text" prepend-icon="mdi-swap-horizontal"
+                class="ml-1" @click="moveStackDialog = true">Move…</v-btn>
+            </p>
+          </div>
+          <div>
+            <p class="text-caption textSecondary mb-0">Organization ID</p>
+            <p class="text-body-1 font-weight-medium font-mono mb-0">
+              {{ h.core_org_id || 'Not provisioned' }}
+              <v-btn v-if="h.core_org_id" icon="mdi-content-copy" size="x-small" variant="text" @click="copyId(h.core_org_id)" />
+            </p>
+          </div>
+          <div v-for="f in h.facilities" :key="f.id">
+            <p class="text-caption textSecondary mb-0">Facility ID — {{ f.name }}</p>
+            <p class="text-body-1 font-weight-medium font-mono mb-0">
+              {{ f.core_facility_id || 'Not provisioned' }}
+              <v-btn v-if="f.core_facility_id" icon="mdi-content-copy" size="x-small" variant="text" @click="copyId(f.core_facility_id)" />
+            </p>
+          </div>
+          <p v-if="!h.facilities?.length" class="text-body-2 mb-0">No facility yet — add one below to get a facility ID.</p>
+        </v-card-text>
+      </v-card>
 
       <v-row>
         <!-- 1. Isolation -->
@@ -330,6 +560,7 @@ watch(
               <template v-if="h.core_org_id">
                 <v-chip color="success" variant="flat" label class="mb-2">Provisioned</v-chip>
                 <v-list density="compact" lines="two">
+                  <v-list-item title="System" :subtitle="h.v3_target_label" />
                   <v-list-item title="Core org ID" :subtitle="h.core_org_id" />
                 </v-list>
 
@@ -371,6 +602,9 @@ watch(
                   :loading="store.retrying" @click="store.retryProvisioning(id)">
                   Retry provisioning
                 </v-btn>
+                <v-btn v-if="auth.isPlatformUser" class="ml-2" variant="text" prepend-icon="mdi-link-variant" @click="openLinkCore">
+                  Connect to existing
+                </v-btn>
               </template>
             </v-card-text>
           </v-card>
@@ -378,7 +612,13 @@ watch(
       </v-row>
 
       <!-- 6. Facilities (bed capacity + facility administrator, from provisioning) -->
-      <v-row v-if="h.facilities?.length">
+      <div class="d-flex align-center justify-space-between mt-6 mb-3">
+        <h3 class="text-h5 font-weight-semibold">Facilities</h3>
+        <v-btn v-if="auth.isPlatformUser" color="primary" variant="tonal" prepend-icon="mdi-plus" @click="addFacilityDialog = true">
+          Add facility
+        </v-btn>
+      </div>
+      <v-row v-if="h.facilities?.length || coreOnlyFacilities.length">
         <v-col v-for="f in h.facilities" :key="f.id" cols="12" md="6">
           <v-card rounded="lg" elevation="10" class="h-100">
             <v-card-item>
@@ -387,13 +627,33 @@ watch(
                 <v-chip :color="f.core_facility_id ? 'success' : 'warning'" size="small" variant="tonal" label>
                   {{ f.core_facility_id ? 'Provisioned' : 'Not in core-service' }}
                 </v-chip>
+                <v-btn
+                  v-if="!f.core_facility_id && h.core_org_id" size="small" color="primary" variant="tonal" class="ml-2"
+                  prepend-icon="mdi-cloud-sync" :loading="store.provisioningFacilityId === f.id" @click="retryFacility(f.id)"
+                >
+                  Retry
+                </v-btn>
               </template>
             </v-card-item>
             <v-card-text>
               <v-list density="compact" lines="two">
+                <v-list-item title="Core facility ID" :subtitle="f.core_facility_id || '—'" />
+                <v-list-item v-if="auth.isPlatformUser && f.core_facility_id" title="Core facility code" :subtitle="f.core_code || '—'" />
                 <v-list-item title="Facility code" :subtitle="f.facility_code || '—'" />
                 <v-list-item title="KEPH level" :subtitle="f.keph_level || '—'" />
+                <v-list-item v-if="!auth.isPlatformUser" title="Release" :subtitle="releaseLabel(f.release_mode)" />
               </v-list>
+
+              <template v-if="auth.isPlatformUser">
+                <v-select
+                  :model-value="f.release_mode || 'regular'" :items="releaseItemsFor(f)" item-title="label" item-value="key"
+                  label="Release" prepend-inner-icon="mdi-source-branch" variant="outlined" density="compact"
+                  :loading="savingReleaseFor === f.id || releasesLive === null" :disabled="savingReleaseFor !== null || releaseLocked(f)"
+                  :hint="releasesLive === false ? `${releasesMessage} Showing the last value saved here.` : releaseLocked(f) ? lockedHint(f) : RELEASE_HINT"
+                  persistent-hint class="mt-2 mb-2" style="max-width: 420px"
+                  @update:model-value="changeRelease(f, $event)"
+                />
+              </template>
 
               <p class="text-caption textSecondary text-uppercase mt-2 mb-1">Bed occupancy</p>
               <v-row dense>
@@ -415,8 +675,38 @@ watch(
             </v-card-text>
           </v-card>
         </v-col>
+
+        <!-- The organization's other facilities: in the HMIS (core-service), not registered here -->
+        <v-col v-for="f in coreOnlyFacilities" :key="`core-${f.id}`" cols="12" md="6">
+          <v-card rounded="lg" elevation="10" class="h-100">
+            <v-card-item>
+              <v-card-title><v-icon icon="mdi-hospital-building" class="mr-2" />{{ f.name }}</v-card-title>
+              <template #append>
+                <v-chip color="info" size="small" variant="tonal" label>HMIS only</v-chip>
+              </template>
+            </v-card-item>
+            <v-card-text>
+              <v-list density="compact" lines="two">
+                <v-list-item title="Core facility ID" :subtitle="String(f.id)" />
+                <v-list-item title="Core facility code" :subtitle="f.code || '—'" />
+                <v-list-item title="Facility code" :subtitle="f.mfl_code || '—'" />
+                <v-list-item title="Status" :subtitle="f.status || '—'" />
+              </v-list>
+
+              <v-select
+                v-if="f.release_mode !== undefined"
+                :model-value="f.release_mode || 'regular'" :items="releaseItemsFor(f)" item-title="label" item-value="key"
+                label="Release" prepend-inner-icon="mdi-source-branch" variant="outlined" density="compact"
+                :loading="savingReleaseFor === `core:${f.id}`" :disabled="savingReleaseFor !== null || releaseLocked(f)"
+                :hint="releaseLocked(f) ? lockedHint(f) : RELEASE_HINT"
+                persistent-hint class="mt-2 mb-2" style="max-width: 420px"
+                @update:model-value="changeRelease(f, $event, true)"
+              />
+            </v-card-text>
+          </v-card>
+        </v-col>
       </v-row>
-      <v-alert v-else type="info" variant="tonal" class="mt-6">
+      <v-alert v-else type="info" variant="tonal">
         No facility has been added to this hospital yet.
       </v-alert>
 
@@ -512,6 +802,11 @@ watch(
               <p class="text-caption textSecondary mt-2 mb-0">
                 Also emailed to the admin and won't be shown again — share it with them now.
               </p>
+              <p v-if="store.lastAdminUpdateResult.usableForCoreService" class="text-caption text-warning mt-2 mb-0">
+                <v-icon icon="mdi-alert-circle-outline" size="14" class="mr-1" />
+                One-time key for core-service — the admin will be asked to set a new password
+                immediately after signing in with it.
+              </p>
             </v-card-text>
           </v-card>
         </v-card-text>
@@ -524,10 +819,15 @@ watch(
             <p class="text-subtitle-1 font-weight-semibold mb-1">Integrations</p>
             <p class="text-body-2 textSecondary mb-0">Connect this hospital to external systems like QuickBooks, Dynamics 365 and more.</p>
           </div>
-          <v-btn color="primary" variant="tonal" prepend-icon="mdi-plug"
-            :to="{ path: '/integrations', query: { hospitalId: id, hospitalName: h.display_name || h.name } }">
-            Manage integrations
-          </v-btn>
+          <div class="d-flex flex-wrap ga-2">
+            <!-- This tenant's integrations (and each environment's variables) in the
+                 V3 integration-service. A hospital not yet provisioned in core-service
+                 has no tenant there; the page says so. -->
+            <v-btn color="primary" variant="tonal" prepend-icon="mdi-plug"
+              :to="{ path: '/tenant-integrations', query: { hospitalId: id, ...(h.core_org_id ? { coreOrgId: String(h.core_org_id), name: h.display_name || h.name } : {}) } }">
+              Manage integrations
+            </v-btn>
+          </div>
         </v-card-text>
       </v-card>
 
@@ -535,19 +835,61 @@ watch(
       <ApiCredentialsCard v-if="auth.isSystemAdmin" :hospital-id="id" :hospital-name="h.display_name || h.name" />
     </template>
 
-    <!-- Delete confirmation dialog -->
-    <v-dialog v-model="confirmDelete" max-width="440">
-      <v-card rounded="lg">
-        <v-card-title class="text-h6">Delete hospital?</v-card-title>
+    <!-- Move a facility to another release: confirmed with its facility code -->
+    <v-dialog v-model="releaseDialog" max-width="480" :persistent="savingReleaseFor !== null">
+      <v-card v-if="releaseTarget" rounded="lg">
+        <v-card-title class="text-h6">Move to the {{ releaseLabel(releaseTarget.mode) }} release?</v-card-title>
         <v-card-text>
-          This will permanently remove <strong>{{ h?.display_name || h?.name }}</strong> from the platform's
-          active hospital list. Its facilities, admin accounts and integration config are kept and can be
-          restored if this was a mistake — contact platform engineering to reverse it.
+          <p class="mb-3">
+            Move <strong>"{{ releaseTarget.name }}"</strong> to the
+            <strong>{{ releaseLabel(releaseTarget.mode) }}</strong> release? Its users get that build the next
+            time they sign in.
+          </p>
+          <v-alert type="warning" variant="tonal" density="compact" class="mb-4" text="Please note that this is irreversible: once moved, the facility can't be moved to another release from here." />
+          <v-text-field
+            v-if="releaseNeedsCode" v-model="releaseCode" label="Facility code" autofocus
+            hint="Type this facility's Facility code or its Core facility code to confirm." persistent-hint
+            :error-messages="releaseCodeError" :disabled="savingReleaseFor !== null"
+            prepend-inner-icon="mdi-shield-key-outline" variant="outlined" density="comfortable"
+            autocomplete="off" @keyup.enter="confirmRelease"
+          />
+          <p v-else class="text-body-2 textSecondary">
+            This facility is not in core-service yet, so there is no facility code to check. The release is
+            recorded here and applied when the facility is provisioned.
+          </p>
+          <v-alert v-if="releaseError" type="error" variant="tonal" density="compact" class="mt-3" :text="releaseError" />
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" :disabled="store.deleting" @click="confirmDelete = false">Cancel</v-btn>
-          <v-btn color="error" variant="flat" :loading="store.deleting" @click="deleteHospital">Delete</v-btn>
+          <v-btn variant="text" :disabled="savingReleaseFor !== null" @click="releaseDialog = false">Cancel</v-btn>
+          <v-btn color="primary" variant="flat" :loading="savingReleaseFor !== null"
+            :disabled="releaseNeedsCode && !releaseCode.trim()" @click="confirmRelease">
+            Move facility
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Deactivate / reactivate confirmation dialog -->
+    <v-dialog v-model="confirmToggleStatus" max-width="440">
+      <v-card rounded="lg">
+        <v-card-title class="text-h6">{{ isDeactivated ? 'Reactivate hospital?' : 'Deactivate hospital?' }}</v-card-title>
+        <v-card-text>
+          <template v-if="isDeactivated">
+            <strong>{{ h?.display_name || h?.name }}</strong> will be set back to ACTIVE.
+          </template>
+          <template v-else>
+            <strong>{{ h?.display_name || h?.name }}</strong> will be marked ARCHIVED. Its facilities, admin
+            accounts and integration config are kept, and you can reactivate it at any time.
+          </template>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="store.togglingStatus" @click="confirmToggleStatus = false">Cancel</v-btn>
+          <v-btn :color="isDeactivated ? 'success' : 'error'" variant="flat" :loading="store.togglingStatus"
+            @click="toggleHospitalStatus">
+            {{ isDeactivated ? 'Reactivate' : 'Deactivate' }}
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -586,6 +928,46 @@ watch(
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Connect to an existing core-service organization + facility -->
+    <v-dialog v-model="linkCoreDialog" max-width="520">
+      <v-card rounded="lg">
+        <v-card-title class="text-h6">Connect to existing in core-service</v-card-title>
+        <v-card-text>
+          <p class="text-body-2 textSecondary mb-4">
+            Use this when the organization and facility are already in core-service but this hospital never got linked to them.
+            Nothing is created there. The ids are checked, saved here, and this facility's FID is written into core-service.
+          </p>
+          <v-text-field v-model.number="linkCoreForm.core_org_id" type="number" label="Core organization id" variant="outlined" density="comfortable" class="mb-3" hide-details="auto" autofocus />
+          <v-text-field v-model.number="linkCoreForm.core_facility_id" type="number" label="Core facility id" variant="outlined" density="comfortable" hide-details="auto" />
+          <v-alert v-if="linkCoreMismatch !== null" type="warning" variant="tonal" density="compact" class="mt-4">
+            core-service calls this facility "{{ linkCoreMismatch }}", which differs from the name here. Only connect if it is the same facility.
+          </v-alert>
+          <v-alert v-if="linkCoreError" type="error" variant="tonal" density="compact" class="mt-4">{{ linkCoreError }}</v-alert>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="store.linkingCore" @click="linkCoreDialog = false">Cancel</v-btn>
+          <v-btn
+            :color="linkCoreMismatch !== null ? 'warning' : 'primary'" variant="flat" :loading="store.linkingCore"
+            :disabled="typeof linkCoreForm.core_org_id !== 'number' || typeof linkCoreForm.core_facility_id !== 'number'"
+            @click="saveLinkCore(linkCoreMismatch !== null)"
+          >
+            {{ linkCoreMismatch !== null ? 'Connect anyway' : 'Connect' }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Add facility dialog -->
+    <AddFacilityDialog v-model="addFacilityDialog" :org-id="id" :target="h?.v3_target" />
+
+    <!-- Move to another v3 stack -->
+    <!-- Not v-if on h: the hospital reloads after a move, and the dialog
+         (with its one-time admin passwords) must survive that. -->
+    <MoveStackDialog v-if="auth.isSystemAdmin" v-model="moveStackDialog" :org-id="id"
+      :hospital-name="h?.display_name || h?.name || ''" :current-target="h?.v3_target ?? ''"
+      @moved="store.fetchOne(id)" />
 
     <!-- Add admin dialog -->
     <v-dialog v-model="addAdminDialog" max-width="480">
@@ -632,6 +1014,46 @@ watch(
           <v-spacer />
           <v-btn variant="text" :disabled="store.removingAdminId === confirmDeleteAdmin?.id" @click="confirmDeleteAdmin = null">Cancel</v-btn>
           <v-btn color="error" variant="flat" :loading="store.removingAdminId === confirmDeleteAdmin?.id" @click="deleteAdmin">Remove</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Provisioning (or a password reset) found this email/username already
+         registered on core-service — offer to attach instead of retrying a
+         create that can only ever fail the same way again. -->
+    <v-dialog :model-value="!!store.pendingCoreAccountLink" max-width="480" persistent>
+      <v-card v-if="store.pendingCoreAccountLink" rounded="lg">
+        <v-card-title class="text-h6">Admin already exists in core-service</v-card-title>
+        <v-card-text>
+          <p class="mb-3">
+            Creating this admin failed because an account with this email or username already
+            exists in core-service. Connect to it instead?
+          </p>
+          <v-list density="compact" lines="two" class="mb-2" style="background: transparent;">
+            <v-list-item title="Name" :subtitle="store.pendingCoreAccountLink.existing.name || '—'" />
+            <v-list-item title="Email" :subtitle="store.pendingCoreAccountLink.existing.email" />
+            <v-list-item title="Username" :subtitle="store.pendingCoreAccountLink.existing.username" />
+            <v-list-item
+              title="Status"
+              :subtitle="store.pendingCoreAccountLink.existing.active ? 'Active' : 'Inactive'"
+            />
+            <v-list-item
+              v-if="store.pendingCoreAccountLink.existing.facilities.length"
+              title="Facilities"
+              :subtitle="store.pendingCoreAccountLink.existing.facilities.map(f => f.name).join(', ')"
+            />
+          </v-list>
+          <p class="text-caption textSecondary mb-0">
+            Connecting only links this admin to that existing account — it does not change its
+            password. Cancel to leave the admin unprovisioned instead.
+          </p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="store.linkingAdmin" @click="store.cancelCoreAccountLink">Cancel</v-btn>
+          <v-btn color="primary" variant="flat" :loading="store.linkingAdmin" @click="linkAdmin">
+            Connect this account
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

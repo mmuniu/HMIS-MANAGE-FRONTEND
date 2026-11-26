@@ -191,7 +191,7 @@ async function save() {
 
         <v-select v-if="releaseItems.length" v-model="form.release_mode" :items="releaseItems" item-title="label"
           item-value="key" label="Release" prepend-inner-icon="mdi-source-branch" variant="outlined" density="comfortable"
-          hint="Which build of the ERP this facility's users get. Releases are set up per system on the Systems page."
+          hint="Which build of the HMIS this facility's users get. Releases are set up per system on the Systems page."
           persistent-hint class="mb-3" :error-messages="fieldError('release_mode')" />
 
         <h4 class="text-subtitle-1 font-weight-medium mt-2 mb-2">Bed Occupancy</h4>

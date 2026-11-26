@@ -25,6 +25,7 @@ import type {
   StackMovePreview,
   StackMoveRecord,
   StackMoveResult,
+  TerminalFacility,
   TerminalHospitalListResponse,
   UpdateAdminPayload,
   UpdateAdminResponse,
@@ -120,7 +121,9 @@ export function useHospitalsApi() {
 
   // Each facility's release as core-service has it now. live = false when
   // core-service couldn't be asked: the values hmis-manage stored come back.
-  async function getFacilityReleases(id: string): Promise<{ data: { facility_id: string; release_mode: string; core_code: string | null }[]; live: boolean; message: string | null }> {
+  // unregistered: the organization's facilities in core-service that are not
+  // registered here.
+  async function getFacilityReleases(id: string): Promise<{ data: { facility_id: string; release_mode: string; core_code: string | null }[]; unregistered?: TerminalFacility[]; live: boolean; message: string | null }> {
     const { data } = await $axios.get(`/v1/platform/hospitals/${id}/facility-releases`)
     return data
   }

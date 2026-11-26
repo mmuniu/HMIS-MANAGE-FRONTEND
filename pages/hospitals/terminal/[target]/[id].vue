@@ -82,12 +82,20 @@ const releaseLabel = (key?: string | null) =>
 // releases, and can't change one either.
 const canSwitchRelease = (f: TerminalFacility) => auth.isPlatformUser && f.release_mode !== undefined
 
-// The system's active releases, plus the facility's current one when it is
-// retired or not defined here (so the switch can still show it).
+// Only a facility on the system's default release (regular) can be moved,
+// and only to a release marked selectable on the Systems page.
+const defaultRelease = computed(() =>
+  store.releases.find((r) => r.default && r.v3_target === t.value?.v3_target)?.key ?? 'regular')
+const releaseLocked = (f: TerminalFacility) => (f.release_mode || 'regular') !== defaultRelease.value
+const lockedHint = (f: TerminalFacility) =>
+  `On the ${releaseLabel(f.release_mode)} release. Only a facility on the default release (${releaseLabel(defaultRelease.value)}) can be moved.`
+
+// The releases a facility can be moved to, plus its current one (so the
+// switch can still show it).
 function releaseItemsFor(f: TerminalFacility) {
   const current = f.release_mode || 'regular'
   const items = store.releases
-    .filter((r) => r.v3_target === t.value?.v3_target && (r.active || r.key === current))
+    .filter((r) => r.v3_target === t.value?.v3_target && (r.key === current || (r.active && r.selectable !== false && !r.default)))
     .map((r) => ({ key: r.key, label: r.active ? r.label : `${r.label} (retired)` }))
   if (!items.some((r) => r.key === current)) items.push({ key: current, label: current })
   return items
@@ -103,7 +111,7 @@ const savingRelease = ref(false)
 const releaseSelectKey = ref(0)
 
 function changeRelease(f: TerminalFacility, mode: string) {
-  if (!mode || mode === (f.release_mode || 'regular')) return
+  if (!mode || mode === (f.release_mode || 'regular') || releaseLocked(f)) return
   releaseTarget.value = { facility: f, mode }
   releaseCode.value = ''
   releaseCodeError.value = ''
@@ -299,7 +307,8 @@ onMounted(load)
                     v-if="canSwitchRelease(f)" :key="`${f.id}-${releaseSelectKey}`"
                     :model-value="f.release_mode || 'regular'" :items="releaseItemsFor(f)" item-title="label" item-value="key"
                     :aria-label="`Release of ${f.name}`" prepend-inner-icon="mdi-source-branch" variant="outlined" density="compact"
-                    hide-details :disabled="savingRelease" class="my-2" style="min-width: 170px; max-width: 240px"
+                    :hide-details="!releaseLocked(f)" :hint="lockedHint(f)" persistent-hint
+                    :disabled="savingRelease || releaseLocked(f)" class="my-2" style="min-width: 170px; max-width: 260px"
                     @update:model-value="changeRelease(f, $event)"
                   />
                   <span v-else>{{ f.release_mode ? releaseLabel(f.release_mode) : '—' }}</span>
@@ -362,10 +371,10 @@ onMounted(load)
             <strong>{{ releaseLabel(releaseTarget.mode) }}</strong> release? Its users get that build the next
             time they sign in.
           </p>
-          <v-alert type="warning" variant="tonal" density="compact" class="mb-4" text="Please note that this is irreversible." />
+          <v-alert type="warning" variant="tonal" density="compact" class="mb-4" text="Please note that this is irreversible: once moved, the facility can't be moved to another release from here." />
           <v-text-field
             v-model="releaseCode" label="Facility code" autofocus
-            hint="Type this facility's code in core-service to confirm." persistent-hint
+            hint="Type this facility's Facility code or its Core facility code to confirm." persistent-hint
             :error-messages="releaseCodeError" :disabled="savingRelease"
             prepend-inner-icon="mdi-shield-key-outline" variant="outlined" density="comfortable"
             autocomplete="off" @keyup.enter="confirmRelease"

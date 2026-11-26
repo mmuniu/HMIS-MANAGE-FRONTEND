@@ -35,12 +35,20 @@ const releasesLive = ref<boolean | null>(null)
 const releasesMessage = ref('')
 const savingReleaseFor = ref<string | null>(null)
 
-// The system's active releases, plus the facility's current one when it is
-// retired or not defined here (so the switch can still show it).
+// Only a facility on the system's default release (regular) can be moved,
+// and only to a release marked selectable on the Systems page.
+const defaultRelease = computed(() =>
+  store.releases.find((r) => r.default && r.v3_target === h.value?.v3_target)?.key ?? 'regular')
+const releaseLocked = (f: HospitalFacility) => (f.release_mode || 'regular') !== defaultRelease.value
+const lockedHint = (f: HospitalFacility) =>
+  `On the ${releaseLabel(f.release_mode)} release. Only a facility on the default release (${releaseLabel(defaultRelease.value)}) can be moved.`
+
+// The releases a facility can be moved to, plus its current one (so the
+// switch can still show it).
 function releaseItemsFor(f: HospitalFacility) {
   const current = f.release_mode || 'regular'
   const items = store.releases
-    .filter((r) => r.v3_target === h.value?.v3_target && (r.active || r.key === current))
+    .filter((r) => r.v3_target === h.value?.v3_target && (r.key === current || (r.active && r.selectable !== false && !r.default)))
     .map((r) => ({ key: r.key, label: r.active ? r.label : `${r.label} (retired)` }))
   if (!items.some((r) => r.key === current)) items.push({ key: current, label: current })
   return items
@@ -80,7 +88,7 @@ const releaseError = ref('')
 const releaseNeedsCode = computed(() => !!releaseTarget.value?.facility.core_facility_id)
 
 function changeRelease(f: HospitalFacility, mode: string) {
-  if (!mode || mode === (f.release_mode || 'regular')) return
+  if (!mode || mode === (f.release_mode || 'regular') || releaseLocked(f)) return
   releaseTarget.value = { facility: f, mode }
   releaseCode.value = ''
   releaseCodeError.value = ''
@@ -621,8 +629,8 @@ watch(
                 <v-select
                   :model-value="f.release_mode || 'regular'" :items="releaseItemsFor(f)" item-title="label" item-value="key"
                   label="Release" prepend-inner-icon="mdi-source-branch" variant="outlined" density="compact"
-                  :loading="savingReleaseFor === f.id || releasesLive === null" :disabled="savingReleaseFor !== null"
-                  :hint="releasesLive === false ? `${releasesMessage} Showing the last value saved here.` : 'Which build of the ERP this facility gets. Changing it takes effect at the next sign-in.'"
+                  :loading="savingReleaseFor === f.id || releasesLive === null" :disabled="savingReleaseFor !== null || releaseLocked(f)"
+                  :hint="releasesLive === false ? `${releasesMessage} Showing the last value saved here.` : releaseLocked(f) ? lockedHint(f) : 'Which build of the HMIS this facility gets. It can be moved from the default release once; that takes effect at the next sign-in.'"
                   persistent-hint class="mt-2 mb-2" style="max-width: 420px"
                   @update:model-value="changeRelease(f, $event)"
                 />
@@ -788,10 +796,10 @@ watch(
             <strong>{{ releaseLabel(releaseTarget.mode) }}</strong> release? Its users get that build the next
             time they sign in.
           </p>
-          <v-alert type="warning" variant="tonal" density="compact" class="mb-4" text="Please note that this is irreversible." />
+          <v-alert type="warning" variant="tonal" density="compact" class="mb-4" text="Please note that this is irreversible: once moved, the facility can't be moved to another release from here." />
           <v-text-field
             v-if="releaseNeedsCode" v-model="releaseCode" label="Facility code" autofocus
-            hint="Type this facility's code in core-service to confirm." persistent-hint
+            hint="Type this facility's Facility code or its Core facility code to confirm." persistent-hint
             :error-messages="releaseCodeError" :disabled="savingReleaseFor !== null"
             prepend-inner-icon="mdi-shield-key-outline" variant="outlined" density="comfortable"
             autocomplete="off" @keyup.enter="confirmRelease"

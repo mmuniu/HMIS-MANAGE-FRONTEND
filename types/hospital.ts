@@ -189,6 +189,10 @@ export interface SystemRelease {
   notes: string | null
   active: boolean
   protected: boolean
+  // Whether facilities can be moved to it from a hospital's page.
+  selectable?: boolean
+  // The system's default release (regular): only facilities on it can be moved.
+  default?: boolean
 }
 
 // A terminal hospital's facility, as core-service has it. code is its code

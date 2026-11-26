@@ -8,8 +8,12 @@ import { useV3TargetsApi, type V3ReleaseRow, type V3ReleaseInput, type ReleaseCo
 // facility, or the Register Hospital wizard); the Hospitals page can filter
 // by release. "regular" always exists and can't be removed or retired.
 //
+// "regular" is also the default release: a facility can be moved from it to
+// another release on its hospital's page, once. Each other release has a
+// "selectable" switch saying whether facilities can be moved to it there.
+//
 // The app URLs are sent to the system's core-service on every change: it
-// gives a facility's release URL at sign-in and the ERP frontend sends the
+// gives a facility's release URL at sign-in and the HMIS frontend sends the
 // user there. coreSync says whether core-service has what is saved here.
 
 const props = defineProps<{ stack: { key: string; label: string } | null }>()
@@ -67,11 +71,11 @@ const editing = ref<V3ReleaseRow | null>(null)
 const saving = ref(false)
 const formError = ref('')
 const fieldErrors = ref<Record<string, string>>({})
-const form = ref({ key: '', label: '', app_url: '', cookie_domain: '', notes: '', active: true })
+const form = ref({ key: '', label: '', app_url: '', cookie_domain: '', notes: '', active: true, selectable: true })
 
 function openAdd() {
   editing.value = null
-  form.value = { key: '', label: '', app_url: '', cookie_domain: '', notes: '', active: true }
+  form.value = { key: '', label: '', app_url: '', cookie_domain: '', notes: '', active: true, selectable: true }
   formError.value = ''
   fieldErrors.value = {}
   view.value = 'form'
@@ -86,6 +90,7 @@ function openEdit(r: V3ReleaseRow) {
     cookie_domain: r.cookie_domain ?? '',
     notes: r.notes ?? '',
     active: r.active,
+    selectable: r.selectable ?? true,
   }
   formError.value = ''
   fieldErrors.value = {}
@@ -103,6 +108,8 @@ async function save() {
     cookie_domain: form.value.cookie_domain.trim() || null,
     notes: form.value.notes.trim() || null,
     active: form.value.active,
+    // Means nothing for the default release, which refuses it.
+    ...(editing.value?.default ? {} : { selectable: form.value.selectable }),
   }
   try {
     if (editing.value) {
@@ -164,8 +171,12 @@ const headers = [
       <template v-if="view === 'list'">
         <v-card-text class="px-5 pb-0">
           <p class="textSecondary text-body-2 mb-2">
-            Each facility on this system is on one release. When its users sign in to the ERP they are sent to
-            the release's app URL. A release with no app URL keeps the address set in the ERP app itself.
+            Each facility on this system is on one release. When its users sign in to the HMIS they are sent to
+            the release's app URL. A release with no app URL keeps the address set in the HMIS app itself.
+          </p>
+          <p class="textSecondary text-body-2 mb-2">
+            Facilities start on the default release. On a hospital's page a facility can be moved from the default
+            release to a selectable one; after that it stays there.
           </p>
           <v-alert v-if="coreSync && coreSync.state !== 'synced'" type="warning" variant="tonal" density="compact" class="mb-3">
             <div class="d-flex align-center ga-3 flex-wrap">
@@ -183,7 +194,9 @@ const headers = [
             <div class="py-2">
               <div class="d-flex align-center ga-2">
                 <span class="font-weight-medium">{{ item.label }}</span>
+                <v-chip v-if="item.default" size="x-small" color="primary" variant="tonal" label>Default</v-chip>
                 <v-chip v-if="!item.active" size="x-small" color="grey" variant="tonal" label>Retired</v-chip>
+                <v-chip v-else-if="!item.default && item.selectable === false" size="x-small" color="warning" variant="tonal" label>Not selectable</v-chip>
               </div>
               <span class="text-caption textSecondary font-mono">{{ item.key }}</span>
               <div v-if="item.notes" class="text-caption textSecondary notes">{{ item.notes }}</div>
@@ -224,7 +237,7 @@ const headers = [
               variant="outlined" density="comfortable" style="min-width:220px" />
           </div>
           <v-text-field v-model="form.app_url" label="App URL" placeholder="https://beta.afyaanalytics.ai"
-            hint="Where this release's ERP app is served. Users of facilities on this release are sent here at sign-in." persistent-hint :error-messages="fieldErrors.app_url"
+            hint="Where this release's HMIS app is served. Users of facilities on this release are sent here at sign-in." persistent-hint :error-messages="fieldErrors.app_url"
             prepend-inner-icon="mdi-web" variant="outlined" density="comfortable" class="mt-2" />
           <v-text-field v-model="form.cookie_domain" label="Cookie domain" placeholder=".afyaanalytics.ai"
             hint="Parent domain the sign-in cookies are shared on, so users stay signed in across releases."
@@ -234,6 +247,11 @@ const headers = [
             variant="outlined" density="comfortable" class="mt-2" />
           <v-switch v-model="form.active" :disabled="editing?.protected" color="primary" hide-details inset
             :label="form.active ? 'Active — can be chosen for new facilities' : 'Retired — kept on record, can\'t be chosen'" />
+          <v-switch v-if="!editing?.default" v-model="form.selectable" :disabled="!form.active" color="primary" hide-details inset
+            :label="form.selectable ? 'Selectable — facilities can be moved to it on a hospital\'s page' : 'Not selectable — not offered when moving a facility'" />
+          <p v-else class="text-body-2 textSecondary mt-2 mb-0">
+            This is the default release: facilities start here, and only a facility on it can be moved to another release.
+          </p>
           <v-alert v-if="formError" type="error" variant="tonal" density="compact" class="mt-3" :text="formError" />
         </v-card-text>
         <v-card-actions class="px-5 pb-5">

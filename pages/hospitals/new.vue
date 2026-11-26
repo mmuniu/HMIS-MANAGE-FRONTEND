@@ -712,7 +712,7 @@ function done() {
             <v-select v-if="releaseItems.length" v-model="facility.release_mode" :disabled="!addFacility" :items="releaseItems"
               item-title="label" item-value="key" label="Release" prepend-inner-icon="mdi-source-branch" variant="outlined"
               density="comfortable" class="mb-3"
-              :hint="`Which build of the ERP this facility's users get. ${selectedTargetLabel}'s releases are set up on the Systems page.`"
+              :hint="`Which build of the HMIS this facility's users get. ${selectedTargetLabel}'s releases are set up on the Systems page.`"
               persistent-hint />
 
             <h4 class="text-subtitle-1 font-weight-medium mt-4 mb-2">Bed Occupancy</h4>

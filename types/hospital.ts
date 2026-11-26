@@ -189,6 +189,23 @@ export interface SystemRelease {
   notes: string | null
   active: boolean
   protected: boolean
+  // Whether facilities can be moved to it from a hospital's page.
+  selectable?: boolean
+  // The system's default release (regular): only facilities on it can be moved.
+  default?: boolean
+}
+
+// A terminal hospital's facility, as core-service has it. code is its code
+// there (typed to confirm a release change); release_mode and code are
+// absent on a core-service that predates releases.
+export interface TerminalFacility {
+  id: number
+  name: string
+  code?: string | null
+  mfl_code: string | null
+  status: string | null
+  release_mode?: string | null
+  created_at?: string | null
 }
 
 // GET /hospitals/terminal/{target}/{coreOrgId} — one terminal hospital as
@@ -218,7 +235,7 @@ export interface TerminalHospitalDetail {
     created_at?: string | null
     updated_at?: string | null
   }
-  facilities: { id: number; name: string; mfl_code: string | null; status: string | null; release_mode?: string | null; created_at?: string | null }[] | null
+  facilities: TerminalFacility[] | null
   users: { total: number; active: number } | null
   admins: {
     id: number; name: string; username: string | null; email: string | null

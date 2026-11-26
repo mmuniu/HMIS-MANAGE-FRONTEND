@@ -54,13 +54,19 @@ export interface V3ReleaseRow {
   active: boolean
   // "regular": can't be removed or retired.
   protected: boolean
+  // Whether facilities can be moved to it from a hospital's page. Unlike a
+  // retired release it stays in use; it just isn't offered there.
+  selectable: boolean
+  // The system's default release (regular): facilities start on it, and
+  // only a facility on it can be moved.
+  default: boolean
   // Facilities registered here that are on it (only shown by the Systems page).
   facilities?: number
   v3_target_label?: string
 }
 
 // Whether the system's core-service holds the release app URLs saved here
-// (it gives them out at sign-in, and the ERP frontend redirects to them).
+// (it gives them out at sign-in, and the HMIS frontend redirects to them).
 // synced | pending (not sent yet) | failed (sending didn't work) |
 // unavailable (core-service unreachable or too old).
 export interface ReleaseCoreSync {
@@ -68,7 +74,7 @@ export interface ReleaseCoreSync {
   message: string | null
 }
 
-export type V3ReleaseInput = Partial<Pick<V3ReleaseRow, 'key' | 'label' | 'app_url' | 'cookie_domain' | 'notes' | 'active'>>
+export type V3ReleaseInput = Partial<Pick<V3ReleaseRow, 'key' | 'label' | 'app_url' | 'cookie_domain' | 'notes' | 'active' | 'selectable'>>
 
 export function useV3TargetsApi() {
   const { $axios } = useNuxtApp()

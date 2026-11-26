@@ -197,7 +197,7 @@ onMounted(load)
     <v-card-item>
       <v-card-title>v3 stacks &amp; connections</v-card-title>
       <v-card-subtitle class="text-wrap">
-        The v3 ERP stacks hospitals can be provisioned into, picked per hospital when it's registered.
+        The v3 HMIS stacks hospitals can be provisioned into, picked per hospital when it's registered.
         Values set here override the server's .env.
       </v-card-subtitle>
       <template #append>

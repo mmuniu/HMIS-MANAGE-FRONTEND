@@ -6,7 +6,7 @@ import { useHospitalsStore } from '@/stores/hospitals'
 import { useAuthStore } from '@/stores/auth'
 import { useDeploymentsStore } from '@/stores/deployments'
 import { useHospitalsApi } from '@/composables/useHospitalsApi'
-import { STATUS_COLOR, TIER_COLOR, BILLING_COLOR, type HospitalAdminUser, type HospitalFacility } from '@/types/hospital'
+import { STATUS_COLOR, TIER_COLOR, BILLING_COLOR, type HospitalAdminUser, type HospitalFacility, type TerminalFacility } from '@/types/hospital'
 import type { Deployment } from '@/types/deployment'
 import ApiCredentialsCard from '@/components/hospitals/ApiCredentialsCard.vue'
 import AddFacilityDialog from '@/components/hospitals/AddFacilityDialog.vue'
@@ -34,13 +34,26 @@ const hospitalsApi = useHospitalsApi()
 const releasesLive = ref<boolean | null>(null)
 const releasesMessage = ref('')
 const savingReleaseFor = ref<string | null>(null)
+// The organization's facilities in core-service that are not registered here
+// (added in the HMIS itself). They come with the releases, from core-service.
+const coreOnlyFacilities = ref<TerminalFacility[]>([])
+const RELEASE_HINT = 'Which build of the HMIS this facility gets. It can be moved from the default release once; that takes effect at the next sign-in.'
 
-// The system's active releases, plus the facility's current one when it is
-// retired or not defined here (so the switch can still show it).
-function releaseItemsFor(f: HospitalFacility) {
+// Only a facility on the system's default release (regular) can be moved,
+// and only to a release marked selectable on the Systems page.
+const defaultRelease = computed(() =>
+  store.releases.find((r) => r.default && r.v3_target === h.value?.v3_target)?.key ?? 'regular')
+type OnRelease = { release_mode?: string | null }
+const releaseLocked = (f: OnRelease) => (f.release_mode || 'regular') !== defaultRelease.value
+const lockedHint = (f: OnRelease) =>
+  `On the ${releaseLabel(f.release_mode || undefined)} release. Only a facility on the default release (${releaseLabel(defaultRelease.value)}) can be moved.`
+
+// The releases a facility can be moved to, plus its current one (so the
+// switch can still show it).
+function releaseItemsFor(f: OnRelease) {
   const current = f.release_mode || 'regular'
   const items = store.releases
-    .filter((r) => r.v3_target === h.value?.v3_target && (r.active || r.key === current))
+    .filter((r) => r.v3_target === h.value?.v3_target && (r.key === current || (r.active && r.selectable !== false && !r.default)))
     .map((r) => ({ key: r.key, label: r.active ? r.label : `${r.label} (retired)` }))
   if (!items.some((r) => r.key === current)) items.push({ key: current, label: current })
   return items
@@ -49,6 +62,7 @@ function releaseItemsFor(f: HospitalFacility) {
 async function syncFacilityReleases(orgId: string) {
   releasesLive.value = null
   releasesMessage.value = ''
+  coreOnlyFacilities.value = []
   try {
     const res = await hospitalsApi.getFacilityReleases(orgId)
     if (id.value !== orgId || !store.current) return
@@ -59,6 +73,7 @@ async function syncFacilityReleases(orgId: string) {
         f.core_code = row.core_code
       }
     }
+    coreOnlyFacilities.value = res.unregistered ?? []
     releasesLive.value = res.live
     releasesMessage.value = res.message ?? ''
   } catch {
@@ -72,16 +87,19 @@ async function syncFacilityReleases(orgId: string) {
 // core-service the operator must type its code there (checked by the API
 // against core-service), so the wrong facility isn't moved by a slip.
 const releaseDialog = ref(false)
-const releaseTarget = ref<{ facility: HospitalFacility; mode: string } | null>(null)
+// facility: one registered here; coreOnly: one that is only in core-service.
+const releaseTarget = ref<{ name: string; mode: string; facility?: HospitalFacility; coreOnly?: TerminalFacility } | null>(null)
 const releaseCode = ref('')
 const releaseCodeError = ref('')
 const releaseError = ref('')
 
-const releaseNeedsCode = computed(() => !!releaseTarget.value?.facility.core_facility_id)
+const releaseNeedsCode = computed(() => !!(releaseTarget.value?.coreOnly || releaseTarget.value?.facility?.core_facility_id))
 
-function changeRelease(f: HospitalFacility, mode: string) {
-  if (!mode || mode === (f.release_mode || 'regular')) return
-  releaseTarget.value = { facility: f, mode }
+function changeRelease(f: HospitalFacility | TerminalFacility, mode: string, coreOnly = false) {
+  if (!mode || mode === (f.release_mode || 'regular') || releaseLocked(f)) return
+  releaseTarget.value = coreOnly
+    ? { name: f.name, mode, coreOnly: f as TerminalFacility }
+    : { name: f.name, mode, facility: f as HospitalFacility }
   releaseCode.value = ''
   releaseCodeError.value = ''
   releaseError.value = ''
@@ -91,7 +109,7 @@ function changeRelease(f: HospitalFacility, mode: string) {
 async function confirmRelease() {
   const target = releaseTarget.value
   if (!target || savingReleaseFor.value) return
-  const { facility: f, mode } = target
+  const { facility: f, coreOnly, mode } = target
 
   const code = releaseCode.value.trim()
   if (releaseNeedsCode.value && !code) {
@@ -99,16 +117,25 @@ async function confirmRelease() {
     return
   }
 
-  savingReleaseFor.value = f.id
+  savingReleaseFor.value = coreOnly ? `core:${coreOnly.id}` : f!.id
   releaseCodeError.value = ''
   releaseError.value = ''
   try {
-    const res = await hospitalsApi.setFacilityRelease(id.value, f.id, mode, releaseNeedsCode.value ? code : null)
-    f.release_mode = res.data.release_mode
+    if (coreOnly) {
+      // Not registered here: changed straight in core-service, as for a terminal hospital.
+      const res = await hospitalsApi.setTerminalFacilityRelease(h.value!.v3_target, h.value!.core_org_id!, coreOnly.id, mode, code)
+      coreOnly.release_mode = res.data.release_mode
+      releaseDialog.value = false
+      $showToast(`"${target.name}" is now on the ${releaseLabel(mode)} release.`)
+      return
+    }
+
+    const res = await hospitalsApi.setFacilityRelease(id.value, f!.id, mode, releaseNeedsCode.value ? code : null)
+    f!.release_mode = res.data.release_mode
     releaseDialog.value = false
     $showToast(res.core_updated
-      ? `"${f.name}" is now on the ${releaseLabel(mode)} release.`
-      : `"${f.name}" will be on the ${releaseLabel(mode)} release once it is in core-service.`)
+      ? `"${target.name}" is now on the ${releaseLabel(mode)} release.`
+      : `"${target.name}" will be on the ${releaseLabel(mode)} release once it is in core-service.`)
   } catch (e: any) {
     const errors = e?.response?.data?.errors ?? {}
     releaseCodeError.value = errors.facility_code?.[0] ?? ''
@@ -591,7 +618,7 @@ watch(
           Add facility
         </v-btn>
       </div>
-      <v-row v-if="h.facilities?.length">
+      <v-row v-if="h.facilities?.length || coreOnlyFacilities.length">
         <v-col v-for="f in h.facilities" :key="f.id" cols="12" md="6">
           <v-card rounded="lg" elevation="10" class="h-100">
             <v-card-item>
@@ -621,8 +648,8 @@ watch(
                 <v-select
                   :model-value="f.release_mode || 'regular'" :items="releaseItemsFor(f)" item-title="label" item-value="key"
                   label="Release" prepend-inner-icon="mdi-source-branch" variant="outlined" density="compact"
-                  :loading="savingReleaseFor === f.id || releasesLive === null" :disabled="savingReleaseFor !== null"
-                  :hint="releasesLive === false ? `${releasesMessage} Showing the last value saved here.` : 'Which build of the ERP this facility gets. Changing it takes effect at the next sign-in.'"
+                  :loading="savingReleaseFor === f.id || releasesLive === null" :disabled="savingReleaseFor !== null || releaseLocked(f)"
+                  :hint="releasesLive === false ? `${releasesMessage} Showing the last value saved here.` : releaseLocked(f) ? lockedHint(f) : RELEASE_HINT"
                   persistent-hint class="mt-2 mb-2" style="max-width: 420px"
                   @update:model-value="changeRelease(f, $event)"
                 />
@@ -645,6 +672,36 @@ watch(
                   <v-list-item title="Identifier" :subtitle="f.facility_administrator_identifier || '—'" />
                 </v-list>
               </template>
+            </v-card-text>
+          </v-card>
+        </v-col>
+
+        <!-- The organization's other facilities: in the HMIS (core-service), not registered here -->
+        <v-col v-for="f in coreOnlyFacilities" :key="`core-${f.id}`" cols="12" md="6">
+          <v-card rounded="lg" elevation="10" class="h-100">
+            <v-card-item>
+              <v-card-title><v-icon icon="mdi-hospital-building" class="mr-2" />{{ f.name }}</v-card-title>
+              <template #append>
+                <v-chip color="info" size="small" variant="tonal" label>HMIS only</v-chip>
+              </template>
+            </v-card-item>
+            <v-card-text>
+              <v-list density="compact" lines="two">
+                <v-list-item title="Core facility ID" :subtitle="String(f.id)" />
+                <v-list-item title="Core facility code" :subtitle="f.code || '—'" />
+                <v-list-item title="Facility code" :subtitle="f.mfl_code || '—'" />
+                <v-list-item title="Status" :subtitle="f.status || '—'" />
+              </v-list>
+
+              <v-select
+                v-if="f.release_mode !== undefined"
+                :model-value="f.release_mode || 'regular'" :items="releaseItemsFor(f)" item-title="label" item-value="key"
+                label="Release" prepend-inner-icon="mdi-source-branch" variant="outlined" density="compact"
+                :loading="savingReleaseFor === `core:${f.id}`" :disabled="savingReleaseFor !== null || releaseLocked(f)"
+                :hint="releaseLocked(f) ? lockedHint(f) : RELEASE_HINT"
+                persistent-hint class="mt-2 mb-2" style="max-width: 420px"
+                @update:model-value="changeRelease(f, $event, true)"
+              />
             </v-card-text>
           </v-card>
         </v-col>
@@ -784,14 +841,14 @@ watch(
         <v-card-title class="text-h6">Move to the {{ releaseLabel(releaseTarget.mode) }} release?</v-card-title>
         <v-card-text>
           <p class="mb-3">
-            Move <strong>"{{ releaseTarget.facility.name }}"</strong> to the
+            Move <strong>"{{ releaseTarget.name }}"</strong> to the
             <strong>{{ releaseLabel(releaseTarget.mode) }}</strong> release? Its users get that build the next
             time they sign in.
           </p>
-          <v-alert type="warning" variant="tonal" density="compact" class="mb-4" text="Please note that this is irreversible." />
+          <v-alert type="warning" variant="tonal" density="compact" class="mb-4" text="Please note that this is irreversible: once moved, the facility can't be moved to another release from here." />
           <v-text-field
             v-if="releaseNeedsCode" v-model="releaseCode" label="Facility code" autofocus
-            hint="Type this facility's code in core-service to confirm." persistent-hint
+            hint="Type this facility's Facility code or its Core facility code to confirm." persistent-hint
             :error-messages="releaseCodeError" :disabled="savingReleaseFor !== null"
             prepend-inner-icon="mdi-shield-key-outline" variant="outlined" density="comfortable"
             autocomplete="off" @keyup.enter="confirmRelease"

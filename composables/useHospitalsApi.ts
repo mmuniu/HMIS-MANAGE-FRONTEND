@@ -108,6 +108,16 @@ export function useHospitalsApi() {
     return data
   }
 
+  // Move a terminal hospital's facility to another release, straight in its
+  // system's core-service. facilityCode is the facility's code there.
+  async function setTerminalFacilityRelease(target: string, coreOrgId: string | number, coreFacilityId: string | number, releaseMode: string, facilityCode: string): Promise<{ data: { id: string; release_mode: string } }> {
+    const { data } = await $axios.patch(
+      `/v1/platform/hospitals/terminal/${encodeURIComponent(target)}/${encodeURIComponent(String(coreOrgId))}/facilities/${encodeURIComponent(String(coreFacilityId))}/release`,
+      { release_mode: releaseMode, facility_code: facilityCode },
+    )
+    return data
+  }
+
   // Each facility's release as core-service has it now. live = false when
   // core-service couldn't be asked: the values hmis-manage stored come back.
   async function getFacilityReleases(id: string): Promise<{ data: { facility_id: string; release_mode: string; core_code: string | null }[]; live: boolean; message: string | null }> {
@@ -206,5 +216,5 @@ export function useHospitalsApi() {
     return data.data
   }
 
-  return { list, listTerminal, showTerminal, show, create, update, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, linkAdmin, updateAdmin, addAdmin, addFacility, provisionFacility, getFacilityReleases, setFacilityRelease, linkCore, removeAdmin, searchFacility, getCoreOrganizations, getV3Targets, getReleases, previewMoveStack, moveStack, getStackMoves }
+  return { list, listTerminal, showTerminal, setTerminalFacilityRelease, show, create, update, retryProvisioning, seedReferenceData, getSeedingStatus, provisionAdmin, linkAdmin, updateAdmin, addAdmin, addFacility, provisionFacility, getFacilityReleases, setFacilityRelease, linkCore, removeAdmin, searchFacility, getCoreOrganizations, getV3Targets, getReleases, previewMoveStack, moveStack, getStackMoves }
 }

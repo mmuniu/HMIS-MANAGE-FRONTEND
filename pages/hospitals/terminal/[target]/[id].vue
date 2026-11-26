@@ -4,17 +4,20 @@ import { useRoute, useRouter } from 'vue-router'
 import { useNuxtApp } from '#app'
 import { useHospitalsApi } from '@/composables/useHospitalsApi'
 import { useAuthStore } from '@/stores/auth'
-import type { TerminalHospitalDetail } from '@/types/hospital'
+import { useHospitalsStore } from '@/stores/hospitals'
+import type { TerminalFacility, TerminalHospitalDetail } from '@/types/hospital'
 
 // A terminal hospital: a tenant on one v3 stack's core-service that has no
-// hospital in hmis-manage. Read-only — everything here comes from that
-// stack's core-service. "Register in HMIS Manage" adopts it as a normal
+// hospital in hmis-manage. Everything here comes from that stack's
+// core-service and is read-only, except each facility's release, which is
+// changed there directly. "Register in HMIS Manage" adopts it as a normal
 // hospital through the register wizard (existing organization pre-picked).
 
 const route = useRoute()
 const router = useRouter()
 const api = useHospitalsApi()
 const auth = useAuthStore()
+const store = useHospitalsStore()
 const { $showToast } = useNuxtApp()
 
 const target = computed(() => String(route.params.target))
@@ -66,6 +69,83 @@ function fmt(iso?: string | null) {
 }
 
 const statusColor = (s?: string | null) => (s === 'active' ? 'success' : s ? 'grey' : undefined)
+
+// Each facility's release switch. The releases are the ones defined for this
+// system on the Systems page; the change is made in core-service, confirmed
+// by typing the facility's code there.
+if (auth.isPlatformUser && !store.releases.length) store.fetchReleases()
+
+const releaseLabel = (key?: string | null) =>
+  store.releases.find((r) => r.key === (key || 'regular') && r.v3_target === t.value?.v3_target)?.label ?? (key || 'regular')
+
+// A core-service that reports no release for its facilities predates
+// releases, and can't change one either.
+const canSwitchRelease = (f: TerminalFacility) => auth.isPlatformUser && f.release_mode !== undefined
+
+// The system's active releases, plus the facility's current one when it is
+// retired or not defined here (so the switch can still show it).
+function releaseItemsFor(f: TerminalFacility) {
+  const current = f.release_mode || 'regular'
+  const items = store.releases
+    .filter((r) => r.v3_target === t.value?.v3_target && (r.active || r.key === current))
+    .map((r) => ({ key: r.key, label: r.active ? r.label : `${r.label} (retired)` }))
+  if (!items.some((r) => r.key === current)) items.push({ key: current, label: current })
+  return items
+}
+
+const releaseDialog = ref(false)
+const releaseTarget = ref<{ facility: TerminalFacility; mode: string } | null>(null)
+const releaseCode = ref('')
+const releaseCodeError = ref('')
+const releaseError = ref('')
+const savingRelease = ref(false)
+// Re-keys the selects so one snaps back to the current release on cancel.
+const releaseSelectKey = ref(0)
+
+function changeRelease(f: TerminalFacility, mode: string) {
+  if (!mode || mode === (f.release_mode || 'regular')) return
+  releaseTarget.value = { facility: f, mode }
+  releaseCode.value = ''
+  releaseCodeError.value = ''
+  releaseError.value = ''
+  releaseDialog.value = true
+}
+
+function closeReleaseDialog() {
+  if (savingRelease.value) return
+  releaseDialog.value = false
+  releaseSelectKey.value++
+}
+
+async function confirmRelease() {
+  const chosen = releaseTarget.value
+  if (!chosen || savingRelease.value) return
+  const { facility: f, mode } = chosen
+  const code = releaseCode.value.trim()
+  if (!code) {
+    releaseCodeError.value = 'Enter the facility code to confirm the change.'
+    return
+  }
+
+  savingRelease.value = true
+  releaseCodeError.value = ''
+  releaseError.value = ''
+  try {
+    const res = await api.setTerminalFacilityRelease(target.value, coreOrgId.value, f.id, mode, code)
+    f.release_mode = res.data.release_mode
+    releaseDialog.value = false
+    $showToast(`"${f.name}" is now on the ${releaseLabel(mode)} release.`)
+  } catch (e: any) {
+    const errors = e?.response?.data?.errors ?? {}
+    releaseCodeError.value = errors.facility_code?.[0] ?? ''
+    releaseError.value = releaseCodeError.value
+      ? ''
+      : errors.release_mode?.[0] || e?.response?.data?.message || 'The release was not changed.'
+  } finally {
+    savingRelease.value = false
+    releaseSelectKey.value++
+  }
+}
 
 onMounted(load)
 </script>
@@ -206,13 +286,24 @@ onMounted(load)
           </v-card-item>
           <v-table density="comfortable">
             <thead>
-              <tr><th>Facility</th><th>Facility ID</th><th>FID (MFL code)</th><th>Status</th><th>Created</th></tr>
+              <tr><th>Facility</th><th>Facility ID</th><th>Facility code</th><th>FID (MFL code)</th><th>Release</th><th>Status</th><th>Created</th></tr>
             </thead>
             <tbody>
               <tr v-for="f in t.facilities ?? []" :key="f.id">
                 <td class="font-weight-medium">{{ f.name }}</td>
                 <td class="font-mono">{{ f.id }}</td>
+                <td class="font-mono">{{ f.code || '—' }}</td>
                 <td>{{ f.mfl_code || '—' }}</td>
+                <td>
+                  <v-select
+                    v-if="canSwitchRelease(f)" :key="`${f.id}-${releaseSelectKey}`"
+                    :model-value="f.release_mode || 'regular'" :items="releaseItemsFor(f)" item-title="label" item-value="key"
+                    :aria-label="`Release of ${f.name}`" prepend-inner-icon="mdi-source-branch" variant="outlined" density="compact"
+                    hide-details :disabled="savingRelease" class="my-2" style="min-width: 170px; max-width: 240px"
+                    @update:model-value="changeRelease(f, $event)"
+                  />
+                  <span v-else>{{ f.release_mode ? releaseLabel(f.release_mode) : '—' }}</span>
+                </td>
                 <td>
                   <v-chip v-if="f.status" :color="statusColor(f.status)" size="small" variant="tonal" label>{{ f.status }}</v-chip>
                   <span v-else>—</span>
@@ -220,7 +311,7 @@ onMounted(load)
                 <td>{{ fmt(f.created_at) }}</td>
               </tr>
               <tr v-if="!t.facilities?.length">
-                <td colspan="5" class="text-center textSecondary pa-6">No facilities on core-service.</td>
+                <td colspan="7" class="text-center textSecondary pa-6">No facilities on core-service.</td>
               </tr>
             </tbody>
           </v-table>
@@ -260,6 +351,36 @@ onMounted(load)
         </v-card>
       </template>
     </template>
+
+    <!-- Move a facility to another release: confirmed with its facility code -->
+    <v-dialog :model-value="releaseDialog" max-width="480" :persistent="savingRelease" @update:model-value="closeReleaseDialog">
+      <v-card v-if="releaseTarget" rounded="lg">
+        <v-card-title class="text-h6">Move to the {{ releaseLabel(releaseTarget.mode) }} release?</v-card-title>
+        <v-card-text>
+          <p class="mb-3">
+            Move <strong>"{{ releaseTarget.facility.name }}"</strong> to the
+            <strong>{{ releaseLabel(releaseTarget.mode) }}</strong> release? Its users get that build the next
+            time they sign in.
+          </p>
+          <v-alert type="warning" variant="tonal" density="compact" class="mb-4" text="Please note that this is irreversible." />
+          <v-text-field
+            v-model="releaseCode" label="Facility code" autofocus
+            hint="Type this facility's code in core-service to confirm." persistent-hint
+            :error-messages="releaseCodeError" :disabled="savingRelease"
+            prepend-inner-icon="mdi-shield-key-outline" variant="outlined" density="comfortable"
+            autocomplete="off" @keyup.enter="confirmRelease"
+          />
+          <v-alert v-if="releaseError" type="error" variant="tonal" density="compact" class="mt-3" :text="releaseError" />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="savingRelease" @click="closeReleaseDialog">Cancel</v-btn>
+          <v-btn color="primary" variant="flat" :loading="savingRelease" :disabled="!releaseCode.trim()" @click="confirmRelease">
+            Move facility
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 

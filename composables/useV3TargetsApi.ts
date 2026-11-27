@@ -5,7 +5,7 @@ import { useNuxtApp } from '#app'
 // Secrets are write-only: the API only says whether one is set and its
 // last 4 characters.
 
-export type V3ServiceKey = 'core' | 'evaluation' | 'inventory'
+export type V3ServiceKey = 'core' | 'evaluation' | 'inventory' | 'integration'
 
 export interface V3ServiceConnection {
   url: string | null

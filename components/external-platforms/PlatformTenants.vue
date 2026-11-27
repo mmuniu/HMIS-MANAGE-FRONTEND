@@ -1,0 +1,319 @@
+<script setup lang="ts">
+import { ref, computed, watch, onMounted } from 'vue'
+import { useNuxtApp } from '#app'
+import { useHospitalsApi } from '@/composables/useHospitalsApi'
+import { useExternalPlatformsApi, type PlatformTenant, type TenantStatus } from '@/composables/useExternalPlatformsApi'
+import type { Hospital } from '@/types/hospital'
+import TenantRequestDetails from '@/components/external-platforms/TenantRequestDetails.vue'
+
+// The platform's own tenants, each mapped to a hospital here (that
+// hospital's core-service organization). A token acts for a tenant only while
+// it is active and mapped; the platform names it per request in X-Tenant-Id.
+
+// system: the v3 stack the platform is integrated to — its tenants are hospitals on that system.
+const props = defineProps<{ platformId: string; platformName: string; system: string; systemLabel: string }>()
+const emit = defineEmits<{ (e: 'loaded', tenants: PlatformTenant[]): void }>()
+
+const api = useExternalPlatformsApi()
+const hospitalsApi = useHospitalsApi()
+const { $showToast } = useNuxtApp()
+
+const STATUSES: { value: TenantStatus; title: string; color: string; hint: string }[] = [
+  { value: 'active', title: 'Active', color: 'success', hint: 'Requests are accepted for this tenant' },
+  { value: 'pending', title: 'Pending', color: 'warning', hint: 'Waiting for approval; requests are refused' },
+  { value: 'suspended', title: 'Suspended', color: 'error', hint: 'Requests are refused' },
+]
+const statusOf = (s: TenantStatus) => STATUSES.find(x => x.value === s) ?? STATUSES[1]
+
+const loading = ref(true)
+const loadError = ref('')
+const tenants = ref<PlatformTenant[]>([])
+
+async function load() {
+  loading.value = true
+  loadError.value = ''
+  try {
+    tenants.value = await api.tenants(props.platformId)
+    emit('loaded', tenants.value)
+  } catch (e: any) {
+    loadError.value = e?.response?.data?.message || 'Failed to load the tenants.'
+  } finally {
+    loading.value = false
+  }
+}
+
+const activeCount = computed(() => tenants.value.filter(t => t.ready).length)
+
+// Tenants the platform asked for itself that still wait for someone here.
+const isRequest = (t: PlatformTenant) => !!t.registration
+const waitingRequests = computed(() => tenants.value.filter(t => isRequest(t) && t.status === 'pending'))
+const shortDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString() : '')
+
+// ── Hospital search (only hospitals provisioned in core-service can be mapped)
+interface HospitalOption { id: string; title: string; disabled: boolean }
+const hospitalSearch = ref('')
+const hospitalOptions = ref<HospitalOption[]>([])
+const searchingHospitals = ref(false)
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+
+function toOption(h: Hospital): HospitalOption {
+  const name = h.display_name || h.name
+  return h.core_org_id
+    ? { id: h.id, title: name, disabled: false }
+    : { id: h.id, title: `${name} (not provisioned in core yet)`, disabled: true }
+}
+
+async function searchHospitals(search: string) {
+  searchingHospitals.value = true
+  try {
+    const { data } = await hospitalsApi.list({ search: search || undefined, per_page: 20, target: props.system })
+    const found = data.map(toOption)
+    // Keep the chosen hospital in the list so its name still shows.
+    const chosen = hospitalOptions.value.find(o => o.id === form.value.hospital_id)
+    hospitalOptions.value = chosen && !found.some(o => o.id === chosen.id) ? [chosen, ...found] : found
+  } catch {
+    // The field still works with what is listed.
+  } finally {
+    searchingHospitals.value = false
+  }
+}
+
+watch(hospitalSearch, (q) => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => searchHospitals(q ?? ''), 300)
+})
+
+// ── Add / edit ──────────────────────────────────────────────────────────────
+const dialog = ref(false)
+const editing = ref<PlatformTenant | null>(null)
+const saving = ref(false)
+const errors = ref<Record<string, string[]>>({})
+const form = ref({ tenant_id: '', name: '', hospital_id: null as string | null, facility_id: null as string | null, status: 'active' as TenantStatus })
+
+// The chosen hospital's facilities; only those provisioned in core can be picked.
+const facilityOptions = ref<{ id: string; title: string; disabled: boolean }[]>([])
+const loadingFacilities = ref(false)
+async function loadFacilities(hospitalId: string | null) {
+  facilityOptions.value = []
+  if (!hospitalId) return
+  loadingFacilities.value = true
+  try {
+    const detail = await hospitalsApi.show(hospitalId)
+    facilityOptions.value = detail.facilities.map(f => ({
+      id: f.id,
+      title: f.core_facility_id ? f.name : `${f.name} (not provisioned in core yet)`,
+      disabled: !f.core_facility_id,
+    }))
+  } catch {
+    // Leave it empty: the tenant then acts at the hospital's only facility.
+  } finally {
+    loadingFacilities.value = false
+  }
+}
+// Facilities belong to a hospital: choosing another one clears the facility.
+const facilitiesFor = ref<string | null>(null)
+watch(() => form.value.hospital_id, (id) => {
+  if (id === facilitiesFor.value) return
+  facilitiesFor.value = id
+  form.value.facility_id = null
+  loadFacilities(id)
+})
+
+function openTenant(t: PlatformTenant | null = null) {
+  editing.value = t
+  form.value = t
+    ? { tenant_id: t.tenant_id, name: t.name ?? '', hospital_id: t.hospital?.id ?? null, facility_id: t.facility?.id ?? null, status: t.status }
+    : { tenant_id: '', name: '', hospital_id: null, facility_id: null, status: 'active' }
+  facilitiesFor.value = form.value.hospital_id
+  loadFacilities(form.value.hospital_id)
+  hospitalOptions.value = t?.hospital ? [{ id: t.hospital.id, title: t.hospital.name, disabled: false }] : []
+  errors.value = {}
+  dialog.value = true
+  // A request with no hospital yet: look for one under the name it was asked for.
+  searchHospitals(!t?.hospital && t?.registration ? t.registration.name : '')
+}
+
+// Approving a request: the hospital is set up first (provisioned in core), then chosen here.
+const editingRequest = computed(() => (editing.value?.registration ? editing.value : null))
+
+const tenantIdValid = computed(() => /^[A-Za-z0-9._:-]{1,100}$/.test(form.value.tenant_id.trim()))
+const needsHospital = computed(() => form.value.status === 'active' && !form.value.hospital_id)
+
+async function save() {
+  const tenantId = form.value.tenant_id.trim()
+  saving.value = true
+  errors.value = {}
+  try {
+    const saved = await api.saveTenant(props.platformId, tenantId, {
+      name: form.value.name.trim() || null,
+      hospital_id: form.value.hospital_id,
+      facility_id: form.value.hospital_id ? form.value.facility_id : null,
+      status: form.value.status,
+    })
+    dialog.value = false
+    $showToast(saved.status === 'active' && !saved.ready
+      ? `Tenant saved, but it is not ready yet: ${saved.system_user_error || 'its system user could not be set up'}.`
+      : (editing.value ? 'Tenant saved.' : 'Tenant added.'))
+    await load()
+  } catch (e: any) {
+    errors.value = e?.response?.data?.errors ?? {}
+    $showToast(e?.response?.data?.message || 'Failed to save the tenant.')
+  } finally {
+    saving.value = false
+  }
+}
+
+const removing = ref<string | null>(null)
+async function remove(t: PlatformTenant) {
+  if (!confirm(`Remove tenant ${t.tenant_id}${t.name ? ` (${t.name})` : ''}? ${props.platformName} can no longer make requests for it.`)) return
+  removing.value = t.tenant_id
+  try {
+    await api.removeTenant(props.platformId, t.tenant_id)
+    $showToast('Tenant removed.')
+    await load()
+  } catch (e: any) {
+    $showToast(e?.response?.data?.message || 'Failed to remove the tenant.')
+  } finally {
+    removing.value = null
+  }
+}
+
+onMounted(load)
+defineExpose({ load })
+</script>
+
+<template>
+  <v-card rounded="lg" elevation="10">
+    <v-card-text>
+      <div class="d-flex align-center justify-space-between mb-1 ga-2">
+        <h3 class="text-h6 font-weight-semibold">Tenants</h3>
+        <v-btn color="primary" variant="flat" size="small" prepend-icon="mdi-plus" :disabled="!!loadError" @click="openTenant()">
+          Add tenant
+        </v-btn>
+      </div>
+      <p class="text-body-2 textSecondary mb-4">
+        {{ platformName }}'s own tenants and the hospital each one is registered as here. Requests are accepted only for active
+        tenants with a hospital. Only hospitals on {{ systemLabel }}, the system this platform is integrated to, can be chosen.
+        <template v-if="tenants.length">{{ activeCount }} of {{ tenants.length }} ready.</template>
+      </p>
+
+      <v-alert v-if="!loading && waitingRequests.length" type="warning" variant="tonal" density="compact" class="mb-4"
+        icon="mdi-inbox-arrow-down">
+        {{ platformName }} asked for {{ waitingRequests.length }} tenant{{ waitingRequests.length === 1 ? '' : 's' }} waiting for approval.
+        Review each one: set up its hospital on {{ systemLabel }}, then choose it here and make the tenant active.
+      </v-alert>
+
+      <v-progress-linear v-if="loading" indeterminate color="primary" class="mb-3" />
+      <v-alert v-else-if="loadError" type="error" variant="tonal">{{ loadError }}</v-alert>
+      <v-alert v-else-if="!tenants.length" type="info" variant="tonal">
+        No tenants yet. Add each of {{ platformName }}'s tenants by its own id, and choose the hospital it is here.
+      </v-alert>
+
+      <v-table v-else density="comfortable">
+        <thead>
+          <tr>
+            <th>Their tenant id</th>
+            <th>Name</th>
+            <th>Hospital here</th>
+            <th>Status</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="t in tenants" :key="t.tenant_id">
+            <td><code>{{ t.tenant_id }}</code></td>
+            <td>
+              {{ t.name || '—' }}
+              <div v-if="isRequest(t)" class="text-caption textSecondary">
+                <v-icon icon="mdi-inbox-arrow-down" size="x-small" /> Requested {{ shortDate(t.requested_at) }}
+              </div>
+            </td>
+            <td>
+              <NuxtLink v-if="t.hospital" :to="`/hospitals/${t.hospital.id}`">{{ t.hospital.name }}</NuxtLink>
+              <span v-else-if="t.organization_id" class="textSecondary">Organization {{ t.organization_id }} (not in this console)</span>
+              <span v-else class="textSecondary">Not mapped</span>
+              <div v-if="t.facility" class="text-caption textSecondary">{{ t.facility.name }}</div>
+            </td>
+            <td>
+              <v-chip :color="statusOf(t.status).color" size="x-small" variant="tonal" label :title="statusOf(t.status).hint">
+                {{ statusOf(t.status).title }}
+              </v-chip>
+              <div v-if="t.status === 'active'" class="text-caption mt-1" :class="t.ready ? 'text-success' : 'text-error'">
+                {{ t.ready ? 'Ready' : `Not ready: ${t.system_user_error || 'system user not set up'}` }}
+              </div>
+            </td>
+            <td class="text-right text-no-wrap">
+              <v-btn v-if="isRequest(t) && t.status === 'pending'" size="small" variant="tonal" color="warning" class="mr-1"
+                prepend-icon="mdi-clipboard-check-outline" @click="openTenant(t)">
+                Review
+              </v-btn>
+              <v-btn v-else icon="mdi-pencil" size="small" variant="text" :aria-label="`Edit tenant ${t.tenant_id}`" @click="openTenant(t)" />
+              <v-btn icon="mdi-delete" size="small" variant="text" color="error" :aria-label="`Remove tenant ${t.tenant_id}`"
+                :loading="removing === t.tenant_id" @click="remove(t)" />
+            </td>
+          </tr>
+        </tbody>
+      </v-table>
+    </v-card-text>
+
+    <!-- Add / edit tenant -->
+    <v-dialog v-model="dialog" :max-width="editingRequest ? 720 : 560" scrollable>
+      <v-card rounded="lg">
+        <v-card-title class="d-flex align-center pa-4 pb-2">
+          {{ editingRequest && editingRequest.status === 'pending' ? 'Review tenant request' : (editing ? 'Edit tenant' : 'Add tenant') }}
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" aria-label="Close" @click="dialog = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+          <template v-if="editingRequest?.registration">
+            <TenantRequestDetails
+              :registration="editingRequest.registration" :requested-at="editingRequest.requested_at"
+              :platform-name="platformName" class="mb-3" />
+            <p v-if="editingRequest.status === 'pending'" class="text-body-2 textSecondary mb-4">
+              To approve: if the hospital isn't on {{ systemLabel }} yet,
+              <NuxtLink to="/hospitals/new" target="_blank">set it up</NuxtLink> (it opens in a new tab), then choose it below
+              and make the tenant active.
+            </p>
+          </template>
+          <v-text-field v-model="form.tenant_id" :label="`${platformName}'s id for this tenant`" placeholder="e.g. T-1042"
+            :readonly="!!editing" :autofocus="!editing" variant="outlined" density="comfortable"
+            :hint="editing ? 'The id cannot change; remove the tenant and add it again instead.' : 'Letters, digits and . _ : - only. The platform sends it in X-Tenant-Id.'"
+            persistent-hint class="mb-3"
+            :error-messages="form.tenant_id && !tenantIdValid ? 'Letters, digits and . _ : - only, up to 100.' : undefined" />
+          <v-text-field v-model="form.name" label="Name" placeholder="e.g. Likoni Clinic" variant="outlined" density="comfortable"
+            :error-messages="errors.name" />
+          <v-autocomplete
+            v-model="form.hospital_id" v-model:search="hospitalSearch"
+            :items="hospitalOptions" item-value="id" item-title="title" item-props
+            :loading="searchingHospitals" no-filter clearable
+            label="Hospital here" placeholder="Search hospitals" variant="outlined" density="comfortable"
+            hint="Only hospitals provisioned in core-service can be chosen." persistent-hint class="mb-3"
+            :error-messages="errors.hospital_id || errors.organization_id" />
+          <v-select
+            v-if="form.hospital_id"
+            v-model="form.facility_id" :items="facilityOptions" item-value="id" item-title="title" item-props clearable
+            :loading="loadingFacilities" label="Facility (optional)" variant="outlined" density="comfortable"
+            hint="Where its requests act. Leave empty if the hospital has one facility." persistent-hint class="mb-3"
+            :error-messages="errors.facility_id" />
+          <p class="text-subtitle-2 font-weight-medium mb-2">Status</p>
+          <v-btn-toggle v-model="form.status" mandatory color="primary" variant="outlined" density="comfortable" divided class="mb-2">
+            <v-btn v-for="s in STATUSES" :key="s.value" :value="s.value" :title="s.hint">{{ s.title }}</v-btn>
+          </v-btn-toggle>
+          <p class="text-caption textSecondary mb-0">{{ statusOf(form.status).hint }}.</p>
+          <v-alert v-if="needsHospital" type="warning" variant="tonal" density="compact" class="mt-3">
+            An active tenant needs the hospital it is registered as.
+          </v-alert>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-4 ga-2">
+          <v-spacer />
+          <v-btn variant="text" @click="dialog = false">Cancel</v-btn>
+          <v-btn color="primary" variant="flat" :loading="saving" :disabled="!tenantIdValid || needsHospital" @click="save">
+            {{ editing ? 'Save tenant' : 'Add tenant' }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+  </v-card>
+</template>

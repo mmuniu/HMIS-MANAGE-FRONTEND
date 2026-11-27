@@ -54,6 +54,14 @@ const sidebarItem: menu[] = [
                 roles: ['system_admin', 'hospital_admin', 'provisioning_admin'],
             },
             {
+                title: 'External Platforms',
+                icon: 'link-circle-line-duotone',
+                to: '/external-platforms',
+                // Other platforms we are integrated to, on their own (not tied
+                // to any hospital). Their configuration holds credentials.
+                roles: ['system_admin'],
+            },
+            {
                 title: 'Users',
                 icon: 'users-group-rounded-line-duotone',
                 to: '/users',

@@ -270,7 +270,7 @@ async function loadOperations() {
   loadingOperations.value = true
   operationsError.value = ''
   try {
-    operations.value = await api.operations()
+    operations.value = await api.operations(platform.value?.v3_target)
   } catch (e: any) {
     operationsError.value = e?.response?.data?.message || 'Could not load the operations.'
   } finally {
@@ -363,6 +363,10 @@ onMounted(load)
             <h2 class="text-h4 font-weight-semibold">{{ platform.name }}</h2>
             <v-chip :color="CATEGORY_COLORS[platform.category] || 'grey'" size="small" variant="tonal" label class="text-capitalize">
               {{ platform.category }}
+            </v-chip>
+            <v-chip size="small" variant="tonal" label prepend-icon="mdi-layers-triple-outline"
+              :title="`Integrated to the ${platform.v3_target_label} system`">
+              {{ platform.v3_target_label }}
             </v-chip>
             <v-chip :color="platform.is_active ? 'success' : 'error'" size="small" variant="tonal" label>
               {{ platform.is_active ? 'Active' : 'Inactive' }}
@@ -508,7 +512,8 @@ onMounted(load)
       </v-window-item>
 
       <v-window-item value="tenants">
-        <PlatformTenants :platform-id="platform.id" :platform-name="platform.name" />
+        <PlatformTenants :platform-id="platform.id" :platform-name="platform.name"
+          :system="platform.v3_target" :system-label="platform.v3_target_label" />
       </v-window-item>
 
       <v-window-item value="requests">

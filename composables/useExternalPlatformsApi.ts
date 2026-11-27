@@ -24,6 +24,9 @@ export interface GatewayOperation { operation: string; description: string }
 // A platform as the list page shows it.
 export interface ExternalPlatformSummary {
   id: string
+  // The system (v3 stack) it is integrated to — chosen when it is added.
+  v3_target: string
+  v3_target_label: string
   name: string
   category: string
   description: string | null
@@ -140,6 +143,8 @@ export interface RequestsPage {
 
 export interface PlatformDetailsPayload {
   id?: string
+  // Only when adding: the system it is integrated to (left out = the default one).
+  v3_target?: string
   name: string
   category: string
   description: string | null
@@ -180,9 +185,10 @@ export function useExternalPlatformsApi() {
     return { ...data.data, integration_service: data.integration_service ?? null }
   }
 
-  // The gateway operations a process can switch on.
-  async function operations(): Promise<GatewayOperation[]> {
-    const { data } = await $axios.get(`${base}/operations`)
+  // The gateway operations a process can switch on, in one system's
+  // integration-service (the platform's).
+  async function operations(system?: string): Promise<GatewayOperation[]> {
+    const { data } = await $axios.get(`${base}/operations`, { params: system ? { system } : {} })
     return data.data
   }
 

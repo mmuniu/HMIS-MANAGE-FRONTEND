@@ -9,7 +9,8 @@ import type { Hospital } from '@/types/hospital'
 // hospital's core-service organization). A token acts for a tenant only while
 // it is active and mapped; the platform names it per request in X-Tenant-Id.
 
-const props = defineProps<{ platformId: string; platformName: string }>()
+// system: the v3 stack the platform is integrated to — its tenants are hospitals on that system.
+const props = defineProps<{ platformId: string; platformName: string; system: string; systemLabel: string }>()
 const emit = defineEmits<{ (e: 'loaded', tenants: PlatformTenant[]): void }>()
 
 const api = useExternalPlatformsApi()
@@ -59,7 +60,7 @@ function toOption(h: Hospital): HospitalOption {
 async function searchHospitals(search: string) {
   searchingHospitals.value = true
   try {
-    const { data } = await hospitalsApi.list({ search: search || undefined, per_page: 20 })
+    const { data } = await hospitalsApi.list({ search: search || undefined, per_page: 20, target: props.system })
     const found = data.map(toOption)
     // Keep the chosen hospital in the list so its name still shows.
     const chosen = hospitalOptions.value.find(o => o.id === form.value.hospital_id)
@@ -182,7 +183,7 @@ defineExpose({ load })
       </div>
       <p class="text-body-2 textSecondary mb-4">
         {{ platformName }}'s own tenants and the hospital each one is registered as here. Requests are accepted only for active
-        tenants with a hospital.
+        tenants with a hospital. Only hospitals on {{ systemLabel }}, the system this platform is integrated to, can be chosen.
         <template v-if="tenants.length">{{ activeCount }} of {{ tenants.length }} ready.</template>
       </p>
 

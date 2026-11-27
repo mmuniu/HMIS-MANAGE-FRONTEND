@@ -19,6 +19,7 @@ const SERVICES: { key: V3ServiceKey; title: string; required: boolean; help: str
   { key: 'core', title: 'Core service', required: true, help: 'Organizations, facilities, users. Required.' },
   { key: 'evaluation', title: 'Evaluation service', required: false, help: 'Procedure catalogue for Seed Facility. Optional.' },
   { key: 'inventory', title: 'Inventory service', required: false, help: 'Product catalogue for Seed Facility. Optional.' },
+  { key: 'integration', title: 'Integration service', required: false, help: 'Holds the credentials, tenants and request log of the external platforms integrated to this system. Optional.' },
 ]
 
 async function load() {
@@ -58,12 +59,12 @@ const formError = ref('')
 const form = ref({
   key: '',
   label: '',
-  services: { core: emptyService(), evaluation: emptyService(), inventory: emptyService() } as Record<V3ServiceKey, ServiceForm>,
+  services: { core: emptyService(), evaluation: emptyService(), inventory: emptyService(), integration: emptyService() } as Record<V3ServiceKey, ServiceForm>,
 })
 
 function openAdd() {
   editing.value = null
-  form.value = { key: '', label: '', services: { core: emptyService(), evaluation: emptyService(), inventory: emptyService() } }
+  form.value = { key: '', label: '', services: { core: emptyService(), evaluation: emptyService(), inventory: emptyService(), integration: emptyService() } }
   tab.value = 'core'
   formError.value = ''
   dialog.value = true
@@ -77,7 +78,7 @@ function openEdit(stack: V3Stack) {
     secret: '',
     timeout: stack.services[k].timeout ?? '',
   })
-  form.value = { key: stack.key, label: stack.label, services: { core: svc('core'), evaluation: svc('evaluation'), inventory: svc('inventory') } }
+  form.value = { key: stack.key, label: stack.label, services: { core: svc('core'), evaluation: svc('evaluation'), inventory: svc('inventory'), integration: svc('integration') } }
   tab.value = 'core'
   formError.value = ''
   dialog.value = true
@@ -180,7 +181,7 @@ const canRemove = computed(() => !!editing.value?.has_overrides || (!!editing.va
 const headers = [
   { title: 'Stack', key: 'label', sortable: false },
   { title: 'Core service', key: 'core', sortable: false },
-  { title: 'Evaluation · Inventory', key: 'optional', sortable: false },
+  { title: 'Optional services', key: 'optional', sortable: false },
   { title: 'Hospitals', key: 'hospitals', sortable: false },
   { title: '', key: 'actions', sortable: false, align: 'end' as const },
 ]
@@ -230,10 +231,10 @@ onMounted(load)
 
       <template #item.optional="{ item }">
         <div class="d-flex ga-1 flex-wrap">
-          <v-chip v-for="s in (['evaluation', 'inventory'] as const)" :key="s" size="x-small" label variant="tonal"
+          <v-chip v-for="s in (['evaluation', 'inventory', 'integration'] as const)" :key="s" size="x-small" label variant="tonal"
             :color="item.services[s].configured ? 'success' : 'grey'"
             :prepend-icon="item.services[s].configured ? 'mdi-check' : 'mdi-minus'">
-            {{ s === 'evaluation' ? 'Evaluation' : 'Inventory' }}
+            {{ s === 'evaluation' ? 'Evaluation' : s === 'inventory' ? 'Inventory' : 'Integration' }}
           </v-chip>
         </div>
       </template>

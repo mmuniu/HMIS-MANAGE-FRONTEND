@@ -25,6 +25,9 @@ const ROLE_ROUTES: { prefix: string; roles: string[] }[] = [
   // Per-environment integration variables in the V3 integration-service —
   // same roles as the backend's TenantIntegrationController::authorize.
   { prefix: '/tenant-integrations', roles: ['system_admin', 'hospital_admin', 'provisioning_admin'] },
+  // Integrations to other platforms, not tied to any hospital — system admin
+  // only, like the backend's external-platforms routes.
+  { prefix: '/external-platforms', roles: ['system_admin'] },
   { prefix: '/my-test-cases', roles: ['developer', 'tester', 'provisioning_admin'] }, // authors' own submissions
   { prefix: '/test-cases/new', roles: ['developer', 'tester', 'provisioning_admin'] }, // authoring only
   { prefix: '/test-cases', roles: ['developer', 'tester', 'qa', 'provisioning_admin'] },

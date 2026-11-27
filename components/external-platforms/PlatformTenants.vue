@@ -4,6 +4,7 @@ import { useNuxtApp } from '#app'
 import { useHospitalsApi } from '@/composables/useHospitalsApi'
 import { useExternalPlatformsApi, type PlatformTenant, type TenantStatus } from '@/composables/useExternalPlatformsApi'
 import type { Hospital } from '@/types/hospital'
+import TenantRequestDetails from '@/components/external-platforms/TenantRequestDetails.vue'
 
 // The platform's own tenants, each mapped to a hospital here (that
 // hospital's core-service organization). A token acts for a tenant only while
@@ -42,6 +43,11 @@ async function load() {
 }
 
 const activeCount = computed(() => tenants.value.filter(t => t.ready).length)
+
+// Tenants the platform asked for itself that still wait for someone here.
+const isRequest = (t: PlatformTenant) => !!t.registration
+const waitingRequests = computed(() => tenants.value.filter(t => isRequest(t) && t.status === 'pending'))
+const shortDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString() : '')
 
 // ── Hospital search (only hospitals provisioned in core-service can be mapped)
 interface HospitalOption { id: string; title: string; disabled: boolean }
@@ -123,8 +129,12 @@ function openTenant(t: PlatformTenant | null = null) {
   hospitalOptions.value = t?.hospital ? [{ id: t.hospital.id, title: t.hospital.name, disabled: false }] : []
   errors.value = {}
   dialog.value = true
-  searchHospitals('')
+  // A request with no hospital yet: look for one under the name it was asked for.
+  searchHospitals(!t?.hospital && t?.registration ? t.registration.name : '')
 }
+
+// Approving a request: the hospital is set up first (provisioned in core), then chosen here.
+const editingRequest = computed(() => (editing.value?.registration ? editing.value : null))
 
 const tenantIdValid = computed(() => /^[A-Za-z0-9._:-]{1,100}$/.test(form.value.tenant_id.trim()))
 const needsHospital = computed(() => form.value.status === 'active' && !form.value.hospital_id)
@@ -187,6 +197,12 @@ defineExpose({ load })
         <template v-if="tenants.length">{{ activeCount }} of {{ tenants.length }} ready.</template>
       </p>
 
+      <v-alert v-if="!loading && waitingRequests.length" type="warning" variant="tonal" density="compact" class="mb-4"
+        icon="mdi-inbox-arrow-down">
+        {{ platformName }} asked for {{ waitingRequests.length }} tenant{{ waitingRequests.length === 1 ? '' : 's' }} waiting for approval.
+        Review each one: set up its hospital on {{ systemLabel }}, then choose it here and make the tenant active.
+      </v-alert>
+
       <v-progress-linear v-if="loading" indeterminate color="primary" class="mb-3" />
       <v-alert v-else-if="loadError" type="error" variant="tonal">{{ loadError }}</v-alert>
       <v-alert v-else-if="!tenants.length" type="info" variant="tonal">
@@ -206,7 +222,12 @@ defineExpose({ load })
         <tbody>
           <tr v-for="t in tenants" :key="t.tenant_id">
             <td><code>{{ t.tenant_id }}</code></td>
-            <td>{{ t.name || '—' }}</td>
+            <td>
+              {{ t.name || '—' }}
+              <div v-if="isRequest(t)" class="text-caption textSecondary">
+                <v-icon icon="mdi-inbox-arrow-down" size="x-small" /> Requested {{ shortDate(t.requested_at) }}
+              </div>
+            </td>
             <td>
               <NuxtLink v-if="t.hospital" :to="`/hospitals/${t.hospital.id}`">{{ t.hospital.name }}</NuxtLink>
               <span v-else-if="t.organization_id" class="textSecondary">Organization {{ t.organization_id }} (not in this console)</span>
@@ -222,7 +243,11 @@ defineExpose({ load })
               </div>
             </td>
             <td class="text-right text-no-wrap">
-              <v-btn icon="mdi-pencil" size="small" variant="text" :aria-label="`Edit tenant ${t.tenant_id}`" @click="openTenant(t)" />
+              <v-btn v-if="isRequest(t) && t.status === 'pending'" size="small" variant="tonal" color="warning" class="mr-1"
+                prepend-icon="mdi-clipboard-check-outline" @click="openTenant(t)">
+                Review
+              </v-btn>
+              <v-btn v-else icon="mdi-pencil" size="small" variant="text" :aria-label="`Edit tenant ${t.tenant_id}`" @click="openTenant(t)" />
               <v-btn icon="mdi-delete" size="small" variant="text" color="error" :aria-label="`Remove tenant ${t.tenant_id}`"
                 :loading="removing === t.tenant_id" @click="remove(t)" />
             </td>
@@ -232,15 +257,25 @@ defineExpose({ load })
     </v-card-text>
 
     <!-- Add / edit tenant -->
-    <v-dialog v-model="dialog" max-width="560" scrollable>
+    <v-dialog v-model="dialog" :max-width="editingRequest ? 720 : 560" scrollable>
       <v-card rounded="lg">
         <v-card-title class="d-flex align-center pa-4 pb-2">
-          {{ editing ? 'Edit tenant' : 'Add tenant' }}
+          {{ editingRequest && editingRequest.status === 'pending' ? 'Review tenant request' : (editing ? 'Edit tenant' : 'Add tenant') }}
           <v-spacer />
           <v-btn icon="mdi-close" variant="text" aria-label="Close" @click="dialog = false" />
         </v-card-title>
         <v-divider />
         <v-card-text class="pa-4">
+          <template v-if="editingRequest?.registration">
+            <TenantRequestDetails
+              :registration="editingRequest.registration" :requested-at="editingRequest.requested_at"
+              :platform-name="platformName" class="mb-3" />
+            <p v-if="editingRequest.status === 'pending'" class="text-body-2 textSecondary mb-4">
+              To approve: if the hospital isn't on {{ systemLabel }} yet,
+              <NuxtLink to="/hospitals/new" target="_blank">set it up</NuxtLink> (it opens in a new tab), then choose it below
+              and make the tenant active.
+            </p>
+          </template>
           <v-text-field v-model="form.tenant_id" :label="`${platformName}'s id for this tenant`" placeholder="e.g. T-1042"
             :readonly="!!editing" :autofocus="!editing" variant="outlined" density="comfortable"
             :hint="editing ? 'The id cannot change; remove the tenant and add it again instead.' : 'Letters, digits and . _ : - only. The platform sends it in X-Tenant-Id.'"

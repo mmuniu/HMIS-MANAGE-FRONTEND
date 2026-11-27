@@ -81,6 +81,22 @@ export interface IssuedClient extends PlatformClient {
 
 export type TenantStatus = 'pending' | 'active' | 'suspended'
 
+// What a platform sent when it asked for a tenant itself (tenants.register).
+// Every field is optional except the name.
+export interface TenantRegistration {
+  name: string
+  legal_name?: string
+  registration_number?: string
+  email?: string
+  phone?: string
+  address?: string
+  county?: string
+  country?: string
+  contact_person?: { name?: string; email?: string; phone?: string }
+  facilities?: { name: string; mfl_code?: string; county?: string }[]
+  notes?: string
+}
+
 // One of the platform's own tenants, mapped to a hospital here.
 export interface PlatformTenant {
   tenant_id: string
@@ -91,6 +107,9 @@ export interface PlatformTenant {
   // Requests can act for it: active, with its system user set up in core.
   ready: boolean
   system_user_error: string | null
+  // Set when the platform asked for the tenant itself.
+  registration: TenantRegistration | null
+  requested_at: string | null
   updated_at: string | null
   hospital: { id: string; name: string } | null
   facility: { id: string; name: string } | null

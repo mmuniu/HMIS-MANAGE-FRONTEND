@@ -13,8 +13,13 @@ export interface PlatformProcess {
   name: string
   description: string | null
   direction: ProcessDirection
+  // The gateway operation it switches on (e.g. "patients.register"), if any.
+  operation: string | null
   is_enabled: boolean
 }
+
+// A gateway operation a process can stand for (integration-service's catalogue).
+export interface GatewayOperation { operation: string; description: string }
 
 // A platform as the list page shows it.
 export interface ExternalPlatformSummary {
@@ -78,14 +83,21 @@ export interface PlatformTenant {
   tenant_id: string
   name: string | null
   organization_id: number | null
+  facility_id: number | null
   status: TenantStatus
+  // Requests can act for it: active, with its system user set up in core.
+  ready: boolean
+  system_user_error: string | null
   updated_at: string | null
   hospital: { id: string; name: string } | null
+  facility: { id: string; name: string } | null
 }
 
 export interface TenantPayload {
   name: string | null
   hospital_id: string | null
+  // One of the hospital's facilities; null = its only facility.
+  facility_id: string | null
   status: TenantStatus
 }
 
@@ -138,6 +150,7 @@ export interface ProcessPayload {
   name?: string
   description?: string | null
   direction?: ProcessDirection
+  operation?: string | null
   is_enabled?: boolean
 }
 
@@ -165,6 +178,12 @@ export function useExternalPlatformsApi() {
   async function updateDetails(id: string, payload: Partial<PlatformDetailsPayload>): Promise<SavedPlatform> {
     const { data } = await $axios.patch(`${base}/${id}`, payload)
     return { ...data.data, integration_service: data.integration_service ?? null }
+  }
+
+  // The gateway operations a process can switch on.
+  async function operations(): Promise<GatewayOperation[]> {
+    const { data } = await $axios.get(`${base}/operations`)
+    return data.data
   }
 
   // Push the platform to integration-service again.
@@ -243,6 +262,6 @@ export function useExternalPlatformsApi() {
 
   return {
     list, get, create, updateDetails, saveFields, saveConfig, destroy, addProcess, updateProcess, removeProcess,
-    sync, clients, issueClient, revokeClient, tenants, saveTenant, removeTenant, requests,
+    operations, sync, clients, issueClient, revokeClient, tenants, saveTenant, removeTenant, requests,
   }
 }

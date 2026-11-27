@@ -5,6 +5,7 @@ import { useNuxtApp } from '#app'
 import {
   useExternalPlatformsApi,
   type ExternalPlatform, type ConfigField, type FieldType, type PlatformProcess, type ProcessDirection, type SyncResult,
+  type GatewayOperation,
 } from '@/composables/useExternalPlatformsApi'
 import PlatformCredentials from '@/components/external-platforms/PlatformCredentials.vue'
 import PlatformTenants from '@/components/external-platforms/PlatformTenants.vue'
@@ -255,24 +256,51 @@ const processDialog = ref(false)
 const editingProcess = ref<PlatformProcess | null>(null)
 const savingProcess = ref(false)
 const processErrors = ref<Record<string, string[]>>({})
-const processForm = ref({ name: '', description: '', direction: 'outbound' as ProcessDirection, is_enabled: true })
+const processForm = ref({ name: '', description: '', direction: 'outbound' as ProcessDirection, operation: null as string | null, is_enabled: true })
 const togglingProcess = ref<number | null>(null)
 const removingProcess = ref<number | null>(null)
+
+// The gateway operations a process can switch on (from integration-service),
+// loaded the first time the form opens.
+const operations = ref<GatewayOperation[]>([])
+const operationsError = ref('')
+const loadingOperations = ref(false)
+async function loadOperations() {
+  if (operations.value.length || loadingOperations.value) return
+  loadingOperations.value = true
+  operationsError.value = ''
+  try {
+    operations.value = await api.operations()
+  } catch (e: any) {
+    operationsError.value = e?.response?.data?.message || 'Could not load the operations.'
+  } finally {
+    loadingOperations.value = false
+  }
+}
+const operationItems = computed(() => operations.value.map(o => ({ value: o.operation, title: o.operation, subtitle: o.description })))
+const operationDescription = (code: string | null) => operations.value.find(o => o.operation === code)?.description ?? ''
 
 function openProcess(p: PlatformProcess | null = null) {
   editingProcess.value = p
   processForm.value = p
-    ? { name: p.name, description: p.description ?? '', direction: p.direction, is_enabled: p.is_enabled }
-    : { name: '', description: '', direction: 'outbound', is_enabled: true }
+    ? { name: p.name, description: p.description ?? '', direction: p.direction, operation: p.operation, is_enabled: p.is_enabled }
+    : { name: '', description: '', direction: 'outbound', operation: null, is_enabled: true }
   processErrors.value = {}
   processDialog.value = true
+  loadOperations()
 }
+
+// A gateway operation is something the platform sends us.
+watch(() => processForm.value.operation, (op) => {
+  if (op && processForm.value.direction === 'outbound') processForm.value.direction = 'inbound'
+})
 
 async function saveProcess() {
   const payload = {
     name: processForm.value.name.trim(),
     description: processForm.value.description.trim() || null,
     direction: processForm.value.direction,
+    operation: processForm.value.operation || null,
     is_enabled: processForm.value.is_enabled,
   }
   savingProcess.value = true
@@ -446,6 +474,10 @@ onMounted(load)
                       <v-chip size="x-small" variant="tonal" label :prepend-icon="directionOf(p.direction).icon" :title="directionOf(p.direction).hint">
                         {{ directionOf(p.direction).title }}
                       </v-chip>
+                      <v-chip v-if="p.operation" size="x-small" variant="tonal" color="primary" label prepend-icon="mdi-api"
+                        title="The gateway operation this process switches on">
+                        {{ p.operation }}
+                      </v-chip>
                     </v-list-item-title>
                     <v-list-item-subtitle class="process-description">{{ p.description || 'No description.' }}</v-list-item-subtitle>
                     <template #append>
@@ -582,6 +614,11 @@ onMounted(load)
           <v-btn-toggle v-model="processForm.direction" mandatory color="primary" variant="outlined" density="comfortable" divided class="mb-4">
             <v-btn v-for="d in DIRECTIONS" :key="d.value" :value="d.value" :prepend-icon="d.icon" :title="d.hint">{{ d.title }}</v-btn>
           </v-btn-toggle>
+          <v-select
+            v-model="processForm.operation" :items="operationItems" item-props clearable
+            :loading="loadingOperations" label="Gateway operation (optional)" variant="outlined" density="comfortable"
+            :hint="processForm.operation ? operationDescription(processForm.operation) : `Choose one to let ${platform?.name} send this request through us while the process is on.`"
+            persistent-hint class="mb-2" :error-messages="processErrors.operation || (operationsError ? [operationsError] : undefined)" />
           <v-switch v-model="processForm.is_enabled" label="Switched on" color="success" hide-details density="compact" />
         </v-card-text>
         <v-divider />

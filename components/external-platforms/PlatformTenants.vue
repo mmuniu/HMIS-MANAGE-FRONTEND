@@ -40,7 +40,7 @@ async function load() {
   }
 }
 
-const activeCount = computed(() => tenants.value.filter(t => t.status === 'active' && t.hospital).length)
+const activeCount = computed(() => tenants.value.filter(t => t.ready).length)
 
 // ── Hospital search (only hospitals provisioned in core-service can be mapped)
 interface HospitalOption { id: string; title: string; disabled: boolean }
@@ -81,13 +81,44 @@ const dialog = ref(false)
 const editing = ref<PlatformTenant | null>(null)
 const saving = ref(false)
 const errors = ref<Record<string, string[]>>({})
-const form = ref({ tenant_id: '', name: '', hospital_id: null as string | null, status: 'active' as TenantStatus })
+const form = ref({ tenant_id: '', name: '', hospital_id: null as string | null, facility_id: null as string | null, status: 'active' as TenantStatus })
+
+// The chosen hospital's facilities; only those provisioned in core can be picked.
+const facilityOptions = ref<{ id: string; title: string; disabled: boolean }[]>([])
+const loadingFacilities = ref(false)
+async function loadFacilities(hospitalId: string | null) {
+  facilityOptions.value = []
+  if (!hospitalId) return
+  loadingFacilities.value = true
+  try {
+    const detail = await hospitalsApi.show(hospitalId)
+    facilityOptions.value = detail.facilities.map(f => ({
+      id: f.id,
+      title: f.core_facility_id ? f.name : `${f.name} (not provisioned in core yet)`,
+      disabled: !f.core_facility_id,
+    }))
+  } catch {
+    // Leave it empty: the tenant then acts at the hospital's only facility.
+  } finally {
+    loadingFacilities.value = false
+  }
+}
+// Facilities belong to a hospital: choosing another one clears the facility.
+const facilitiesFor = ref<string | null>(null)
+watch(() => form.value.hospital_id, (id) => {
+  if (id === facilitiesFor.value) return
+  facilitiesFor.value = id
+  form.value.facility_id = null
+  loadFacilities(id)
+})
 
 function openTenant(t: PlatformTenant | null = null) {
   editing.value = t
   form.value = t
-    ? { tenant_id: t.tenant_id, name: t.name ?? '', hospital_id: t.hospital?.id ?? null, status: t.status }
-    : { tenant_id: '', name: '', hospital_id: null, status: 'active' }
+    ? { tenant_id: t.tenant_id, name: t.name ?? '', hospital_id: t.hospital?.id ?? null, facility_id: t.facility?.id ?? null, status: t.status }
+    : { tenant_id: '', name: '', hospital_id: null, facility_id: null, status: 'active' }
+  facilitiesFor.value = form.value.hospital_id
+  loadFacilities(form.value.hospital_id)
   hospitalOptions.value = t?.hospital ? [{ id: t.hospital.id, title: t.hospital.name, disabled: false }] : []
   errors.value = {}
   dialog.value = true
@@ -102,13 +133,16 @@ async function save() {
   saving.value = true
   errors.value = {}
   try {
-    await api.saveTenant(props.platformId, tenantId, {
+    const saved = await api.saveTenant(props.platformId, tenantId, {
       name: form.value.name.trim() || null,
       hospital_id: form.value.hospital_id,
+      facility_id: form.value.hospital_id ? form.value.facility_id : null,
       status: form.value.status,
     })
     dialog.value = false
-    $showToast(editing.value ? 'Tenant saved.' : 'Tenant added.')
+    $showToast(saved.status === 'active' && !saved.ready
+      ? `Tenant saved, but it is not ready yet: ${saved.system_user_error || 'its system user could not be set up'}.`
+      : (editing.value ? 'Tenant saved.' : 'Tenant added.'))
     await load()
   } catch (e: any) {
     errors.value = e?.response?.data?.errors ?? {}
@@ -149,7 +183,7 @@ defineExpose({ load })
       <p class="text-body-2 textSecondary mb-4">
         {{ platformName }}'s own tenants and the hospital each one is registered as here. Requests are accepted only for active
         tenants with a hospital.
-        <template v-if="tenants.length">{{ activeCount }} of {{ tenants.length }} active.</template>
+        <template v-if="tenants.length">{{ activeCount }} of {{ tenants.length }} ready.</template>
       </p>
 
       <v-progress-linear v-if="loading" indeterminate color="primary" class="mb-3" />
@@ -176,11 +210,15 @@ defineExpose({ load })
               <NuxtLink v-if="t.hospital" :to="`/hospitals/${t.hospital.id}`">{{ t.hospital.name }}</NuxtLink>
               <span v-else-if="t.organization_id" class="textSecondary">Organization {{ t.organization_id }} (not in this console)</span>
               <span v-else class="textSecondary">Not mapped</span>
+              <div v-if="t.facility" class="text-caption textSecondary">{{ t.facility.name }}</div>
             </td>
             <td>
               <v-chip :color="statusOf(t.status).color" size="x-small" variant="tonal" label :title="statusOf(t.status).hint">
                 {{ statusOf(t.status).title }}
               </v-chip>
+              <div v-if="t.status === 'active'" class="text-caption mt-1" :class="t.ready ? 'text-success' : 'text-error'">
+                {{ t.ready ? 'Ready' : `Not ready: ${t.system_user_error || 'system user not set up'}` }}
+              </div>
             </td>
             <td class="text-right text-no-wrap">
               <v-btn icon="mdi-pencil" size="small" variant="text" :aria-label="`Edit tenant ${t.tenant_id}`" @click="openTenant(t)" />
@@ -216,6 +254,12 @@ defineExpose({ load })
             label="Hospital here" placeholder="Search hospitals" variant="outlined" density="comfortable"
             hint="Only hospitals provisioned in core-service can be chosen." persistent-hint class="mb-3"
             :error-messages="errors.hospital_id || errors.organization_id" />
+          <v-select
+            v-if="form.hospital_id"
+            v-model="form.facility_id" :items="facilityOptions" item-value="id" item-title="title" item-props clearable
+            :loading="loadingFacilities" label="Facility (optional)" variant="outlined" density="comfortable"
+            hint="Where its requests act. Leave empty if the hospital has one facility." persistent-hint class="mb-3"
+            :error-messages="errors.facility_id" />
           <p class="text-subtitle-2 font-weight-medium mb-2">Status</p>
           <v-btn-toggle v-model="form.status" mandatory color="primary" variant="outlined" density="comfortable" divided class="mb-2">
             <v-btn v-for="s in STATUSES" :key="s.value" :value="s.value" :title="s.hint">{{ s.title }}</v-btn>

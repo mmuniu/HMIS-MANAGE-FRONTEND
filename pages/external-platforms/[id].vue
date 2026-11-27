@@ -1,14 +1,19 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNuxtApp } from '#app'
 import {
   useExternalPlatformsApi,
-  type ExternalPlatform, type ConfigField, type FieldType, type PlatformProcess, type ProcessDirection,
+  type ExternalPlatform, type ConfigField, type FieldType, type PlatformProcess, type ProcessDirection, type SyncResult,
 } from '@/composables/useExternalPlatformsApi'
+import PlatformCredentials from '@/components/external-platforms/PlatformCredentials.vue'
+import PlatformTenants from '@/components/external-platforms/PlatformTenants.vue'
+import PlatformRequests from '@/components/external-platforms/PlatformRequests.vue'
 
 // One external platform: its configuration (the fields it needs and their
-// values) and the processes its integration is meant to cover.
+// values) and the processes its integration is meant to cover — and its way
+// in, held by integration-service: credentials, tenants and the requests it
+// made (the dashboard).
 
 const api = useExternalPlatformsApi()
 const route = useRoute()
@@ -34,6 +39,42 @@ const DIRECTIONS: { value: ProcessDirection; title: string; icon: string; hint: 
   { value: 'both', title: 'Both ways', icon: 'mdi-swap-horizontal', hint: 'Goes both ways' },
 ]
 const directionOf = (d: ProcessDirection) => DIRECTIONS.find(x => x.value === d) ?? DIRECTIONS[0]
+
+// ── Tabs (kept in ?tab= so a tab can be linked to) ──────────────────────────
+const TABS = [
+  { value: 'setup', title: 'Setup', icon: 'mdi-cog-outline' },
+  { value: 'credentials', title: 'Credentials', icon: 'mdi-key-variant' },
+  { value: 'tenants', title: 'Tenants', icon: 'mdi-domain' },
+  { value: 'requests', title: 'Requests', icon: 'mdi-chart-timeline-variant' },
+]
+const tab = ref(TABS.some(t => t.value === route.query.tab) ? String(route.query.tab) : 'setup')
+watch(tab, (value) => {
+  router.replace({ query: { ...route.query, tab: value === 'setup' ? undefined : value } })
+})
+
+// ── The push to integration-service ─────────────────────────────────────────
+// A failed push leaves the platform's way in out of date there (its name, or
+// whether it is switched on); shown until a push succeeds.
+const syncFailure = ref<string | null>(null)
+const syncing = ref(false)
+
+function noteSync(result: SyncResult | null | undefined) {
+  if (!result) return
+  syncFailure.value = result.synced ? null : (result.error || 'Unknown error.')
+}
+
+async function pushAgain() {
+  syncing.value = true
+  try {
+    noteSync(await api.sync(platformId.value))
+    $showToast(syncFailure.value ? 'Still could not reach the integration service.' : 'Pushed to the integration service.')
+  } catch (e: any) {
+    noteSync(e?.response?.data?.integration_service ?? { synced: false, error: e?.response?.data?.message || 'Request failed.' })
+    $showToast('Still could not reach the integration service.')
+  } finally {
+    syncing.value = false
+  }
+}
 
 const loading = ref(true)
 const platform = ref<ExternalPlatform | null>(null)
@@ -84,14 +125,16 @@ async function saveDetails() {
   savingDetails.value = true
   detailsErrors.value = {}
   try {
-    apply(await api.updateDetails(platformId.value, {
+    const saved = await api.updateDetails(platformId.value, {
       name: details.value.name.trim(),
       category: details.value.category,
       description: details.value.description.trim() || null,
       is_active: details.value.is_active,
-    }))
+    })
+    apply(saved)
+    noteSync(saved.integration_service)
     detailsDialog.value = false
-    $showToast('Details saved.')
+    $showToast(syncFailure.value ? 'Details saved here, but not pushed to the integration service.' : 'Details saved.')
   } catch (e: any) {
     detailsErrors.value = e?.response?.data?.errors ?? {}
     $showToast(e?.response?.data?.message || 'Failed to save the details.')
@@ -104,7 +147,7 @@ const deleting = ref(false)
 async function removePlatform() {
   const p = platform.value
   if (!p) return
-  if (!confirm(`Delete ${p.name}? Its configuration and processes are removed with it. This cannot be undone.`)) return
+  if (!confirm(`Delete ${p.name}? Its configuration and processes are removed with it, and its credentials stop working at once. This cannot be undone.`)) return
   deleting.value = true
   try {
     await api.destroy(p.id)
@@ -306,6 +349,22 @@ onMounted(load)
         </div>
       </div>
 
+      <v-alert v-if="syncFailure" type="warning" variant="tonal" class="mb-4">
+        <div class="d-flex flex-wrap align-center ga-3">
+          <span class="flex-grow-1">
+            Saved here, but the integration service did not get the change ({{ syncFailure }}). Until it does, the platform's
+            name or on/off switch there is out of date.
+          </span>
+          <v-btn variant="flat" color="warning" size="small" :loading="syncing" @click="pushAgain">Push again</v-btn>
+        </div>
+      </v-alert>
+
+      <v-tabs v-model="tab" color="primary" class="mb-4">
+        <v-tab v-for="t in TABS" :key="t.value" :value="t.value" :prepend-icon="t.icon">{{ t.title }}</v-tab>
+      </v-tabs>
+
+      <v-window v-model="tab">
+      <v-window-item value="setup">
       <v-row>
         <!-- Configuration -->
         <v-col cols="12" lg="5">
@@ -409,6 +468,21 @@ onMounted(load)
           </v-card>
         </v-col>
       </v-row>
+      </v-window-item>
+
+      <!-- The platform's way in, held by integration-service -->
+      <v-window-item value="credentials">
+        <PlatformCredentials :platform-id="platform.id" :platform-name="platform.name" :platform-active="platform.is_active" />
+      </v-window-item>
+
+      <v-window-item value="tenants">
+        <PlatformTenants :platform-id="platform.id" :platform-name="platform.name" />
+      </v-window-item>
+
+      <v-window-item value="requests">
+        <PlatformRequests :platform-id="platform.id" :platform-name="platform.name" />
+      </v-window-item>
+      </v-window>
     </template>
 
     <!-- Edit details -->

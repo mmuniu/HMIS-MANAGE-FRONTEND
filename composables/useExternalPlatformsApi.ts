@@ -44,6 +44,88 @@ export interface ExternalPlatform extends ExternalPlatformSummary {
   updated_at: string | null
 }
 
+// Whether a change reached integration-service, which holds the platform's
+// way in (credentials, tokens, tenants) and logs its requests.
+export interface SyncResult { synced: boolean; error: string | null }
+
+// A platform as a save returns it, with the push to integration-service.
+export type SavedPlatform = ExternalPlatform & { integration_service?: SyncResult | null }
+
+// Client credentials the platform swaps for short-lived access tokens.
+// The secret is never listed; only its last characters.
+export interface PlatformClient {
+  client_id: string
+  name: string | null
+  secret_hint: string
+  is_active: boolean
+  active_tokens: number
+  last_used_at: string | null
+  revoked_at: string | null
+  created_at: string | null
+}
+
+// Credentials just issued: the only time the secret is shown.
+export interface IssuedClient extends PlatformClient {
+  client_secret: string
+  token_url: string
+  token_ttl_minutes: number
+}
+
+export type TenantStatus = 'pending' | 'active' | 'suspended'
+
+// One of the platform's own tenants, mapped to a hospital here.
+export interface PlatformTenant {
+  tenant_id: string
+  name: string | null
+  organization_id: number | null
+  status: TenantStatus
+  updated_at: string | null
+  hospital: { id: string; name: string } | null
+}
+
+export interface TenantPayload {
+  name: string | null
+  hospital_id: string | null
+  status: TenantStatus
+}
+
+// One request the platform made (no bodies are kept).
+export interface PlatformRequest {
+  id: number
+  at: string | null
+  tenant_id: string | null
+  organization_id: number | null
+  method: string
+  path: string
+  operation: string | null
+  status: number
+  duration_ms: number
+  correlation_id: string | null
+  error: string | null
+  hospital: { id: string; name: string } | null
+}
+
+export interface RequestFilters {
+  from?: string | null
+  to?: string | null
+  tenant?: string | null
+  operation?: string | null
+  outcome?: 'ok' | 'error' | null
+  page?: number
+  per_page?: number
+}
+
+export interface RequestsPage {
+  data: PlatformRequest[]
+  meta: {
+    current_page: number
+    last_page: number
+    per_page: number
+    total: number
+    summary: { total: number; errors: number; avg_duration_ms: number | null }
+  }
+}
+
 export interface PlatformDetailsPayload {
   id?: string
   name: string
@@ -73,14 +155,57 @@ export function useExternalPlatformsApi() {
     return data.data
   }
 
-  async function create(payload: PlatformDetailsPayload): Promise<ExternalPlatform> {
+  // Adding a platform, or changing its name or on/off switch, pushes it to
+  // integration-service: integration_service says whether that worked.
+  async function create(payload: PlatformDetailsPayload): Promise<SavedPlatform> {
     const { data } = await $axios.post(base, payload)
+    return { ...data.data, integration_service: data.integration_service ?? null }
+  }
+
+  async function updateDetails(id: string, payload: Partial<PlatformDetailsPayload>): Promise<SavedPlatform> {
+    const { data } = await $axios.patch(`${base}/${id}`, payload)
+    return { ...data.data, integration_service: data.integration_service ?? null }
+  }
+
+  // Push the platform to integration-service again.
+  async function sync(id: string): Promise<SyncResult> {
+    const { data } = await $axios.post(`${base}/${id}/sync`)
+    return data.integration_service
+  }
+
+  async function clients(id: string): Promise<PlatformClient[]> {
+    const { data } = await $axios.get(`${base}/${id}/clients`)
     return data.data
   }
 
-  async function updateDetails(id: string, payload: Partial<PlatformDetailsPayload>): Promise<ExternalPlatform> {
-    const { data } = await $axios.patch(`${base}/${id}`, payload)
+  async function issueClient(id: string, name: string | null): Promise<IssuedClient> {
+    const { data } = await $axios.post(`${base}/${id}/clients`, { name })
     return data.data
+  }
+
+  async function revokeClient(id: string, clientId: string): Promise<PlatformClient> {
+    const { data } = await $axios.delete(`${base}/${id}/clients/${encodeURIComponent(clientId)}`)
+    return data.data
+  }
+
+  async function tenants(id: string): Promise<PlatformTenant[]> {
+    const { data } = await $axios.get(`${base}/${id}/tenants`)
+    return data.data
+  }
+
+  async function saveTenant(id: string, tenantId: string, payload: TenantPayload): Promise<PlatformTenant> {
+    const { data } = await $axios.put(`${base}/${id}/tenants/${encodeURIComponent(tenantId)}`, payload)
+    return data.data
+  }
+
+  async function removeTenant(id: string, tenantId: string) {
+    await $axios.delete(`${base}/${id}/tenants/${encodeURIComponent(tenantId)}`)
+  }
+
+  async function requests(id: string, filters: RequestFilters = {}): Promise<RequestsPage> {
+    const params = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== null && v !== undefined && v !== ''))
+    const { data } = await $axios.get(`${base}/${id}/requests`, { params })
+    return data
   }
 
   // Replace the list of fields the configuration is made of. A removed
@@ -116,5 +241,8 @@ export function useExternalPlatformsApi() {
     return data.data
   }
 
-  return { list, get, create, updateDetails, saveFields, saveConfig, destroy, addProcess, updateProcess, removeProcess }
+  return {
+    list, get, create, updateDetails, saveFields, saveConfig, destroy, addProcess, updateProcess, removeProcess,
+    sync, clients, issueClient, revokeClient, tenants, saveTenant, removeTenant, requests,
+  }
 }

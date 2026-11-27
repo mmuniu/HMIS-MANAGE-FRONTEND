@@ -72,7 +72,9 @@ async function save() {
       is_active: form.value.is_active,
     })
     dialog.value = false
-    $showToast(`${created.name} added. Set up its configuration and processes.`)
+    $showToast(created.integration_service && !created.integration_service.synced
+      ? `${created.name} added, but not pushed to the integration service (${created.integration_service.error}). Save its details again to retry.`
+      : `${created.name} added. Set up its configuration and processes.`)
     router.push(`/external-platforms/${created.id}`)
   } catch (e: any) {
     errors.value = e?.response?.data?.errors ?? {}

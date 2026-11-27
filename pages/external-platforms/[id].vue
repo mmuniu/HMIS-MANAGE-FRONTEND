@@ -373,7 +373,7 @@ onMounted(load)
             </v-chip>
           </div>
           <p class="textSecondary mb-1">{{ platform.description || 'No description.' }}</p>
-          <p class="text-caption textSecondary mb-0">ID: <code>{{ platform.id }}</code></p>
+          <p class="text-caption textSecondary mb-0">ID: <code>{{ platform.code }}</code></p>
         </div>
         <div class="d-flex ga-2">
           <v-btn variant="tonal" prepend-icon="mdi-pencil" @click="openDetails">Edit details</v-btn>

@@ -66,7 +66,7 @@ const filtered = computed(() => {
   const q = search.value.trim().toLowerCase()
   if (!q) return inSystem.value
   return inSystem.value.filter(p =>
-    [p.name, p.id, p.category, p.description ?? ''].some(v => v.toLowerCase().includes(q)),
+    [p.name, p.code, p.category, p.description ?? ''].some(v => v.toLowerCase().includes(q)),
   )
 })
 
@@ -78,7 +78,7 @@ async function load() {
 }
 
 function open(p: ExternalPlatformSummary) {
-  router.push(`/external-platforms/${p.id}`)
+  router.push(`/external-platforms/${encodeURIComponent(p.id)}`)
 }
 
 // Search is for a long list; while typing, keep it even if the list shrinks.
@@ -120,7 +120,7 @@ async function save() {
     $showToast(created.integration_service && !created.integration_service.synced
       ? `${created.name} added, but not pushed to the integration service (${created.integration_service.error}). Save its details again to retry.`
       : `${created.name} added. Set up its configuration and processes.`)
-    router.push(`/external-platforms/${created.id}`)
+    router.push(`/external-platforms/${encodeURIComponent(created.id)}`)
   } catch (e: any) {
     errors.value = e?.response?.data?.errors ?? {}
     $showToast(e?.response?.data?.message || 'Failed to add the platform.')
@@ -255,7 +255,7 @@ onMounted(() => {
             </v-col>
             <v-col cols="12">
               <v-text-field v-model="form.id" label="ID (optional)" placeholder="fieldmatch"
-                hint="Lowercase letters, digits and underscores. Left blank, it is made from the name. It cannot be changed later."
+                :hint="`Lowercase letters, digits and underscores. Left blank, it is made from the name. ${multiSystem ? 'The same ID can be used once per system. ' : ''}It cannot be changed later.`"
                 persistent-hint variant="outlined" density="comfortable" :error-messages="errors.id" />
             </v-col>
             <v-col cols="12" class="mt-2">

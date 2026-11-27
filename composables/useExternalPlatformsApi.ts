@@ -23,7 +23,10 @@ export interface GatewayOperation { operation: string; description: string }
 
 // A platform as the list page shows it.
 export interface ExternalPlatformSummary {
+  // Its key here and in URLs: the code, or "code@system" off the default system.
   id: string
+  // Its ID within its system — the same one can be used once per system.
+  code: string
   // The system (v3 stack) it is integrated to — chosen when it is added.
   v3_target: string
   v3_target_label: string
@@ -161,6 +164,7 @@ export interface RequestsPage {
 }
 
 export interface PlatformDetailsPayload {
+  // When adding: the ID wanted within the system (becomes `code`).
   id?: string
   // Only when adding: the system it is integrated to (left out = the default one).
   v3_target?: string
